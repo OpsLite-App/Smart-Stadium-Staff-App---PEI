@@ -1,0 +1,9 @@
+flake8
+pytest
+fastapi
+uvicorn
+numpy
+pandas
+requests
+pydantic
+
