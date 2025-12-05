@@ -1,0 +1,22 @@
+# Emergency Service Requirements
+
+# Core Framework
+fastapi==0.115.5
+uvicorn[standard]==0.32.1
+pydantic==2.10.3
+
+# Database
+sqlalchemy==2.0.36
+
+# HTTP Client
+httpx==0.28.1
+
+# MQTT
+paho-mqtt==2.1.0
+
+# CORS
+python-multipart==0.0.20
+
+# Development
+pytest==8.3.4
+pytest-asyncio==0.24.0
