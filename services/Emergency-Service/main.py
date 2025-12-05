@@ -1,21 +1,17 @@
 """
-EMERGENCY SERVICE
-Manages fire alarms, evacuations, and emergency incidents
-Integrates with Routing Service for evacuation routes and responder dispatch
+EMERGENCY SERVICE - Main Application
+Manages emergencies, incidents, evacuations, and responder dispatch
+Calls Routing Service for route calculations
 """
 
-from fastapi import FastAPI, HTTPException, Query, Depends, Path
+from fastapi import FastAPI, HTTPException, Query, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from typing import List, Optional
-from datetime import datetime, timedelta
+from datetime import datetime
 import asyncio
-import httpx
 
-from models import (
-    EmergencyIncident, IncidentType, IncidentStatus, IncidentSeverity,
-    EvacuationZone, ResponderDispatch, SensorAlert
-)
+from models import IncidentStatus, IncidentSeverity, IncidentType
 from schemas import (
     IncidentCreate, IncidentUpdate, IncidentResponse,
     EvacuationRequest, EvacuationResponse,
@@ -26,7 +22,6 @@ from schemas import (
 from database import get_db, init_db
 from incident_manager import IncidentManager
 from evacuation_coordinator import EvacuationCoordinator
-from mqtt_listener import start_mqtt_listener
 
 app = FastAPI(
     title="Stadium Emergency Service",
@@ -48,7 +43,6 @@ ROUTING_SERVICE_URL = "http://localhost:8002"
 MAP_SERVICE_URL = "http://localhost:8000"
 CONGESTION_SERVICE_URL = "http://localhost:8005"
 
-# Emergency phone numbers (mock)
 EMERGENCY_CONTACTS = {
     "fire_brigade": "112",
     "police": "112",
@@ -77,7 +71,7 @@ async def startup():
     init_db()
     print("✅ Database initialized")
     
-    # Initialize managers
+    # Initialize managers (they will call Routing Service)
     incident_manager = IncidentManager(ROUTING_SERVICE_URL, MAP_SERVICE_URL)
     evacuation_coordinator = EvacuationCoordinator(
         ROUTING_SERVICE_URL,
@@ -86,10 +80,6 @@ async def startup():
     )
     print("✅ Incident manager initialized")
     print("✅ Evacuation coordinator initialized")
-    
-    # Start MQTT listener for sensor alerts
-    start_mqtt_listener(incident_manager, evacuation_coordinator)
-    print("✅ MQTT listener started")
     
     # Start background tasks
     asyncio.create_task(check_incident_escalation())
@@ -113,16 +103,11 @@ async def check_incident_escalation():
         
         try:
             db = next(get_db())
-            
-            # Get active incidents
             active = incident_manager.get_active_incidents(db)
             
             for incident in active:
-                # Check if incident is escalating
                 if incident_manager.should_escalate(incident):
                     print(f"⚠️  Incident {incident.id} needs escalation!")
-                    
-                    # Auto-escalate severity
                     incident_manager.escalate_incident(db, incident.id)
             
             db.close()
@@ -136,9 +121,7 @@ async def update_evacuation_routes():
         await asyncio.sleep(60)  # Update every minute
         
         try:
-            # Update routes for active evacuations
             db = next(get_db())
-            
             active_evacs = evacuation_coordinator.get_active_evacuations(db)
             
             for evac in active_evacs:
@@ -205,27 +188,18 @@ async def create_incident(
     auto_dispatch: bool = Query(True, description="Automatically dispatch responders"),
     db: Session = Depends(get_db)
 ):
-    """
-    Create new emergency incident
+    """Create new emergency incident"""
     
-    Body: {
-        "incident_type": "fire",
-        "location_node": "N42",
-        "severity": "high",
-        "description": "Smoke detected in corridor",
-        "affected_area": "Sector A"
-    }
-    """
     created_incident = incident_manager.create_incident(db, incident)
     
     # Auto-dispatch if critical
-    if auto_dispatch and created_incident.severity in [IncidentSeverity.HIGH, IncidentSeverity.CRITICAL]:
-        dispatch = await incident_manager.auto_dispatch_responders(db, created_incident.id)
-        if dispatch:
-            print(f"✅ Auto-dispatched {len(dispatch)} responders to incident {created_incident.id}")
+    if auto_dispatch and created_incident.severity in ["high", "critical"]:
+        dispatches = await incident_manager.auto_dispatch_responders(db, created_incident.id)
+        if dispatches:
+            print(f"✅ Auto-dispatched {len(dispatches)} responders to incident {created_incident.id}")
     
     # Trigger evacuation if critical fire
-    if created_incident.incident_type == IncidentType.FIRE and created_incident.severity == IncidentSeverity.CRITICAL:
+    if created_incident.incident_type == "fire" and created_incident.severity == "critical":
         evac_request = EvacuationRequest(
             incident_id=created_incident.id,
             affected_zones=[created_incident.affected_area] if created_incident.affected_area else [],
@@ -246,11 +220,7 @@ def get_incidents(
     limit: int = Query(50, le=200),
     db: Session = Depends(get_db)
 ):
-    """
-    Get incidents with filters
-    
-    Example: /api/emergency/incidents?status=active&severity=high
-    """
+    """Get incidents with filters"""
     filters = {}
     if status:
         filters['status'] = status
@@ -262,9 +232,11 @@ def get_incidents(
     incidents = incident_manager.get_incidents(db, **filters)
     incidents = incidents[:limit]
     
+    active_count = sum(1 for i in incidents if i.status == "active")
+    
     return ActiveIncidentsResponse(
         total=len(incidents),
-        active_count=sum(1 for i in incidents if i.status == IncidentStatus.ACTIVE),
+        active_count=active_count,
         incidents=incidents
     )
 
@@ -281,19 +253,8 @@ def get_incident(incident_id: str, db: Session = Depends(get_db)):
 
 
 @app.patch("/api/emergency/incidents/{incident_id}", response_model=IncidentResponse)
-def update_incident(
-    incident_id: str,
-    update: IncidentUpdate,
-    db: Session = Depends(get_db)
-):
-    """
-    Update incident details
-    
-    Body: {
-        "status": "resolved",
-        "notes": "Fire extinguished by security staff"
-    }
-    """
+def update_incident(incident_id: str, update: IncidentUpdate, db: Session = Depends(get_db)):
+    """Update incident details"""
     incident = incident_manager.update_incident(db, incident_id, update)
     
     if not incident:
@@ -304,11 +265,7 @@ def update_incident(
 
 @app.post("/api/emergency/incidents/{incident_id}/escalate")
 def escalate_incident(incident_id: str, db: Session = Depends(get_db)):
-    """
-    Manually escalate incident severity
-    
-    Example: POST /api/emergency/incidents/inc-123/escalate
-    """
+    """Manually escalate incident severity"""
     incident = incident_manager.escalate_incident(db, incident_id)
     
     if not incident:
@@ -317,27 +274,15 @@ def escalate_incident(incident_id: str, db: Session = Depends(get_db)):
     return {
         "status": "escalated",
         "incident_id": incident_id,
-        "new_severity": incident.severity.value,
-        "message": f"Incident escalated to {incident.severity.value}"
+        "new_severity": incident.severity,
+        "message": f"Incident escalated to {incident.severity}"
     }
 
 
 @app.post("/api/emergency/incidents/{incident_id}/resolve")
-def resolve_incident(
-    incident_id: str,
-    notes: Optional[str] = Query(None),
-    db: Session = Depends(get_db)
-):
-    """
-    Mark incident as resolved
-    
-    Example: POST /api/emergency/incidents/inc-123/resolve?notes=Fire extinguished
-    """
-    update = IncidentUpdate(
-        status=IncidentStatus.RESOLVED.value,
-        notes=notes
-    )
-    
+def resolve_incident(incident_id: str, notes: Optional[str] = Query(None), db: Session = Depends(get_db)):
+    """Mark incident as resolved"""
+    update = IncidentUpdate(status="resolved", notes=notes)
     incident = incident_manager.update_incident(db, incident_id, update)
     
     if not incident:
@@ -346,33 +291,19 @@ def resolve_incident(
     return {
         "status": "resolved",
         "incident_id": incident_id,
-        "resolved_at": incident.resolved_at.isoformat() if incident.resolved_at else None
+        "resolved_at": incident.resolved_at
     }
 
 
 # ========== SENSOR ALERTS ==========
 
 @app.post("/api/emergency/sensors/alert", response_model=IncidentResponse, status_code=201)
-async def create_sensor_alert(
-    alert: SensorAlertCreate,
-    db: Session = Depends(get_db)
-):
-    """
-    Create incident from sensor alert (fire, smoke, gas)
-    
-    Body: {
-        "sensor_id": "FIRE-SENSOR-42",
-        "sensor_type": "smoke",
-        "location_node": "N42",
-        "reading_value": 450,
-        "threshold": 300,
-        "severity": "high"
-    }
-    """
+async def create_sensor_alert(alert: SensorAlertCreate, db: Session = Depends(get_db)):
+    """Create incident from sensor alert (fire, smoke, gas)"""
     incident = incident_manager.create_incident_from_sensor(db, alert)
     
     # Auto-dispatch for high severity
-    if incident.severity in [IncidentSeverity.HIGH, IncidentSeverity.CRITICAL]:
+    if incident.severity in ["high", "critical"]:
         await incident_manager.auto_dispatch_responders(db, incident.id)
     
     return incident
@@ -385,30 +316,16 @@ def get_sensor_alerts(
     limit: int = Query(50),
     db: Session = Depends(get_db)
 ):
-    """
-    Get sensor alerts
-    
-    Example: /api/emergency/sensors/alerts?sensor_type=smoke&status=active
-    """
+    """Get sensor alerts"""
     return incident_manager.get_sensor_alerts(db, sensor_type=sensor_type, status=status, limit=limit)
 
 
 # ========== RESPONDER DISPATCH ==========
 
 @app.post("/api/emergency/dispatch", response_model=List[DispatchResponse])
-async def dispatch_responders(
-    request: DispatchRequest,
-    db: Session = Depends(get_db)
-):
-    """
-    Dispatch responders to incident
+async def dispatch_responders(request: DispatchRequest, db: Session = Depends(get_db)):
+    """Dispatch responders to incident"""
     
-    Body: {
-        "incident_id": "inc-123",
-        "responder_role": "security",
-        "num_responders": 3
-    }
-    """
     dispatches = await incident_manager.dispatch_responders(
         db,
         request.incident_id,
@@ -417,10 +334,7 @@ async def dispatch_responders(
     )
     
     if not dispatches:
-        raise HTTPException(
-            status_code=400,
-            detail="No available responders or dispatch failed"
-        )
+        raise HTTPException(status_code=400, detail="No available responders or dispatch failed")
     
     return dispatches
 
@@ -442,29 +356,16 @@ def mark_responder_arrived(dispatch_id: str, db: Session = Depends(get_db)):
     return {
         "status": "arrived",
         "dispatch_id": dispatch_id,
-        "arrived_at": dispatch.arrived_at.isoformat() if dispatch.arrived_at else None
+        "arrived_at": dispatch.arrived_at
     }
 
 
 # ========== EVACUATION ==========
 
 @app.post("/api/emergency/evacuation", response_model=EvacuationResponse, status_code=201)
-async def initiate_evacuation(
-    request: EvacuationRequest,
-    db: Session = Depends(get_db)
-):
-    """
-    Initiate evacuation (partial or full)
-    
-    Body: {
-        "incident_id": "inc-123",
-        "affected_zones": ["Sector A", "Sector B"],
-        "evacuation_type": "partial",
-        "reason": "Fire in Sector A"
-    }
-    """
+async def initiate_evacuation(request: EvacuationRequest, db: Session = Depends(get_db)):
+    """Initiate evacuation (partial or full)"""
     evacuation = await evacuation_coordinator.initiate_evacuation(db, request)
-    
     return evacuation
 
 
@@ -496,104 +397,7 @@ def complete_evacuation(evacuation_id: str, db: Session = Depends(get_db)):
     return {
         "status": "completed",
         "evacuation_id": evacuation_id,
-        "completed_at": evac.completed_at.isoformat() if evac.completed_at else None
-    }
-
-
-@app.get("/api/emergency/evacuation/routes/{location}")
-async def get_evacuation_route(
-    location: str = Path(..., description="Current location node ID"),
-    db: Session = Depends(get_db)
-):
-    """
-    Get safest evacuation route from current location to nearest exit
-    
-    Example: /api/emergency/evacuation/routes/N42
-    """
-    route = await evacuation_coordinator.calculate_evacuation_route(location)
-    
-    if not route:
-        raise HTTPException(status_code=404, detail="No safe evacuation route found")
-    
-    return route
-
-
-@app.post("/api/emergency/evacuation/closure")
-def add_evacuation_closure(
-    from_node: str = Query(...),
-    to_node: str = Query(...),
-    reason: str = Query("fire", description="Closure reason"),
-    db: Session = Depends(get_db)
-):
-    """
-    Add corridor closure during evacuation
-    
-    Example: POST /api/emergency/evacuation/closure?from_node=N2&to_node=N3&reason=fire
-    """
-    return evacuation_coordinator.add_corridor_closure(db, from_node, to_node, reason)
-
-
-@app.delete("/api/emergency/evacuation/closure")
-def remove_evacuation_closure(
-    from_node: str = Query(...),
-    to_node: str = Query(...),
-    db: Session = Depends(get_db)
-):
-    """Remove corridor closure"""
-    return evacuation_coordinator.remove_corridor_closure(db, from_node, to_node)
-
-
-# ========== EMERGENCY CONTACTS ==========
-
-@app.get("/api/emergency/contacts")
-def get_emergency_contacts():
-    """Get emergency contact numbers"""
-    return {
-        "contacts": EMERGENCY_CONTACTS,
-        "note": "Call 112 for any life-threatening emergency"
-    }
-
-
-@app.post("/api/emergency/alert/external")
-async def alert_external_services(
-    incident_id: str = Query(...),
-    services: List[str] = Query(..., description="Services to alert: fire_brigade, police, ambulance"),
-    db: Session = Depends(get_db)
-):
-    """
-    Alert external emergency services (mock - would integrate with real systems)
-    
-    Example: POST /api/emergency/alert/external?incident_id=inc-123&services=fire_brigade&services=ambulance
-    """
-    incident = incident_manager.get_incident(db, incident_id)
-    
-    if not incident:
-        raise HTTPException(status_code=404, detail=f"Incident {incident_id} not found")
-    
-    alerts_sent = []
-    
-    for service in services:
-        if service in EMERGENCY_CONTACTS:
-            # In production: integrate with real emergency dispatch systems
-            print(f"🚨 ALERT: Calling {service} at {EMERGENCY_CONTACTS[service]}")
-            print(f"   Incident: {incident.incident_type.value}")
-            print(f"   Location: {incident.location_node}")
-            print(f"   Severity: {incident.severity.value}")
-            
-            alerts_sent.append({
-                "service": service,
-                "contact": EMERGENCY_CONTACTS[service],
-                "status": "alerted",
-                "timestamp": datetime.now().isoformat()
-            })
-    
-    # Log external alert
-    incident_manager.log_external_alert(db, incident_id, services)
-    
-    return {
-        "incident_id": incident_id,
-        "alerts_sent": alerts_sent,
-        "message": f"Alerted {len(alerts_sent)} external services"
+        "completed_at": evac.completed_at
     }
 
 
@@ -606,10 +410,7 @@ def get_statistics(db: Session = Depends(get_db)):
 
 
 @app.get("/api/emergency/stats/timeline")
-def get_incident_timeline(
-    hours: int = Query(24, description="Hours of history to retrieve"),
-    db: Session = Depends(get_db)
-):
+def get_incident_timeline(hours: int = Query(24), db: Session = Depends(get_db)):
     """Get incident timeline for last N hours"""
     return incident_manager.get_incident_timeline(db, hours)
 
@@ -618,9 +419,4 @@ def get_incident_timeline(
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(
-        app,
-        host="0.0.0.0",
-        port=8007,
-        log_level="info"
-    )
+    uvicorn.run(app, host="0.0.0.0", port=8007, log_level="info")
