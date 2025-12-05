@@ -1,6 +1,7 @@
 """
-INCIDENT MANAGER
-Core business logic for incident creation, escalation, and response coordination
+INCIDENT MANAGER - Emergency Service
+Core business logic for incident creation, escalation, and responder dispatch
+Calls Routing Service for route calculations
 """
 
 from sqlalchemy.orm import Session
@@ -10,13 +11,18 @@ import uuid
 import httpx
 
 from models import (
-    EmergencyIncident, SensorAlert, ResponderDispatch, IncidentLog, ExternalAlert,
+    EmergencyIncident, SensorAlert, ResponderDispatch, IncidentLog,
     IncidentType, IncidentStatus, IncidentSeverity, SensorType
 )
 from schemas import (
     IncidentCreate, IncidentUpdate, IncidentResponse,
     SensorAlertCreate, SensorAlertResponse,
     DispatchResponse
+)
+from nearest_responder import (
+    StaffTracker, IncidentRequest, StaffRole,
+    assign_responder_to_incident, find_multiple_responders,
+    create_mock_staff_tracker
 )
 
 
@@ -26,6 +32,10 @@ class IncidentManager:
     def __init__(self, routing_service_url: str, map_service_url: str):
         self.routing_service_url = routing_service_url
         self.map_service_url = map_service_url
+        
+        # Initialize staff tracker
+        self.staff_tracker = create_mock_staff_tracker(num_per_role=3)
+        print(f"✅ Staff tracker initialized with {len(self.staff_tracker.staff)} staff members")
     
     # ========== INCIDENT CREATION ==========
     
@@ -50,6 +60,13 @@ class IncidentManager:
         db.commit()
         db.refresh(incident)
         
+        # Se for fire critical, criar evacuação E atualizar campo
+        if incident_data.incident_type == "fire" and incident_data.severity == "critical":
+            # Este método deveria retornar o incidente atualizado
+            incident.evacuation_triggered = True
+            db.commit()
+            db.refresh(incident)
+        
         # Log creation
         self._log_event(db, incident.id, "created", f"Incident created: {incident.incident_type.value}")
         
@@ -59,6 +76,7 @@ class IncidentManager:
     
     def create_incident_from_sensor(self, db: Session, alert: SensorAlertCreate) -> IncidentResponse:
         """Create incident from sensor alert"""
+        
         # Map sensor type to incident type
         sensor_to_incident = {
             "smoke": "smoke",
@@ -139,7 +157,7 @@ class IncidentManager:
         return [self._incident_to_response(i) for i in incidents]
     
     def get_active_incidents(self, db: Session) -> List[EmergencyIncident]:
-        """Get all active incidents"""
+        """Get all active incidents (returns DB models, not responses)"""
         return db.query(EmergencyIncident).filter(
             EmergencyIncident.status.in_([
                 IncidentStatus.ACTIVE,
@@ -222,7 +240,6 @@ class IncidentManager:
         elif current_severity == IncidentSeverity.HIGH:
             new_severity = IncidentSeverity.CRITICAL
         else:
-            # Already critical
             return self._incident_to_response(incident)
         
         incident.severity = new_severity
@@ -243,7 +260,6 @@ class IncidentManager:
     
     def should_escalate(self, incident: EmergencyIncident) -> bool:
         """Check if incident should be escalated"""
-        # Don't escalate if already critical or resolved
         if incident.severity == IncidentSeverity.CRITICAL:
             return False
         
@@ -272,75 +288,78 @@ class IncidentManager:
         responder_role: str,
         num_responders: int
     ) -> List[DispatchResponse]:
-        """Dispatch multiple responders to incident"""
-        incident = db.query(EmergencyIncident).filter(
+        """Dispatch multiple responders to incident by calling Routing Service"""
+        
+        # Get incident from DB
+        incident_db = db.query(EmergencyIncident).filter(
             EmergencyIncident.id == incident_id
         ).first()
         
-        if not incident:
+        if not incident_db:
+            print(f"❌ Incident {incident_id} not found")
             return []
         
-        # Get available responders via routing service emergency endpoint
-        try:
-            async with httpx.AsyncClient(timeout=5.0) as client:
-                response = await client.get(
-                    f"{self.routing_service_url}/api/emergency/nearest",
-                    params={
-                        "location": incident.location_node,
-                        "role": responder_role
-                    }
-                )
-                
-                if response.status_code != 200:
-                    print(f"❌ Failed to get nearest responders")
-                    return []
-                
-                data = response.json()
-                
-                # Create dispatches for each responder
-                dispatches = []
-                
-                for i in range(min(num_responders, len(data.get("candidates", [])))):
-                    responder_data = data["candidates"][i] if i < len(data.get("candidates", [])) else data
-                    
-                    dispatch = ResponderDispatch(
-                        id=f"dispatch-{uuid.uuid4().hex[:8]}",
-                        incident_id=incident_id,
-                        responder_id=responder_data.get("responder_id", f"responder-{i}"),
-                        responder_role=responder_role,
-                        route_nodes=responder_data.get("route", []),
-                        route_distance=responder_data.get("distance", 0),
-                        eta_seconds=responder_data.get("eta_seconds", 0)
-                    )
-                    
-                    db.add(dispatch)
-                    dispatches.append(dispatch)
-                
-                # Update incident
-                incident.responders_dispatched += len(dispatches)
-                if incident.status == IncidentStatus.ACTIVE:
-                    incident.status = IncidentStatus.RESPONDING
-                    incident.responded_at = datetime.now()
-                
-                db.commit()
-                
-                # Log dispatch
-                self._log_event(
-                    db, incident_id, "dispatched",
-                    f"Dispatched {len(dispatches)} {responder_role} responders"
-                )
-                
-                return [self._dispatch_to_response(d) for d in dispatches]
+        # Convert to IncidentRequest for nearest_responder
+        incident_request = IncidentRequest(
+            id=incident_db.id,
+            location=incident_db.location_node,
+            type=incident_db.incident_type.value,
+            priority=incident_db.severity.value,
+            required_role=StaffRole(responder_role.lower()),
+            timestamp=incident_db.created_at.isoformat()
+        )
         
-        except Exception as e:
-            print(f"❌ Dispatch error: {e}")
+        # Call nearest_responder (which calls Routing Service)
+        assignments = await find_multiple_responders(
+            incident_request,
+            self.staff_tracker,
+            self.routing_service_url,
+            num_responders
+        )
+        
+        if not assignments:
+            print(f"❌ No available {responder_role} responders found")
             return []
+        
+        # Create dispatches in DB
+        dispatches = []
+        
+        for assignment in assignments:
+            dispatch = ResponderDispatch(
+                id=f"dispatch-{uuid.uuid4().hex[:8]}",
+                incident_id=incident_id,
+                responder_id=assignment.staff_id,
+                responder_role=responder_role,
+                route_nodes=assignment.path,
+                route_distance=assignment.distance,
+                eta_seconds=assignment.eta_seconds
+            )
+            
+            db.add(dispatch)
+            dispatches.append(dispatch)
+        
+        # Update incident
+        incident_db.responders_dispatched += len(dispatches)
+        if incident_db.status == IncidentStatus.ACTIVE:
+            incident_db.status = IncidentStatus.RESPONDING
+            incident_db.responded_at = datetime.now()
+        
+        db.commit()
+        
+        # Log dispatch
+        self._log_event(
+            db, incident_id, "dispatched",
+            f"Dispatched {len(dispatches)} {responder_role} responders"
+        )
+        
+        print(f"✅ Dispatched {len(dispatches)} {responder_role} to incident {incident_id}")
+        
+        return [self._dispatch_to_response(d) for d in dispatches]
     
     async def auto_dispatch_responders(self, db: Session, incident_id: str) -> Optional[List[DispatchResponse]]:
-        """Automatically dispatch responders based on incident type and severity"""
-        incident = db.query(EmergencyIncident).filter(
-            EmergencyIncident.id == incident_id
-        ).first()
+        """Automatically dispatch responders based on incident severity"""
+        
+        incident = db.query(EmergencyIncident).filter_by(id=incident_id).first()
         
         if not incident:
             return None
@@ -376,7 +395,6 @@ class IncidentManager:
         dispatch.status = "arrived"
         dispatch.arrived_at = datetime.now()
         
-        # Calculate actual response time
         if dispatch.dispatched_at:
             response_time = (dispatch.arrived_at - dispatch.dispatched_at).total_seconds()
             dispatch.actual_response_time_sec = int(response_time)
@@ -414,20 +432,6 @@ class IncidentManager:
         
         return [self._sensor_alert_to_response(a) for a in alerts]
     
-    # ========== EXTERNAL ALERTS ==========
-    
-    def log_external_alert(self, db: Session, incident_id: str, services: List[str]):
-        """Log external service alerts"""
-        incident = db.query(EmergencyIncident).filter(
-            EmergencyIncident.id == incident_id
-        ).first()
-        
-        if incident:
-            incident.external_services_alerted.extend(services)
-            db.commit()
-            
-            self._log_event(db, incident_id, "external_alert", f"Alerted: {', '.join(services)}")
-    
     # ========== STATISTICS ==========
     
     def get_statistics(self, db: Session) -> Dict[str, Any]:
@@ -450,40 +454,31 @@ class IncidentManager:
         resolution_times = []
         
         for incident in all_incidents:
-            # Active count
             if incident.status in [IncidentStatus.ACTIVE, IncidentStatus.INVESTIGATING, IncidentStatus.RESPONDING]:
                 stats["active_incidents"] += 1
             
-            # By type
             itype = incident.incident_type.value
             stats["by_type"][itype] = stats["by_type"].get(itype, 0) + 1
             
-            # By severity
             severity = incident.severity.value
             stats["by_severity"][severity] = stats["by_severity"].get(severity, 0) + 1
             
-            # By status
             status = incident.status.value
             stats["by_status"][status] = stats["by_status"].get(status, 0) + 1
             
-            # False alarms
             if incident.status == IncidentStatus.FALSE_ALARM:
                 stats["false_alarms"] += 1
             
-            # External alerts
             stats["external_alerts_sent"] += len(incident.external_services_alerted)
             
-            # Response time
             if incident.responded_at and incident.created_at:
                 rt = (incident.responded_at - incident.created_at).total_seconds() / 60
                 response_times.append(rt)
             
-            # Resolution time
             if incident.resolved_at and incident.created_at:
                 rt = (incident.resolved_at - incident.created_at).total_seconds() / 60
                 resolution_times.append(rt)
         
-        # Averages
         if response_times:
             stats["avg_response_time_min"] = round(sum(response_times) / len(response_times), 2)
         
