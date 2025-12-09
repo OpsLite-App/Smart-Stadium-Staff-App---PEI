@@ -5,21 +5,28 @@ site_author: Smart Stadium Team - University of Aveiro
 
 nav:
   - Home: index.md
-  - Project Overview: 
+  - Project Overview:
     - Vision: overview/vision.md
     - Team: overview/team.md
     - Architecture: overview/architecture.md
+    - Use Cases: overview/use-cases.md
   - Development:
-    - Milestones: development/milestones.md
+    - Milestones:
+      - Overview: development/milestones.md
+      - "Milestone 1: Inception": development/milestone1.md
+      - "Milestone 2: Elaboration": development/milestone2.md  
+      - "Milestone 3: Construction": development/milestone3.md
     - API Documentation: development/api.md
     - Technical Specifications: development/specs.md
   - Project Management:
     - Meeting Minutes: management/minutes.md
     - Calendar: management/calendar.md
     - Deliverables: management/deliverables.md
+    - Risk Assessment: management/risks.md
   - Research:
     - Related Work: research/related.md
     - Algorithms: research/algorithms.md
+    - Technologies: research/technologies.md
 
 theme:
   name: material
@@ -34,22 +41,24 @@ theme:
     - search.highlight
     - content.tabs.link
     - content.code.annotate
-  palette:
-    - scheme: default
-      primary: indigo
-      accent: indigo
-      toggle:
-        icon: material/weather-sunny
-        name: Switch to dark mode
-    - scheme: slate
-      primary: indigo
-      accent: indigo
-      toggle:
-        icon: material/weather-night
-        name: Switch to light mode
-  font:
-    text: Inter
-    code: JetBrains Mono
+
+palette:
+  - scheme: default
+    primary: indigo
+    accent: indigo
+    toggle:
+      icon: material/weather-sunny
+      name: Switch to dark mode
+  - scheme: slate
+    primary: indigo
+    accent: indigo
+    toggle:
+      icon: material/weather-night
+      name: Switch to light mode
+
+font:
+  text: Inter
+  code: JetBrains Mono
 
 repo_url: https://github.com/your-org/Smart-Stadium-Staff-App---PEI
 repo_name: Smart-Stadium-Staff-App---PEI
