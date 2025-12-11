@@ -1,0 +1,29 @@
+server:
+  port: 8083       
+
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5432/stadium
+    username: admin
+    password: password
+  jpa:
+    hibernate:
+      ddl-auto: update       
+    show-sql: true
+  jackson:
+    serialization:
+      indent_output: true    
+
+# Python Emergency Service Configuration
+python:
+  service:
+    url: http://localhost:8007
+
+logging:
+  level:
+    root: INFO
+    org.springframework.web: DEBUG
+
+jwt:
+  secret: kAunJxnJDr4BBsUSb38Typ2IEWU8gWR/Crp7RJ8NmLI=
+  expiration-ms: 3600000
