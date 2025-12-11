@@ -1,0 +1,18 @@
+server:
+  port: 8081
+
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5432/stadium
+    username: admin
+    password: password
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    show-sql: true
+
+jwt:
+  secret: kAunJxnJDr4BBsUSb38Typ2IEWU8gWR/Crp7RJ8NmLI=
+  expiration-ms: 3600000
+
+
