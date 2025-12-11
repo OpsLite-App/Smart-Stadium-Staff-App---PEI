@@ -7,6 +7,6 @@ import org.springframework.stereotype.Repository;
 import java.util.List;
 
 @Repository
-public interface IncidentRepository extends JpaRepository<Incident, String> {
+public interface IncidentRepository extends JpaRepository<Incident, Long> {
     List<Incident> findByStatus(String status);
 }
