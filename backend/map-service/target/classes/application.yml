@@ -22,3 +22,8 @@ logging:
 jwt:
   secret: kAunJxnJDr4BBsUSb38Typ2IEWU8gWR/Crp7RJ8NmLI=
   expiration-ms: 3600000
+# Python Map Service Configuration
+app:
+  map-service:
+    url: ${MAP_SERVICE_URL:http://localhost:8000}
+    timeout-seconds: 10
