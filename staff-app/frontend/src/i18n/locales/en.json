@@ -1,0 +1,65 @@
+{
+  "login": {
+    "title": "Login to System",
+    "email_label": "Username",
+    "pass_label": "Password",
+    "role_select": "SELECT YOUR ROLE",
+    "button": "LOGIN"
+  },
+  "tab": {
+    "map": "Map",
+    "alerts": "Alerts",
+    "emergency": "SOS",
+    "profile": "Profile"
+  },
+  "dashboard": {
+    "title": "Security Dashboard",
+    "subtitle": "Operating System • Live",
+    "stats": {
+      "gates": "Gates",
+      "people": "Crowd",
+      "sos": "Active SOS",
+      "zones": "Crit. Zones"
+    },
+    "sections": {
+      "priority": "PRIORITY ALERTS",
+      "gates": "LIVE GATE STATUS"
+    }
+  },
+  "profile": {
+    "duty_on": "On Duty",
+    "duty_off": "Off Duty",
+    "stats": {
+      "incidents": "Incidents",
+      "success": "Success Rate",
+      "avg_time": "Avg Response"
+    },
+    "actions": {
+      "title": "QUICK ACTIONS",
+      "end_shift": "End Shift",
+      "protocols": "Emergency Protocols",
+      "training": "Training Materials",
+      "supervisor": "Call Supervisor"
+    },
+    "preferences": {
+      "title": "PREFERENCES",
+      "push": "Push Notifications",
+      "sound": "Sound Alerts",
+      "vibration": "Vibration"
+    },
+    "analytics": {
+      "title_stats": "ALERT STATISTICS",
+      "title_history": "ANALYSIS & HISTORICAL DATA",
+      "critical_zones": "Most Critical Zones (Historical)",
+      "peak_times": "Peak Incident Times",
+      "team_perf": "Responder Performance",
+      "kpi_progress": "KPI Progress"
+    },
+    "kpi": {
+      "response_target": "Response Time Target",
+      "crowd_mgmt": "Crowd Management",
+      "security_checks": "Security Checks"
+    },
+    "logout": "LOGOUT"
+  }
+}
