@@ -388,7 +388,7 @@ def run_integrated_simulation(duration_seconds=60):
         elapsed = time.time() - start_time
         
         # Gate events (frequent)
-        if random.random() < 0.3:
+        if random.random() < 0.3 and event_gen.gates:
             gate = random.choice(event_gen.gates)
             person_id = random.randint(1, 10000)
             event_gen.generate_gate_event(gate['id'], person_id, "entry")

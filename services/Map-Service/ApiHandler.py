@@ -1,4 +1,5 @@
 from fastapi import FastAPI, HTTPException, Depends
+import os
 from sqlalchemy.orm import Session
 from typing import List
 from database import get_db, init_db
@@ -21,6 +22,25 @@ app = FastAPI(title="Smart Stadium Map Backend")
 def startup():
     init_db()
     print("Database initialized")
+
+    # Auto-load sample data if DB empty (helpful for development/emulator)
+    try:
+        from load_data_db import load_sample_data
+        from database import SessionLocal
+        db = SessionLocal()
+        node_count = db.query(Node).count()
+        if node_count == 0 and os.environ.get('AUTO_LOAD_SAMPLE', 'true').lower() == 'true':
+            print("No map data found, loading sample dataset...")
+            load_sample_data()
+            print("Sample map data loaded.")
+    except Exception as e:
+        # Do not fail startup on sample-load errors; log and continue
+        print(f"⚠️  Auto-load sample data failed: {e}")
+    finally:
+        try:
+            db.close()
+        except:
+            pass
 
 # ================== HELPERS ==================
 
