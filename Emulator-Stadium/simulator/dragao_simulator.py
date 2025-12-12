@@ -24,15 +24,20 @@ MAP_SERVICE_URL = "http://localhost:8000"
 ROUTING_SERVICE_URL = "http://localhost:8002"
 MQTT_BROKER = "localhost"
 MQTT_PORT = 1883
-MQTT_TOPIC_EVENTS = "stadium/events"
+
+# Hierarchical MQTT Topics
+MQTT_TOPICS = {
+    "gate_updates": "stadium/crowd/gate-updates",
+    "bin_alerts": "stadium/maintenance/bin-alerts",
+    "sos_events": "stadium/emergency/sos-events"
+}
 
 # ========== MQTT PUBLISHER ==========
 
 class MQTTPublisher:
-    def __init__(self, broker, port, topic):
+    def __init__(self, broker, port):
         self.broker = broker
         self.port = port
-        self.topic = topic
         self.client = None
         self.connected = False
         
@@ -51,10 +56,12 @@ class MQTTPublisher:
             self.connected = True
             print("✅ Connected to MQTT broker")
     
-    def publish_event(self, event):
+    def publish_event(self, event_type, event):
+        """Publish event to appropriate hierarchical topic"""
         if self.connected and self.client:
-            self.client.publish(self.topic, json.dumps(event))
-            print(f"📡 Published: {event['event_type']}")
+            topic = MQTT_TOPICS.get(event_type, "stadium/events")
+            self.client.publish(topic, json.dumps(event))
+            print(f"📡 Published to {topic}: {event.get('event_type', event_type)}")
 
 # ========== EVENT GENERATOR ==========
 
@@ -170,7 +177,7 @@ class IntegratedEventGenerator:
         }
         
         self.events.append(event)
-        self.mqtt.publish_event(event)
+        self.mqtt.publish_event("gate_updates", event)
         self.event_count += 1
         return event
     
@@ -207,7 +214,7 @@ class IntegratedEventGenerator:
         }
         
         self.events.append(event)
-        self.mqtt.publish_event(event)
+        self.mqtt.publish_event("bin_alerts", event)
         self.event_count += 1
         return event
     
@@ -233,7 +240,7 @@ class IntegratedEventGenerator:
         }
         
         self.events.append(event)
-        self.mqtt.publish_event(event)
+        self.mqtt.publish_event("sos_events", event)
         self.event_count += 1
         
         # Assign nearest responder
@@ -365,7 +372,7 @@ def run_integrated_simulation(duration_seconds=60):
     print("STADIUM EVENT SIMULATOR - INTEGRATED VERSION")
     print("="*60 + "\n")
     
-    mqtt_pub = MQTTPublisher(MQTT_BROKER, MQTT_PORT, MQTT_TOPIC_EVENTS)
+    mqtt_pub = MQTTPublisher(MQTT_BROKER, MQTT_PORT)
     event_gen = IntegratedEventGenerator(mqtt_pub)
     
     if not event_gen.nodes:

@@ -37,6 +37,11 @@ app.add_middleware(
 MQTT_BROKER = "localhost"
 MQTT_PORT = 1883
 
+# Subscribe to crowd-specific topics
+MQTT_TOPICS = [
+    "stadium/crowd/gate-updates"
+]
+
 # Thresholds for heat levels
 THRESHOLD_GREEN = 50    # 0-50% occupancy
 THRESHOLD_YELLOW = 80   # 50-80% occupancy
@@ -139,7 +144,8 @@ def start_mqtt_listener():
         
         try:
             client.connect(MQTT_BROKER, MQTT_PORT, 60)
-            client.subscribe("stadium/events")
+            for topic in MQTT_TOPICS:
+                client.subscribe(topic)
             client.loop_forever()
         except:
             pass

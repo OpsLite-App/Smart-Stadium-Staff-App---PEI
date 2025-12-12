@@ -15,15 +15,20 @@ except ImportError:
 
 MQTT_BROKER = "localhost"
 MQTT_PORT = 1883
-MQTT_TOPIC = "stadium/events"
+# Subscribe to emergency-specific topics
+MQTT_TOPICS = [
+    "stadium/emergency/sos-events",
+    "stadium/emergency/staff-assignments"
+]
 
 
 def on_connect(client, userdata, flags, rc, properties=None):
     """Connected to broker"""
     if rc == 0:
         print(f"✅ Connected to MQTT broker at {MQTT_BROKER}:{MQTT_PORT}")
-        client.subscribe(MQTT_TOPIC)
-        print(f"✅ Subscribed to: {MQTT_TOPIC}")
+        for topic in MQTT_TOPICS:
+            client.subscribe(topic)
+            print(f"✅ Subscribed to: {topic}")
     else:
         print(f"❌ Connection failed (code: {rc})")
 

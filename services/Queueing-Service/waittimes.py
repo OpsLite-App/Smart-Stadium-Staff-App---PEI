@@ -38,6 +38,11 @@ QUEUEING_SERVICE_URL = "http://localhost:8003"
 MQTT_BROKER = "localhost"
 MQTT_PORT = 1883
 
+# Subscribe to crowd and gate topics for wait time estimation
+MQTT_TOPICS = [
+    "stadium/crowd/gate-updates"
+]
+
 # ========== STATE ==========
 
 wait_times_cache: Dict[str, Dict] = {}
@@ -133,7 +138,8 @@ def start_mqtt_listener():
         
         try:
             client.connect(MQTT_BROKER, MQTT_PORT, 60)
-            client.subscribe("stadium/events")
+            for topic in MQTT_TOPICS:
+                client.subscribe(topic)
             client.loop_forever()
         except:
             pass
