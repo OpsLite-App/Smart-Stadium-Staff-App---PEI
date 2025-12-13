@@ -1,0 +1,9 @@
+com\stadium\gateway\auth\AuthServiceClient.class
+com\stadium\gateway\WsGatewayApplication.class
+com\stadium\gateway\auth\StompPrincipal.class
+com\stadium\gateway\HealthController.class
+com\stadium\gateway\auth\WebSocketAuthChannelInterceptor.class
+com\stadium\gateway\mqtt\GatewayController.class
+com\stadium\gateway\config\WebSocketConfig.class
+com\stadium\gateway\mqtt\MqttBridgeService.class
+com\stadium\gateway\config\WebSecurityConfig.class

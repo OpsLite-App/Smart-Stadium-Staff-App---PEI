@@ -21,7 +21,7 @@ except ImportError:
 
 MQTT_BROKER = "localhost"
 MQTT_PORT = 1883
-MQTT_TOPIC = "stadium/events"
+MQTT_TOPIC = "stadium/#"
 
 MAP_SERVICE_URL = "http://localhost:8000"
 ROUTING_SERVICE_URL = "http://localhost:8002"

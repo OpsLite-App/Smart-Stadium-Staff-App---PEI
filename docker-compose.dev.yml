@@ -1,0 +1,158 @@
+version: '3.8'
+
+services:
+  mosquitto:
+    image: eclipse-mosquitto:2.0.18
+    container_name: mosquitto
+    ports:
+      - "1883:1883"
+    volumes:
+      - mosquitto_data:/mosquitto/data
+      - mosquitto_log:/mosquitto/log
+
+  postgres_auth:
+    image: postgres:15-alpine
+    container_name: postgres_auth
+    environment:
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: stadium
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_auth_data:/var/lib/postgresql/data
+
+  postgres_map:
+    image: postgres:15-alpine
+    container_name: postgres_map
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: estadio_do_dragao
+    ports:
+      - "5435:5432"
+    volumes:
+      - postgres_map_data:/var/lib/postgresql/data
+
+  auth-service:
+    build:
+      context: ./backend/auth-service
+      dockerfile: Dockerfile
+    container_name: auth-service
+    depends_on:
+      - postgres_auth
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres_auth:5432/stadium
+      SPRING_DATASOURCE_USERNAME: admin
+      SPRING_DATASOURCE_PASSWORD: password
+    ports:
+      - "8081:8081"
+
+  ws-gateway:
+    build:
+      context: ./ws-gateway
+      dockerfile: Dockerfile
+    container_name: ws-gateway
+    depends_on:
+      - mosquitto
+      - auth-service
+    environment:
+      AUTH_SERVICE_URL: http://auth-service:8081
+      mqtt.broker: tcp://mosquitto:1883
+    ports:
+      - "8089:8089"
+
+  map-service:
+    build:
+      context: ./services/Map-Service
+      dockerfile: Dockerfile
+    container_name: map-service
+    depends_on:
+      - postgres_map
+    environment:
+      DATABASE_URI: postgresql://postgres:postgres@postgres_map:5432/estadio_do_dragao
+    ports:
+      - "8000:8000"
+
+  routing-service:
+    build:
+      context: ./services/Routing-Service
+      dockerfile: Dockerfile
+    container_name: routing-service
+    depends_on:
+      - map-service
+    environment:
+      MAP_SERVICE_URL: http://map-service:8000
+    ports:
+      - "8002:8002"
+
+  queueing-service:
+    build:
+      context: ./services/Queueing-Service
+      dockerfile: Dockerfile
+    container_name: queueing-service
+    ports:
+      - "8003:8003"
+
+  congestion-service:
+    build:
+      context: ./services/Congestion-Service
+      dockerfile: Dockerfile
+    container_name: congestion-service
+    ports:
+      - "8005:8005"
+
+  maintenance-service:
+    build:
+      context: ./services/Maintenance-Service
+      dockerfile: Dockerfile
+    container_name: maintenance-service
+    depends_on:
+      - routing-service
+      - map-service
+    environment:
+      ROUTING_SERVICE_URL: http://routing-service:8002
+      MAP_SERVICE_URL: http://map-service:8000
+    ports:
+      - "8007:8007"
+
+  emergency-service:
+    build:
+      context: ./services/Emergency-Service
+      dockerfile: Dockerfile
+    container_name: emergency-service
+    depends_on:
+      - routing-service
+      - map-service
+    environment:
+      ROUTING_SERVICE_URL: http://routing-service:8002
+      MAP_SERVICE_URL: http://map-service:8000
+    ports:
+      - "8006:8006"
+
+  event-processor:
+    build:
+      context: .
+      dockerfile: services/event-processor/Dockerfile
+    container_name: event-processor
+    depends_on:
+      - mosquitto
+      - routing-service
+      - map-service
+      - queueing-service
+
+  emulator:
+    build:
+      context: ./Emulator-Stadium
+      dockerfile: Dockerfile
+    container_name: dragao-emulator
+    depends_on:
+      - mosquitto
+      - map-service
+      - routing-service
+
+volumes:
+  mosquitto_data:
+  mosquitto_log:
+  postgres_auth_data:
+  postgres_map_data:

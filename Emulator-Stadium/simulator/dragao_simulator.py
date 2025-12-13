@@ -274,7 +274,7 @@ class IntegratedEventGenerator:
                 }
                 
                 self.events.append(event)
-                self.mqtt.publish_event(event)
+                self.mqtt.publish_event("responder_assign", event)
                 self.event_count += 1
                 return event
         
@@ -308,7 +308,7 @@ class IntegratedEventGenerator:
         }
         
         self.events.append(event)
-        self.mqtt.publish_event(event)
+        self.mqtt.publish_event("evac_update", event)
         self.event_count += 1
         
         # Update Routing Service
@@ -348,7 +348,7 @@ class IntegratedEventGenerator:
         }
         
         self.events.append(event)
-        self.mqtt.publish_event(event)
+        self.mqtt.publish_event("crowd_density", event)
         self.event_count += 1
         
         # Update crowd penalty in routing
