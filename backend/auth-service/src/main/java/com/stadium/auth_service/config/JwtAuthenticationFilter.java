@@ -28,7 +28,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
         String path = request.getServletPath();
-        return "/auth/login".equals(path) || "/actuator/health".equals(path);
+        return "/auth/login".equals(path) || "/auth/validate".equals(path) || "/actuator/health".equals(path);
     }
 
     @Override
@@ -44,14 +44,13 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                 String role = (String) claims.get("role");
 
                 UsernamePasswordAuthenticationToken auth = new UsernamePasswordAuthenticationToken(
-                        userId, null, Collections.emptyList()); // add authorities if needed
+                        userId, null, Collections.emptyList());
                 SecurityContextHolder.getContext().setAuthentication(auth);
 
             } catch (JwtException ex) {
-                response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
-                response.setContentType("application/json");
-                response.getWriter().write("{\"valid\":false,\"error\":\"invalid_or_expired_token\"}");
-                return;
+                // Don't send response here, let the controller handle it
+                // This allows the request to continue to the controller
+                // which will return appropriate error response
             }
         }
         filterChain.doFilter(request, response);
