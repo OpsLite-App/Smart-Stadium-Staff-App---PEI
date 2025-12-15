@@ -49,7 +49,7 @@ hazard_handler: Optional[HazardAPIHandler] = None
 @app.on_event("startup")
 async def startup():
     """Initialize routing service"""
-    global GRAPH, HAZARD_MAP, route_handler, hazard_handler
+    global HAZARD_MAP, route_handler, hazard_handler
     
     print("\n" + "="*60)
     print("🚀 ROUTING SERVICE v2.0 - STARTING")
@@ -82,7 +82,7 @@ async def startup():
 
 async def load_graph_from_map_service():
     """Fetch graph data from Map Service"""
-    global GRAPH, HAZARD_MAP
+    global GRAPH
     
     try:
         print(f"📥 Fetching graph from {MAP_SERVICE_URL}/api/map ...")

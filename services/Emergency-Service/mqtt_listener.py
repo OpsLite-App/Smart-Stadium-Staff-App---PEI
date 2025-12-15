@@ -162,13 +162,16 @@ def start_mqtt_listener(incident_manager, evacuation_coordinator):
             }
         )
         
+        # Definir callback ANTES do try
+        def on_disconnect(client, userdata, rc):
+            print(f"⚠️  MQTT listener disconnected (rc={rc})")
+        
         client.on_connect = on_connect
         client.on_message = on_message
+        client.on_disconnect = on_disconnect
         
-        try:            def on_disconnect(client, userdata, rc):
-                print(f"⚠️  MQTT listener disconnected (rc={rc})")
-
-            client.on_disconnect = on_disconnect            client.connect(MQTT_BROKER, MQTT_PORT, 60)
+        try:
+            client.connect(MQTT_BROKER, MQTT_PORT, 60)
             client.loop_forever()
         except Exception as e:
             print(f"❌ MQTT error: {e}")
