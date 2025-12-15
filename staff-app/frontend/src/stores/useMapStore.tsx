@@ -1,66 +1,137 @@
 import { create } from 'zustand';
-import React from 'react';
-export interface StaffMember {
-  id: string;
-  name: string;
-  role: 'Security' | 'Cleaning' | 'Supervisor';
-  lat: number;
-  lng: number;
-}
-
-// Tipo para coordenadas simples
-interface LatLng {
-  latitude: number;
-  longitude: number;
-}
+import { api, Node, POI, HeatmapPoint } from '../services/api';
 
 interface MapState {
-  staff: StaffMember[];
-  activeRoute: LatLng[] | null; // <--- NOVA: A rota atual para desenhar
+  nodes: Record<string, Node>;
+  bins: POI[];
+  heatmapData: HeatmapPoint[];
+  activeRoute: { latitude: number; longitude: number }[] | null;
+  loading: boolean;
   
-  updatePositions: () => void;
-  requestRoute: (toLocation: LatLng) => void; // <--- NOVA: Ação de pedir rota
+  // Array vazio para compatibilidade com MapScreen antigo
+  staff: any[]; 
+
+  fetchMapData: () => Promise<void>;
+  fetchLiveStatus: () => Promise<void>;
+  requestRoute: (from: string, to: string) => Promise<void>;
   clearRoute: () => void;
+  getNodeCoordinates: (nodeId: string) => { latitude: number; longitude: number } | null;
+  
+  // Função vazia para compatibilidade
+  updatePositions: () => void;
 }
 
-// stores/useMapStore.ts
-const INITIAL_STAFF: StaffMember[] = [
-  { id: '1', name: 'João Silva', role: 'Security', lat: 41.1625, lng: -8.5830 }, 
-  { id: '2', name: 'Maria Santos', role: 'Cleaning', lat: 41.1610, lng: -8.5845 }, 
-  { id: '3', name: 'Carlos Chefe', role: 'Supervisor', lat: 41.1618, lng: -8.5835 }, 
-  { id: '4', name: 'Pedro Security', role: 'Security', lat: 41.1630, lng: -8.5825 }, 
-  { id: '5', name: 'Ana Cleaning', role: 'Cleaning', lat: 41.1608, lng: -8.5840 }, 
-  { id: '6', name: 'Miguel Supervisor', role: 'Supervisor', lat: 41.1620, lng: -8.5832 }, 
-];
+export const useMapStore = create<MapState>((set, get) => ({
+  nodes: {},
+  bins: [],
+  heatmapData: [],
+  activeRoute: null,
+  loading: false,
+  staff: [], 
 
-export const useMapStore = create<MapState>((set) => ({
-  staff: INITIAL_STAFF,
-  activeRoute: null, // Começa sem rota
+  fetchMapData: async () => {
+    set({ loading: true });
+    try {
+      console.log("A carregar Mapa GPS Real...");
+      
+      const [mapData, poisData] = await Promise.all([
+        api.getMapGraph(),
+        api.getPOIs()
+      ]);
 
-  updatePositions: () => {
-    set((state) => ({
-      staff: state.staff.map((member) => ({
-        ...member,
-        lat: member.lat + (Math.random() - 0.5) * 0.0001,
-        lng: member.lng + (Math.random() - 0.5) * 0.0001,
-      })),
-    }));
+      const nodesMap: Record<string, Node> = {};
+      
+      if (mapData.nodes) {
+        mapData.nodes.forEach(n => {
+          nodesMap[n.id] = n; 
+        });
+      }
+
+      const realBins = poisData
+        .filter(p => p.category && (p.category.toLowerCase().includes('bin') || p.category.toLowerCase().includes('trash')))
+        .map(p => ({
+            ...p,
+            x: p.x, 
+            y: p.y
+        }));
+
+      console.log(`Mapa Carregado: ${Object.keys(nodesMap).length} nós e ${realBins.length}`);
+
+      set({ 
+        nodes: nodesMap, 
+        bins: realBins,
+        loading: false 
+      });
+
+    } catch (e) {
+      console.error("Erro ao carregar dados:", e);
+      set({ loading: false });
+    }
   },
 
-  // Simula um cálculo de rota (Mock)
-  requestRoute: (toLocation) => {
-    // Na vida real, chamarias uma API aqui.
-    // Para a demo, criamos um caminho fixo do "Staff 1" até ao "Incidente".
-    const mockRoute = [
-      { latitude: 41.1618, longitude: -8.5835 }, // Ponto A (Segurança)
-      { latitude: 41.1619, longitude: -8.5836 },
-      { latitude: 41.1621, longitude: -8.5837 },
-      { latitude: toLocation.latitude, longitude: toLocation.longitude }, // Ponto B (Incidente)
-    ];
-    
-    console.log("Rota calculada!");
-    set({ activeRoute: mockRoute });
+  fetchLiveStatus: async () => {
+    try {
+      const densities = await api.getHeatmap();
+      const nodesMap = get().nodes;
+      
+      if (Object.keys(nodesMap).length === 0) return;
+
+      const points: HeatmapPoint[] = densities
+        .map(d => {
+          const node = nodesMap[d.area_id];
+          if (!node) return null;
+          
+          let weight = 0.2;
+          if (d.heat_level === 'red') weight = 1.0;
+          else if (d.heat_level === 'yellow') weight = 0.6;
+
+          return {
+            latitude: node.x,  // X é Latitude
+            longitude: node.y, // Y é Longitude
+            weight: weight
+          };
+        })
+        .filter((p): p is HeatmapPoint => p !== null);
+
+      if (points.length > 0) set({ heatmapData: points });
+
+    } catch (e) {
+    }
+  },
+
+  requestRoute: async (from, to) => {
+    try {
+      const response = await api.calculateRoute({
+        from_node: from,
+        to_node: to,
+        avoid_crowds: true
+      });
+      
+      const nodesMap = get().nodes;
+      
+      const coords = response.path
+        .map(id => {
+          const node = nodesMap[id];
+          if (!node) return null;
+          return { latitude: node.x, longitude: node.y };
+        })
+        .filter((c): c is {latitude: number, longitude: number} => c !== null);
+
+      if (coords.length > 0) set({ activeRoute: coords });
+      
+    } catch (e) {
+      console.error(e);
+      alert("Erro ao calcular rota");
+    }
   },
 
   clearRoute: () => set({ activeRoute: null }),
+  
+  getNodeCoordinates: (id) => {
+    const n = get().nodes[id];
+    if (!n) return null;
+    return { latitude: n.x, longitude: n.y };
+  },
+
+  updatePositions: () => { /* No-op */ }
 }));
