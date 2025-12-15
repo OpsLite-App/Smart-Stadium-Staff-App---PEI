@@ -23,6 +23,8 @@ class IncidentType(str, Enum):
     CHEMICAL = "chemical"
     BOMB_THREAT = "bomb_threat"
     OTHER = "other"
+    SECURITY = "security"
+    MEDICAL = "medical"
 
 
 class IncidentStatus(str, Enum):

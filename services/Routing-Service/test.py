@@ -178,7 +178,7 @@ def test_nearest_responder():
     # Emergency at N10
     print("Emergency at N10, need SECURITY...")
     response = requests.get(
-        f"{BASE_URL}/api/emergency/nearest",
+        f"{BASE_URL}/api/route/nearest",
         params={"location": "N10", "role": "security"}
     )
     

@@ -14,6 +14,7 @@ declare -A services=(
   ["emergency-service"]="http://emergency-service:8006/health"
   ["maintenance-service"]="http://maintenance-service:8007/health"
   ["ws-gateway"]="http://ws-gateway:8089/health"
+  ["event-processor"]="http://event-processor:8004/health"
 )
 
 echo "Waiting for all services to be ready..."
@@ -38,13 +39,6 @@ for service in "${!services[@]}"; do
       sleep 2
     done
   fi
-done
-
-# Special handling for event-processor
-echo "Waiting for event-processor to start..."
-until nc -z event-processor 8004; do
-  echo "event-processor not ready yet. Sleeping..."
-  sleep 2
 done
 
 echo "All services are up!"

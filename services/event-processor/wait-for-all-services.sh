@@ -33,6 +33,5 @@ for service in "${!services[@]}"; do
 done
 
 echo "All services are up! Starting event-processor..."
-ls -l /app
 exec python event_processor.py
 

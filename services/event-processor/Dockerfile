@@ -14,5 +14,6 @@ COPY event_processor.py ./event_processor.py
 COPY event-processor/wait-for-all-services.sh /wait-for-all-services.sh
 RUN chmod +x /wait-for-all-services.sh
 
+EXPOSE 8004
 # Use the new wait-for-all-services.sh as entrypoint
 CMD ["/wait-for-all-services.sh"]
