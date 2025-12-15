@@ -11,7 +11,6 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { theme } from '../theme';
 import { useNavigation } from '@react-navigation/native';
 
-
 // Stores
 import { useMapStore } from '../stores/useMapStore';
 import { useAuthStore } from '../stores/useAuthStore';
@@ -28,28 +27,30 @@ export default function MapScreen() {
   const { user } = useAuthStore();
   
   const { 
-    heatmapData, // Pontos de calor reais
-    bins,        // Lixeiras reais da BD
+    heatmapData,        
+    bins,               
     activeRoute, 
     fetchMapData, 
-    fetchLiveStatus,
+    connectWebSocket,    
+    disconnectWebSocket, 
     clearRoute 
   } = useMapStore();
 
   useEffect(() => {
     fetchMapData();
-  }, []);
 
-  useEffect(() => {
-    fetchLiveStatus(); 
-    
-    const interval = setInterval(() => {
-      fetchLiveStatus(); 
-    }, 3000);
-    
-    return () => clearInterval(interval);
-  }, []);
+    if (user?.role) {
+      console.log(`🔌 A conectar WebSocket como ${user.role}...`);
+      connectWebSocket(user.role);
+    }
 
+    return () => {
+      console.log("🔌 A desligar WebSocket...");
+      disconnectWebSocket();
+    };
+  }, [user]); // Re-executa se o utilizador mudar (ex: logout/login)
+
+  // EFEITO 2: Focar na Rota quando ela é calculada
   useEffect(() => {
     if (activeRoute && activeRoute.length > 0 && mapRef.current) {
       mapRef.current.fitToCoordinates(activeRoute, {
@@ -59,7 +60,7 @@ export default function MapScreen() {
     }
   }, [activeRoute]);
 
-  
+  // Permissões de Visualização
   const canViewHeatmap = user?.role === 'Security' || user?.role === 'Supervisor';
   const canViewBins = user?.role === 'Cleaning' || user?.role === 'Supervisor';
 
@@ -78,11 +79,11 @@ export default function MapScreen() {
   };
 
   const setMapLimits = () => {
+    // Limites aproximados do Estádio do Dragão 
     const northEast = { latitude: 41.1647, longitude: -8.5809 };
     const southWest = { latitude: 41.1587, longitude: -8.5869 };
     mapRef.current?.setMapBoundaries(northEast, southWest);
   };
-
 
   const renderControlButtons = () => {
     const buttons = [];
@@ -143,6 +144,7 @@ export default function MapScreen() {
         minZoomLevel={16}
         maxZoomLevel={20}
       >
+        {/* Camada Heatmap (Dados em Tempo Real do WebSocket) */}
         {canViewHeatmap && showHeatmap && heatmapData.length > 0 && (
           <Heatmap
             points={heatmapData}
@@ -156,10 +158,11 @@ export default function MapScreen() {
           />
         )}
 
+        {/* Camada Lixeiras (Estática ou atualizada via WS maintenance) */}
         {canViewBins && showBins && bins.map((bin) => (
           <Marker
             key={bin.id}
-            coordinate={{ latitude: bin.x, longitude: bin.y }} // Assumindo X=Lat, Y=Lng
+            coordinate={{ latitude: bin.x, longitude: bin.y }}
             title={bin.name || `Lixeira ${bin.id}`}
             description="Ponto de Recolha"
           >
@@ -169,6 +172,7 @@ export default function MapScreen() {
           </Marker>
         ))}
 
+        {/* Rota Ativa (Calculada pelo A*) */}
         {activeRoute && (
           <>
             <Polyline
@@ -185,7 +189,7 @@ export default function MapScreen() {
         )}
       </MapView>
 
-
+      {/* Overlay de Informação no Topo */}
       <View style={styles.topOverlay}>
         <Text style={styles.overlayText}>{getOverlayText()}</Text>
         {user?.role === 'Supervisor' && (
@@ -193,10 +197,12 @@ export default function MapScreen() {
         )}
       </View>
 
+      {/* Botões de Controlo de Camadas */}
       <View style={styles.controlsContainer}>
         {renderControlButtons()}
       </View>
 
+      {/* Ação Específica: Limpeza  */}
       {user?.role === 'Cleaning' && (
         <TouchableOpacity 
           style={styles.cleaningActionBtn}
@@ -220,6 +226,7 @@ export default function MapScreen() {
         </TouchableOpacity>
       )}
 
+      {/* Ação Específica: Segurança (Botão Rápido de Emergência) */}
       {user?.role === 'Security' && (
         <TouchableOpacity 
           style={styles.emergencyBtn}
@@ -238,6 +245,7 @@ export default function MapScreen() {
         </TouchableOpacity>
       )}
 
+      {/* Botão Flutuante para Limpar Rota */}
       {activeRoute && (
         <TouchableOpacity style={styles.clearRouteBtn} onPress={clearRoute}>
           <MaterialCommunityIcons name="close" size={20} color="white" />
