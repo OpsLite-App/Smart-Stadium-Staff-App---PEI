@@ -141,6 +141,7 @@ class EventProcessor:
                     },
                     timeout=2
                 )
+                print("Gate", flush=True)
                 
                 if response.status_code == 200:
                     self.processed["gate_passage"] += 1
@@ -187,6 +188,7 @@ class EventProcessor:
                 json=payload,
                 timeout=3
             )
+            print("Bin", flush=True)
 
             if response.status_code in [200, 201]:
                 task_info = response.json()
@@ -208,44 +210,61 @@ class EventProcessor:
         # Determine role
         role = "medical" if any(x in details for x in ["medical", "faint", "injury"]) else "security"
 
-        # 1️⃣ Create the incident first
         incident_payload = {
-            "incident_id": sos_id,
-            "incident_type": "medical" if role == "medical" else "security",
+            "incident_type": role,
             "location_node": location_node,
             "priority": priority,
             "description": details
         }
 
+        # 1️⃣ Create incident
         try:
-            r = requests.post(f"{EMERGENCY_SERVICE_URL}/api/emergency/incidents", json=incident_payload, timeout=3)
+            r = requests.post(f"{EMERGENCY_SERVICE_URL}/api/emergency/incidents",
+                            json=incident_payload, timeout=3)
             if r.status_code not in [200, 201]:
-                print(f"⚠️ Failed to create incident {sos_id}: {r.text}")
+                print(f"⚠️ Failed to create incident {sos_id}: {r.text}", flush=True)
+                return
+            incident_data = r.json()
+            incident_id = incident_data.get("id") or incident_data.get("incident_id")
+            if not incident_id:
+                print(f"⚠️ Could not retrieve incident ID for {sos_id}", flush=True)
                 return
         except Exception as e:
             print(f"⚠️ Error creating incident {sos_id}: {e}", flush=True)
             return
 
-        # 2️⃣ Now assign responders
+        # 2️⃣ Dispatch responders
         try:
             response = requests.post(
                 f"{EMERGENCY_SERVICE_URL}/api/emergency/dispatch",
                 json={
-                    "incident_id": sos_id,
+                    "incident_id": incident_id,
                     "responder_role": role,
                     "num_responders": 1
                 },
                 timeout=3
             )
-            if response.status_code == 200:
-                data = response.json()
-                self.processed["sos_event"] += 1
-                print(f"🚨 SOS: {sos_id} → {data['staff_id']} ({role}) ETA: {data['eta_seconds']}s", flush=True)
+            print("Emergency", flush=True)
+
+            if response.status_code in [200, 201]:
+                dispatch_list = response.json()
+                if dispatch_list:
+                    assigned = dispatch_list[0]
+
+                    # Robust key access with fallbacks
+                    staff_id = assigned.get("staff_id") or assigned.get("id") or assigned.get("staffId") or "UNKNOWN"
+                    eta = assigned.get("eta_seconds") or assigned.get("etaSeconds") or 0
+
+                    self.processed["sos_event"] += 1
+                    print(f"🚨 SOS: {sos_id} → {staff_id} ({role}) ETA: {eta}s", flush=True)
+                else:
+                    print(f"⚠️ No {role} staff assigned for {sos_id}", flush=True)
             else:
-                print(f"⚠️ No {role} staff available for {sos_id}", flush=True)
+                print(f"⚠️ No {role} staff available for {sos_id} (status {response.status_code})", flush=True)
+
         except Exception as e:
-            print(f"⚠️ Failed to respond to {sos_id}: {e}",flush=True)
-    
+            print(f"⚠️ Failed to respond to {sos_id}: {e}", flush=True)
+        
     def handle_crowd_density(self, event: Dict):
         """
         Crowd density → Update hazard map in Routing Service
@@ -274,6 +293,7 @@ class EventProcessor:
                     },
                     timeout=2
                 )
+                print("Crowd", flush=True)
                 
                 if response.status_code == 200:
                     self.processed["crowd_density"] += 1
@@ -286,9 +306,10 @@ class EventProcessor:
     
     def handle_evacuation(self, event: Dict):
         """
-        Evacuation → Close corridor in Routing Service
+        Evacuation → Close corridor in Routing & Map Services
         
-        Event: {
+        Event example:
+        {
             "event_type": "evac_update",
             "closure": {
                 "edge": "N23-N24",
@@ -303,42 +324,46 @@ class EventProcessor:
         from_node = closure.get("from_node")
         to_node = closure.get("to_node")
         reason = closure.get("reason", "emergency")
-        
+
         if not from_node or not to_node:
-            return
-        
+            return  # Cannot proceed without nodes
+
         try:
-            # Add closure to Routing Service
-            response = requests.post(
+            # 1️⃣ Close in Routing Service
+            routing_resp = requests.post(
                 f"{ROUTING_SERVICE_URL}/api/hazards/closure",
-                params={
-                    "from_node": from_node,
-                    "to_node": to_node
-                },
+                params={"from_node": from_node, "to_node": to_node},
                 timeout=2
             )
-            
-            if response.status_code == 200:
+            if routing_resp.status_code == 200:
                 self.processed["evac_update"] += 1
                 print(f"🚧 EVACUATION: Closed {from_node} ↔ {to_node} ({reason})", flush=True)
-            
-            # Also add to Map Service database
-            try:
-                requests.post(
-                    f"{MAP_SERVICE_URL}/api/closures",
-                    json={
-                        "id": f"CL-{from_node}-{to_node}",
-                        "reason": reason,
-                        "edge_id": None,  # Would need to lookup edge ID
-                        "node_id": None
-                    },
-                    timeout=2
-                )
-            except:
-                pass  # Map Service might not support POST
-        
+
+            # 2️⃣ Find the edge ID for Map Service
+            # This assumes your edges have IDs like "N23-N24" or you can query DB/API
+            edge_id = f"{from_node}-{to_node}"  # Implement a lookup in DB or routing service
+            if not edge_id:
+                print(f"⚠️ Could not find edge_id for {from_node}-{to_node}")
+                return
+
+            # 3️⃣ Add closure to Map Service
+            map_payload = {
+                "id": f"CL-{from_node}-{to_node}",
+                "reason": reason,
+                "edge_id": edge_id,
+                "node_id": None
+            }
+            map_resp = requests.post(
+                f"{MAP_SERVICE_URL}/api/closures",
+                json=map_payload,
+                timeout=2
+            )
+            if map_resp.status_code == 200:
+                print(f"✅ Map closure added for {from_node}-{to_node}",flush=True)
+            else:
+                print(f"⚠️ Map closure failed: {map_resp.status_code}, {map_resp.text}",flush=True)
         except Exception as e:
-            print(f"⚠️  Failed to add closure {from_node}-{to_node}: {e}", flush=True)
+            print(f"⚠️ Failed to add closure {from_node}-{to_node}: {e}", flush=True)
     
     def handle_queue_update(self, event: Dict):
         """
@@ -367,6 +392,8 @@ class EventProcessor:
                 },
                 timeout=2
             )
+
+            print("Queueu", flush=True)
             
             if response.status_code == 200:
                 self.processed["queue_update"] += 1

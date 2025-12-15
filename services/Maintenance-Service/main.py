@@ -3,6 +3,7 @@ MAIN.PY -
 Maintenance Service
 """
 
+import os
 from fastapi import FastAPI, HTTPException, Query, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
@@ -43,8 +44,8 @@ app.add_middleware(
 
 # ========== CONFIGURATION ==========
 
-ROUTING_SERVICE_URL = "http://localhost:8002"
-MAP_SERVICE_URL = "http://localhost:8000"
+MAP_SERVICE_URL = os.getenv("MAP_SERVICE_URL", "http://map-service:8000")
+ROUTING_SERVICE_URL = os.getenv("ROUTING_SERVICE_URL", "http://routing-service:8002")
 
 # ========== GLOBAL STATE ==========
 

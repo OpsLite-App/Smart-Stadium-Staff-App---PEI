@@ -34,7 +34,7 @@ app.add_middleware(
 
 # ========== CONFIGURATION ==========
 
-QUEUEING_SERVICE_URL = "http://localhost:8003"
+QUEUEING_SERVICE_URL = os.getenv("QUEUEING_SERVICE_URL", "http://queueing-service:8003")
 import os
 MQTT_BROKER = os.getenv("MQTT_HOST", os.getenv("MQTT_BROKER", "localhost"))
 MQTT_PORT = int(os.getenv("MQTT_PORT", "1883"))

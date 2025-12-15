@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 from typing import List, Optional
 from datetime import datetime
 import asyncio
+import os
 
 from models import IncidentStatus, IncidentSeverity, IncidentType
 from schemas import (
@@ -39,9 +40,9 @@ app.add_middleware(
 
 # ========== CONFIGURATION ==========
 
-ROUTING_SERVICE_URL = "http://localhost:8002"
-MAP_SERVICE_URL = "http://localhost:8000"
-CONGESTION_SERVICE_URL = "http://localhost:8005"
+MAP_SERVICE_URL = os.getenv("MAP_SERVICE_URL", "http://map-service:8000")
+ROUTING_SERVICE_URL = os.getenv("ROUTING_SERVICE_URL", "http://routing-service:8002")
+CONGESTION_SERVICE_URL = os.getenv("CONGESTION_SERVICE_URL", "http://congestion-service:8003")
 
 EMERGENCY_CONTACTS = {
     "fire_brigade": "112",
