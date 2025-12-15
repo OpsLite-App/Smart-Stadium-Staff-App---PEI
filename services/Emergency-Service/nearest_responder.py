@@ -7,6 +7,7 @@ from typing import List, Dict, Optional, Tuple
 from dataclasses import dataclass
 from enum import Enum
 import httpx
+import os
 
 
 class StaffRole(Enum):
@@ -388,7 +389,7 @@ async def example_usage():
     """Example of how to use this module"""
     
     # Setup
-    ROUTING_SERVICE_URL = "http://localhost:8002"
+    ROUTING_SERVICE_URL = os.getenv("ROUTING_SERVICE_URL", "http://routing-service:8002")
     staff_tracker = create_mock_staff_tracker(num_per_role=3)
     
     # Create incident REQUEST (not the DB model!)
