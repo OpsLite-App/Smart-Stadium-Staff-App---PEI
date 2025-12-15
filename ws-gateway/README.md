@@ -52,6 +52,7 @@ client.activate();
 Next steps:
 - Harden the JWT validation (cache results, implement public-key verification)
 - Add tests and a Dockerfile for local composition with `mosquitto` and other services.
+- Docker image now includes a startup helper that waits for the MQTT broker to be reachable before starting the JVM.
 
 Frontend connection (React Native)
 ---------------------------------

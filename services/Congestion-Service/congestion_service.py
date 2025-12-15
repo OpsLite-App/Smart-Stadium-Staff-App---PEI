@@ -34,8 +34,9 @@ app.add_middleware(
 
 # ========== CONFIGURATION ==========
 
-MQTT_BROKER = "localhost"
-MQTT_PORT = 1883
+import os
+MQTT_BROKER = os.getenv("MQTT_HOST", os.getenv("MQTT_BROKER", "localhost"))
+MQTT_PORT = int(os.getenv("MQTT_PORT", "1883"))
 
 # Subscribe to crowd-specific topics
 MQTT_TOPICS = [
@@ -142,6 +143,10 @@ def start_mqtt_listener():
         client = mqtt.Client(protocol=mqtt.MQTTv5)
         client.on_message = on_mqtt_message
         
+        def on_disconnect(client, userdata, rc):
+            print(f"⚠️  MQTT disconnected (rc={rc})")
+
+        client.on_disconnect = on_disconnect
         try:
             client.connect(MQTT_BROKER, MQTT_PORT, 60)
             for topic in MQTT_TOPICS:

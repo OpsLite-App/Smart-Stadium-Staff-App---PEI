@@ -1,8 +1,11 @@
 FROM python:3.11-slim
 WORKDIR /app
+RUN apt-get update && apt-get install -y curl && rm -rf /var/lib/apt/lists/*
 COPY requirements.txt .
-RUN python -m pip install --upgrade pip && pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
+COPY wait-for-map-service.sh /wait-for-map-service.sh
+# Ensure Unix line endings and executable bit (handles Windows CRLF checkouts)
+RUN sed -i 's/\r$//' /wait-for-map-service.sh && chmod +x /wait-for-map-service.sh
 EXPOSE 8002
-HEALTHCHECK --interval=10s --timeout=3s --start-period=10s --retries=3 CMD python -c "import urllib.request,sys; r=urllib.request.urlopen('http://localhost:8002/health'); sys.exit(0 if r.getcode()<400 else 1)"
-CMD ["python","-m","uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8002"]
+CMD ["/wait-for-map-service.sh", "map-service-host", "8000", "python", "-m", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8002"]

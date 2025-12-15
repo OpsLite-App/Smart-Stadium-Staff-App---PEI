@@ -10,6 +10,7 @@ import requests
 from datetime import datetime
 from collections import defaultdict
 import random
+import os
 
 try:
     import paho.mqtt.client as mqtt
@@ -20,10 +21,10 @@ except ImportError:
 
 # ========== CONFIGURATION ==========
 
-MAP_SERVICE_URL = "http://localhost:8000"
-ROUTING_SERVICE_URL = "http://localhost:8002"
-MQTT_BROKER = "localhost"
-MQTT_PORT = 1883
+MAP_SERVICE_URL = os.getenv("MAP_SERVICE_URL", "http://localhost:8000")
+ROUTING_SERVICE_URL = os.getenv("ROUTING_SERVICE_URL", "http://localhost:8002")
+MQTT_BROKER = os.getenv("MQTT_BROKER", "localhost")
+MQTT_PORT = int(os.getenv("MQTT_PORT", 1883))
 
 # Hierarchical MQTT Topics
 MQTT_TOPICS = {

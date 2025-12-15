@@ -13,8 +13,9 @@ except ImportError:
     MQTT_AVAILABLE = False
     print("⚠️  paho-mqtt not installed")
 
-MQTT_BROKER = "localhost"
-MQTT_PORT = 1883
+import os
+MQTT_BROKER = os.getenv("MQTT_HOST", os.getenv("MQTT_BROKER", "localhost"))
+MQTT_PORT = int(os.getenv("MQTT_PORT", "1883"))
 # Subscribe to emergency-specific topics
 MQTT_TOPICS = [
     "stadium/emergency/sos-events",
@@ -164,8 +165,10 @@ def start_mqtt_listener(incident_manager, evacuation_coordinator):
         client.on_connect = on_connect
         client.on_message = on_message
         
-        try:
-            client.connect(MQTT_BROKER, MQTT_PORT, 60)
+        try:            def on_disconnect(client, userdata, rc):
+                print(f"⚠️  MQTT listener disconnected (rc={rc})")
+
+            client.on_disconnect = on_disconnect            client.connect(MQTT_BROKER, MQTT_PORT, 60)
             client.loop_forever()
         except Exception as e:
             print(f"❌ MQTT error: {e}")

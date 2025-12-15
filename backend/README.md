@@ -56,9 +56,12 @@ Configuration notes
 - The compose file sets environment variables for services (e.g. `AUTH_SERVICE_URL`, `DATABASE_URI`, `mqtt.broker`). Edit `docker-compose.dev.yml` to change defaults.
 - The Map Service auto-seeds sample data on startup (the emulator depends on this).
 - The WS Gateway validates JWTs by calling `POST {auth.serviceUrl}/auth/validate` — ensure the `auth-service` is healthy before connecting clients.
+- Mosquitto: the dev compose mounts a local `mosquitto/config/mosquitto.conf` that enables anonymous connections for local development (`allow_anonymous true`) and binds the listener to 0.0.0.0. If you need authentication or custom ACLs, edit `mosquitto/config/mosquitto.conf`.
 
 Troubleshooting
 - If a Python container fails with `exec: 'uvicorn': executable file not found`, ensure the service's `requirements.txt` contains `uvicorn` and rebuild the image (`--no-cache` recommended).
+- Services include startup wait helpers (MQTT and HTTP checks). If a container appears to be blocked, tail its logs (e.g. `docker compose -f docker-compose.dev.yml logs -f queueing-service`) to see whether it is waiting for a dependency to become available.
+- Note: The MQTT wait helpers use short-lived MQTT connections (they connect, then immediately disconnect once successful). Mosquitto logs will therefore show many quick connect/close entries from healthchecks; this is expected for local dev. If you see services connecting and disconnecting outside of healthcheck timestamps, check the service container logs for crashes or missing env configuration.
 - For Java build issues, check Maven logs in the build stage; the Dockerfiles use an internal Maven builder image so you don't need Maven installed locally.
 - On Windows, ensure Docker Desktop has WSL2 enabled (or Hyper-V) and enough memory for the build.
 
@@ -68,4 +71,4 @@ Frontend notes
 Next steps (optional)
 - Add containerized frontend entries to the compose file if you want a fully containerized dev environment.
 
-If you want, I can add a short `Makefile` or shell script to wrap these commands and a one-page troubleshooting section for common errors.
+

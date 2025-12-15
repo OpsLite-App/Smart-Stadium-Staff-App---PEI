@@ -1,3 +1,4 @@
+print("Estamos aqui", flush=True)
 """
 EVENT PROCESSOR - Integration Layer
 Connects Simulator → Services (Routing, Queueing, Map)
@@ -10,6 +11,7 @@ import requests
 import time
 from typing import Dict, Optional
 
+
 try:
     import paho.mqtt.client as mqtt
     MQTT_AVAILABLE = True
@@ -19,15 +21,16 @@ except ImportError:
 
 # ========== CONFIGURATION ==========
 
-MQTT_BROKER = "localhost"
-MQTT_PORT = 1883
+import os
+MQTT_BROKER = os.getenv("MQTT_HOST", os.getenv("MQTT_BROKER", "localhost"))
+MQTT_PORT = int(os.getenv("MQTT_PORT", "1883"))
 MQTT_TOPIC = "stadium/#"
 
-MAP_SERVICE_URL = "http://localhost:8000"
-ROUTING_SERVICE_URL = "http://localhost:8002"
-QUEUEING_SERVICE_URL = "http://localhost:8003"
-WAIT_TIMES_SERVICE_URL = "http://localhost:8004"
-CONGESTION_SERVICE_URL = "http://localhost:8005"
+MAP_SERVICE_URL = os.getenv("MAP_SERVICE_URL", "http://map-service:8000")
+ROUTING_SERVICE_URL = os.getenv("ROUTING_SERVICE_URL", "http://routing-service:8002")
+QUEUEING_SERVICE_URL = os.getenv("QUEUEING_SERVICE_URL", "http://queueing-service:8003")
+WAIT_TIMES_SERVICE_URL = os.getenv("WAIT_TIMES_SERVICE_URL", "http://event-processor:8004")
+CONGESTION_SERVICE_URL = os.getenv("CONGESTION_SERVICE_URL", "http://congestion-service:8005")
 
 # ========== EVENT PROCESSOR ==========
 
@@ -375,25 +378,17 @@ class EventProcessor:
 
 def on_connect(client, userdata, flags, rc, properties=None):
     """Callback when connected to MQTT broker"""
+    print(f"[DEBUG] on_connect called, rc={rc}")
     if rc == 0:
-        print("✅ Connected to MQTT broker")
+        print(f"✅ Connected to MQTT broker at {MQTT_BROKER}:{MQTT_PORT}")
         client.subscribe(MQTT_TOPIC)
         print(f"📡 Subscribed to: {MQTT_TOPIC}")
     else:
-        print(f"❌ Connection failed with code {rc}")
+        print(f"❌ Failed to connect to MQTT broker (code: {rc})")
 
-
-def on_message(client, userdata, msg):
-    """Callback when message received"""
-    processor = userdata['processor']
-    
-    try:
-        event = json.loads(msg.payload.decode())
-        processor.process_event(event)
-    except json.JSONDecodeError:
-        print(f"⚠️  Invalid JSON: {msg.payload}")
-    except Exception as e:
-        print(f"❌ Error: {e}")
+def on_message(client, userdata, message):
+    event = json.loads(message.payload.decode())
+    userdata["processor"].process_event(event)
 
 
 def run_event_processor():
@@ -478,14 +473,29 @@ def run_event_processor():
     processor = EventProcessor()
     
     # Setup MQTT client
-    client = mqtt.Client(protocol=mqtt.MQTTv5, userdata={'processor': processor})
+
+    
+    client = mqtt.Client(
+        client_id="event-processor",
+        protocol=mqtt.MQTTv5,
+        userdata={'processor': processor}
+    )
+
+    print("Assigning callbacks...", flush=True)
     client.on_connect = on_connect
+    print("on_connect OK", flush=True)
     client.on_message = on_message
+
+    def on_disconnect(client, userdata, flags,  rc, properties=None):
+        print(f"⚠️  MQTT disconnected (reason={rc})")
+
+    client.on_disconnect = on_disconnect
+    print("on_disconnect OK", flush=True)
+
     
     try:
         client.connect(MQTT_BROKER, MQTT_PORT, 60)
         client.loop_forever()
-    
     except KeyboardInterrupt:
         print("\n\n⏹️  Stopping event processor...")
         processor.print_stats()

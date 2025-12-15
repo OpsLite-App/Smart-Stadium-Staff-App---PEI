@@ -8,6 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from typing import Optional, List
 import httpx
 import asyncio
+import os
 
 from astar import Graph, HazardMap, hazard_aware_astar, find_nearest_node, multi_destination_route
 from api_handlers import RouteAPIHandler, HazardAPIHandler
@@ -30,7 +31,8 @@ app.add_middleware(
 
 # ========== CONFIGURATION ==========
 
-MAP_SERVICE_URL = "http://localhost:8000"
+MAP_SERVICE_URL = os.getenv("MAP_SERVICE_URL", "http://localhost:8000")
+
 
 # ========== GLOBAL STATE ==========
 

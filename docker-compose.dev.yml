@@ -1,4 +1,4 @@
-version: '3.8'
+version: "3.8"
 
 services:
   mosquitto:
@@ -9,6 +9,13 @@ services:
     volumes:
       - mosquitto_data:/mosquitto/data
       - mosquitto_log:/mosquitto/log
+      - ./mosquitto/config/mosquitto.conf:/mosquitto/config/mosquitto.conf
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z localhost 1883 || exit 1"]
+      interval: 5s
+      timeout: 2s
+      retries: 5
+      start_period: 5s
 
   postgres_auth:
     image: postgres:15-alpine
@@ -21,6 +28,7 @@ services:
       - "5432:5432"
     volumes:
       - postgres_auth_data:/var/lib/postgresql/data
+      - ./backend/database/init:/docker-entrypoint-initdb.d
 
   postgres_map:
     image: postgres:15-alpine
@@ -45,6 +53,7 @@ services:
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres_auth:5432/stadium
       SPRING_DATASOURCE_USERNAME: admin
       SPRING_DATASOURCE_PASSWORD: password
+      SPRING_JPA_HIBERNATE_DDL_AUTO: validate
     ports:
       - "8081:8081"
 
@@ -59,6 +68,9 @@ services:
     environment:
       AUTH_SERVICE_URL: http://auth-service:8081
       mqtt.broker: tcp://mosquitto:1883
+      MQTT_HOST: mosquitto
+      MQTT_BROKER: tcp://mosquitto:1883
+      MQTT_PORT: "1883"
     ports:
       - "8089:8089"
 
@@ -91,6 +103,12 @@ services:
       context: ./services/Queueing-Service
       dockerfile: Dockerfile
     container_name: queueing-service
+    depends_on:
+      - mosquitto
+    environment:
+      MQTT_HOST: mosquitto
+      MQTT_BROKER: mosquitto
+      MQTT_PORT: "1883"
     ports:
       - "8003:8003"
 
@@ -99,6 +117,12 @@ services:
       context: ./services/Congestion-Service
       dockerfile: Dockerfile
     container_name: congestion-service
+    depends_on:
+      - mosquitto
+    environment:
+      MQTT_HOST: mosquitto
+      MQTT_BROKER: mosquitto
+      MQTT_PORT: "1883"
     ports:
       - "8005:8005"
 
@@ -110,9 +134,13 @@ services:
     depends_on:
       - routing-service
       - map-service
+      - mosquitto
     environment:
       ROUTING_SERVICE_URL: http://routing-service:8002
       MAP_SERVICE_URL: http://map-service:8000
+      MQTT_HOST: mosquitto
+      MQTT_BROKER: mosquitto
+      MQTT_PORT: "1883"
     ports:
       - "8007:8007"
 
@@ -124,22 +152,30 @@ services:
     depends_on:
       - routing-service
       - map-service
+      - mosquitto
     environment:
       ROUTING_SERVICE_URL: http://routing-service:8002
       MAP_SERVICE_URL: http://map-service:8000
+      MQTT_HOST: mosquitto
+      MQTT_BROKER: mosquitto
+      MQTT_PORT: "1883"
     ports:
       - "8006:8006"
 
   event-processor:
     build:
-      context: .
-      dockerfile: services/event-processor/Dockerfile
+      context: ./services
+      dockerfile: event-processor/Dockerfile
     container_name: event-processor
     depends_on:
       - mosquitto
       - routing-service
       - map-service
       - queueing-service
+    environment:
+      MQTT_HOST: mosquitto
+      MQTT_BROKER: mosquitto
+      MQTT_PORT: "1883"
 
   emulator:
     build:
@@ -150,6 +186,13 @@ services:
       - mosquitto
       - map-service
       - routing-service
+    environment:
+      MAP_SERVICE_URL: http://map-service:8000
+      ROUTING_SERVICE_URL: http://routing-service:8002
+      MQTT_HOST: mosquitto
+      MQTT_BROKER: mosquitto
+      MQTT_PORT: "1883"
+
 
 volumes:
   mosquitto_data:

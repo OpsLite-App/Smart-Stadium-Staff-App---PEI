@@ -35,8 +35,9 @@ app.add_middleware(
 # ========== CONFIGURATION ==========
 
 QUEUEING_SERVICE_URL = "http://localhost:8003"
-MQTT_BROKER = "localhost"
-MQTT_PORT = 1883
+import os
+MQTT_BROKER = os.getenv("MQTT_HOST", os.getenv("MQTT_BROKER", "localhost"))
+MQTT_PORT = int(os.getenv("MQTT_PORT", "1883"))
 
 # Subscribe to crowd and gate topics for wait time estimation
 MQTT_TOPICS = [

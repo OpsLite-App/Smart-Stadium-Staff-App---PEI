@@ -2,7 +2,7 @@ server:
   port: 8089
 
 mqtt:
-  broker: tcp://localhost:1883
+  broker: ${MQTT_BROKER}
 
 auth:
   serviceUrl: http://localhost:8081

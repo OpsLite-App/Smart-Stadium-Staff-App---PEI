@@ -1,156 +1,10 @@
 [
   {
-    "event_id": "6c7bbb74-0d58-4645-899c-e1dca9a96896",
+    "event_id": "ec639acf-5951-4a31-9092-617fbbdfb9a3",
     "event_type": "bin_alert",
-    "timestamp": "2025-12-13T17:33:30.359271Z",
-    "bin_id": "Restroom-B1",
-    "fill_percentage": 38.0,
-    "priority": "medium",
-    "poi_node": "N7",
-    "location": {
-      "x": 75.0,
-      "y": 15.0
-    },
-    "assigned_role": "cleaning",
-    "metadata": {
-      "action_required": "empty_bin",
-      "needs_service": false
-    }
-  },
-  {
-    "event_id": "816b2eee-31a7-43f2-96d5-cf39b3bcca76",
-    "event_type": "crowd_density",
-    "timestamp": "2025-12-13T17:33:30.360269Z",
-    "area_id": "N11",
-    "area_type": "normal",
-    "current_count": 143,
-    "capacity": 150,
-    "occupancy_rate": 95.3,
-    "location": {
-      "x": 50.0,
-      "y": 40.0
-    },
-    "heat_level": "red"
-  },
-  {
-    "event_id": "3a7923cf-6dc6-4986-877d-291d37cd90a4",
-    "event_type": "gate_passage",
-    "timestamp": "2025-12-13T17:33:38.484700Z",
-    "gate_id": "Gate-3",
-    "person_id": "P_004814",
-    "direction": "entry",
-    "current_count": 1,
-    "throughput_per_min": 22.5,
-    "location": {
-      "x": 100.0,
-      "y": 15.0
-    },
-    "metadata": {
-      "heat_level": "green"
-    }
-  },
-  {
-    "event_id": "44c08e25-3eab-48d3-aded-a16c81502b03",
-    "event_type": "crowd_density",
-    "timestamp": "2025-12-13T17:33:38.485212Z",
-    "area_id": "N14",
-    "area_type": "normal",
-    "current_count": 123,
-    "capacity": 150,
-    "occupancy_rate": 82.0,
-    "location": {
-      "x": 80.0,
-      "y": 20.0
-    },
-    "heat_level": "red"
-  },
-  {
-    "event_id": "20332013-333f-493c-91f8-9b9e1d0d4b5b",
-    "event_type": "gate_passage",
-    "timestamp": "2025-12-13T17:33:43.574879Z",
-    "gate_id": "Gate-14",
-    "person_id": "P_006098",
-    "direction": "entry",
-    "current_count": 1,
-    "throughput_per_min": 19.6,
-    "location": {
-      "x": 90.0,
-      "y": 5.0
-    },
-    "metadata": {
-      "heat_level": "green"
-    }
-  },
-  {
-    "event_id": "b6316be2-fcdf-4d2c-9853-f56639c3bb24",
-    "event_type": "gate_passage",
-    "timestamp": "2025-12-13T17:33:44.580211Z",
-    "gate_id": "Gate-3",
-    "person_id": "P_004549",
-    "direction": "entry",
-    "current_count": 2,
-    "throughput_per_min": 22.3,
-    "location": {
-      "x": 100.0,
-      "y": 15.0
-    },
-    "metadata": {
-      "heat_level": "green"
-    }
-  },
-  {
-    "event_id": "59e1d41d-9569-475f-9e62-6e72530a7320",
-    "event_type": "crowd_density",
-    "timestamp": "2025-12-13T17:33:46.582677Z",
-    "area_id": "N1",
-    "area_type": "normal",
-    "current_count": 165,
-    "capacity": 150,
-    "occupancy_rate": 110.0,
-    "location": {
-      "x": 10.0,
-      "y": 10.0
-    },
-    "heat_level": "red"
-  },
-  {
-    "event_id": "583b1eec-a7c5-43da-b223-73439678e8f4",
-    "event_type": "gate_passage",
-    "timestamp": "2025-12-13T17:33:51.686977Z",
-    "gate_id": "Gate-1",
-    "person_id": "P_007127",
-    "direction": "entry",
-    "current_count": 1,
-    "throughput_per_min": 19.8,
-    "location": {
-      "x": 5.0,
-      "y": 10.0
-    },
-    "metadata": {
-      "heat_level": "green"
-    }
-  },
-  {
-    "event_id": "fa60cf72-b313-48f4-acc8-0a90bf2cefc4",
-    "event_type": "crowd_density",
-    "timestamp": "2025-12-13T17:33:54.689588Z",
-    "area_id": "N12",
-    "area_type": "normal",
-    "current_count": 155,
-    "capacity": 150,
-    "occupancy_rate": 103.3,
-    "location": {
-      "x": 60.0,
-      "y": 20.0
-    },
-    "heat_level": "red"
-  },
-  {
-    "event_id": "235c9e1e-2067-4745-97e5-da5a2b3ad266",
-    "event_type": "bin_alert",
-    "timestamp": "2025-12-13T17:34:00.796747Z",
+    "timestamp": "2025-12-15T01:38:15.954257Z",
     "bin_id": "Restroom-C2",
-    "fill_percentage": 25.8,
+    "fill_percentage": 42.8,
     "priority": "medium",
     "poi_node": "N9",
     "location": {
@@ -164,212 +18,61 @@
     }
   },
   {
-    "event_id": "52b1077b-248f-4613-87ce-ebe89813c792",
-    "event_type": "gate_passage",
-    "timestamp": "2025-12-13T17:34:01.798256Z",
-    "gate_id": "Gate-3",
-    "person_id": "P_001795",
-    "direction": "entry",
-    "current_count": 3,
-    "throughput_per_min": 19.5,
-    "location": {
-      "x": 100.0,
-      "y": 15.0
-    },
-    "metadata": {
-      "heat_level": "green"
-    }
-  },
-  {
-    "event_id": "ac2a4467-a678-4ac1-a670-6f92d4deb8de",
-    "event_type": "gate_passage",
-    "timestamp": "2025-12-13T17:34:02.798835Z",
-    "gate_id": "Gate-1",
-    "person_id": "P_000084",
-    "direction": "entry",
-    "current_count": 2,
-    "throughput_per_min": 16.0,
-    "location": {
-      "x": 5.0,
-      "y": 10.0
-    },
-    "metadata": {
-      "heat_level": "green"
-    }
-  },
-  {
-    "event_id": "ae2bc965-7728-4411-ab4e-f18a7f088df4",
+    "event_id": "b4af9747-2ed0-4e11-8b68-b90dd8844695",
     "event_type": "crowd_density",
-    "timestamp": "2025-12-13T17:34:02.800369Z",
-    "area_id": "N21",
+    "timestamp": "2025-12-15T01:38:15.954977Z",
+    "area_id": "N9",
     "area_type": "normal",
-    "current_count": 53,
+    "current_count": 148,
     "capacity": 150,
-    "occupancy_rate": 35.3,
+    "occupancy_rate": 98.7,
     "location": {
-      "x": 100.0,
-      "y": 10.0
-    },
-    "heat_level": "green"
-  },
-  {
-    "event_id": "5afc122c-2067-4f42-91bc-fbe1d8cc4c0e",
-    "event_type": "gate_passage",
-    "timestamp": "2025-12-13T17:34:03.802154Z",
-    "gate_id": "Gate-1",
-    "person_id": "P_002637",
-    "direction": "entry",
-    "current_count": 3,
-    "throughput_per_min": 20.5,
-    "location": {
-      "x": 5.0,
-      "y": 10.0
-    },
-    "metadata": {
-      "heat_level": "green"
-    }
-  },
-  {
-    "event_id": "c8162051-f9ef-457f-a374-1867dba81d19",
-    "event_type": "gate_passage",
-    "timestamp": "2025-12-13T17:34:05.804692Z",
-    "gate_id": "Gate-14",
-    "person_id": "P_001094",
-    "direction": "entry",
-    "current_count": 2,
-    "throughput_per_min": 23.3,
-    "location": {
-      "x": 90.0,
-      "y": 5.0
-    },
-    "metadata": {
-      "heat_level": "green"
-    }
-  },
-  {
-    "event_id": "c93ca7a7-f3bb-4172-8e5b-3457c07a0edf",
-    "event_type": "gate_passage",
-    "timestamp": "2025-12-13T17:34:06.807443Z",
-    "gate_id": "Gate-1",
-    "person_id": "P_006070",
-    "direction": "entry",
-    "current_count": 4,
-    "throughput_per_min": 19.8,
-    "location": {
-      "x": 5.0,
-      "y": 10.0
-    },
-    "metadata": {
-      "heat_level": "green"
-    }
-  },
-  {
-    "event_id": "742cbc47-ae83-40ab-a6b5-d50e3e81f4f0",
-    "event_type": "sos_event",
-    "timestamp": "2025-12-13T17:34:06.809466Z",
-    "sos_id": "SOS-ba0939",
-    "priority": "high",
-    "location_node": "N15",
-    "location": {
-      "x": 40.0,
+      "x": 50.0,
       "y": 20.0
-    },
-    "details": "fainting",
-    "assigned_role": "security",
-    "status": "active"
-  },
-  {
-    "event_id": "0150489e-1e7f-4dcd-80f4-0431bd86af6d",
-    "event_type": "gate_passage",
-    "timestamp": "2025-12-13T17:34:14.920137Z",
-    "gate_id": "Gate-1",
-    "person_id": "P_008302",
-    "direction": "entry",
-    "current_count": 5,
-    "throughput_per_min": 23.9,
-    "location": {
-      "x": 5.0,
-      "y": 10.0
-    },
-    "metadata": {
-      "heat_level": "green"
-    }
-  },
-  {
-    "event_id": "85fa13ee-d534-478b-a022-567a129e46bb",
-    "event_type": "gate_passage",
-    "timestamp": "2025-12-13T17:34:15.921581Z",
-    "gate_id": "Gate-2",
-    "person_id": "P_004749",
-    "direction": "entry",
-    "current_count": 1,
-    "throughput_per_min": 16.8,
-    "location": {
-      "x": 15.0,
-      "y": 5.0
-    },
-    "metadata": {
-      "heat_level": "green"
-    }
-  },
-  {
-    "event_id": "c75a3cc1-fbb3-4e20-b3c4-153df490a01c",
-    "event_type": "gate_passage",
-    "timestamp": "2025-12-13T17:34:16.922311Z",
-    "gate_id": "Gate-2",
-    "person_id": "P_009481",
-    "direction": "entry",
-    "current_count": 2,
-    "throughput_per_min": 21.5,
-    "location": {
-      "x": 15.0,
-      "y": 5.0
-    },
-    "metadata": {
-      "heat_level": "green"
-    }
-  },
-  {
-    "event_id": "d9e2478c-ffac-4db4-9f7a-93476c80763a",
-    "event_type": "gate_passage",
-    "timestamp": "2025-12-13T17:34:17.924062Z",
-    "gate_id": "Gate-14",
-    "person_id": "P_006508",
-    "direction": "entry",
-    "current_count": 3,
-    "throughput_per_min": 23.2,
-    "location": {
-      "x": 90.0,
-      "y": 5.0
-    },
-    "metadata": {
-      "heat_level": "green"
-    }
-  },
-  {
-    "event_id": "81e1cdce-854f-4443-973f-c0d4c92e9b12",
-    "event_type": "crowd_density",
-    "timestamp": "2025-12-13T17:34:18.926325Z",
-    "area_id": "N4",
-    "area_type": "normal",
-    "current_count": 126,
-    "capacity": 150,
-    "occupancy_rate": 84.0,
-    "location": {
-      "x": 40.0,
-      "y": 10.0
     },
     "heat_level": "red"
   },
   {
-    "event_id": "114d2c46-e770-4c74-98a8-264a7c10e42a",
+    "event_id": "3e0e861b-f913-428d-9eda-59c44ea42530",
     "event_type": "gate_passage",
-    "timestamp": "2025-12-13T17:34:24.039228Z",
-    "gate_id": "Gate-14",
-    "person_id": "P_006369",
+    "timestamp": "2025-12-15T01:38:24.017763Z",
+    "gate_id": "Gate-2",
+    "person_id": "P_003041",
     "direction": "entry",
-    "current_count": 4,
-    "throughput_per_min": 23.5,
+    "current_count": 1,
+    "throughput_per_min": 17.4,
+    "location": {
+      "x": 15.0,
+      "y": 5.0
+    },
+    "metadata": {
+      "heat_level": "green"
+    }
+  },
+  {
+    "event_id": "3d19c36a-c0f6-42aa-b1de-bb3f95119833",
+    "event_type": "crowd_density",
+    "timestamp": "2025-12-15T01:38:24.018796Z",
+    "area_id": "N13",
+    "area_type": "normal",
+    "current_count": 193,
+    "capacity": 150,
+    "occupancy_rate": 128.7,
+    "location": {
+      "x": 70.0,
+      "y": 20.0
+    },
+    "heat_level": "red"
+  },
+  {
+    "event_id": "92be574f-4d83-4c75-bc73-a1943431bdb0",
+    "event_type": "gate_passage",
+    "timestamp": "2025-12-15T01:38:28.076704Z",
+    "gate_id": "Gate-14",
+    "person_id": "P_001013",
+    "direction": "entry",
+    "current_count": 1,
+    "throughput_per_min": 18.0,
     "location": {
       "x": 90.0,
       "y": 5.0
@@ -379,46 +82,12 @@
     }
   },
   {
-    "event_id": "ecf39c33-767c-424a-859e-fcea47c7c8fc",
-    "event_type": "gate_passage",
-    "timestamp": "2025-12-13T17:34:26.040524Z",
-    "gate_id": "Gate-1",
-    "person_id": "P_007904",
-    "direction": "entry",
-    "current_count": 6,
-    "throughput_per_min": 24.3,
-    "location": {
-      "x": 5.0,
-      "y": 10.0
-    },
-    "metadata": {
-      "heat_level": "green"
-    }
-  },
-  {
-    "event_id": "93c9c97a-0143-443d-bdc0-eb7071189dc8",
-    "event_type": "gate_passage",
-    "timestamp": "2025-12-13T17:34:27.042156Z",
-    "gate_id": "Gate-14",
-    "person_id": "P_000011",
-    "direction": "entry",
-    "current_count": 5,
-    "throughput_per_min": 16.0,
-    "location": {
-      "x": 90.0,
-      "y": 5.0
-    },
-    "metadata": {
-      "heat_level": "green"
-    }
-  },
-  {
-    "event_id": "0e762061-dcc9-4413-9813-7856a38fe1d3",
+    "event_id": "857d6df6-b490-40d0-89d9-bbefc35a3364",
     "event_type": "sos_event",
-    "timestamp": "2025-12-13T17:34:27.042156Z",
-    "sos_id": "SOS-0a03f7",
-    "priority": "high",
-    "location_node": "N19",
+    "timestamp": "2025-12-15T01:38:29.081105Z",
+    "sos_id": "SOS-ca7bf1",
+    "priority": "critical",
+    "location_node": "N13",
     "location": {
       "x": 70.0,
       "y": 20.0
@@ -428,18 +97,417 @@
     "status": "active"
   },
   {
-    "event_id": "63af494b-e12b-461b-a2e4-6640fc0d9d8a",
+    "event_id": "98e4cab2-5e63-4a92-b5e1-527c9053b24b",
+    "event_type": "gate_passage",
+    "timestamp": "2025-12-15T01:38:32.161119Z",
+    "gate_id": "Gate-14",
+    "person_id": "P_002501",
+    "direction": "entry",
+    "current_count": 2,
+    "throughput_per_min": 17.7,
+    "location": {
+      "x": 90.0,
+      "y": 5.0
+    },
+    "metadata": {
+      "heat_level": "green"
+    }
+  },
+  {
+    "event_id": "9673e8dc-2fb0-4167-814f-4de44d7367c9",
     "event_type": "crowd_density",
-    "timestamp": "2025-12-13T17:34:31.148753Z",
-    "area_id": "N21",
+    "timestamp": "2025-12-15T01:38:32.161736Z",
+    "area_id": "N6",
     "area_type": "normal",
-    "current_count": 80,
+    "current_count": 110,
     "capacity": 150,
-    "occupancy_rate": 53.3,
+    "occupancy_rate": 73.3,
+    "location": {
+      "x": 60.0,
+      "y": 10.0
+    },
+    "heat_level": "yellow"
+  },
+  {
+    "event_id": "67057edd-27f5-40f1-afda-daee0d2f64d8",
+    "event_type": "bin_alert",
+    "timestamp": "2025-12-15T01:38:36.213137Z",
+    "bin_id": "Restroom-B1",
+    "fill_percentage": 36.6,
+    "priority": "medium",
+    "poi_node": "N7",
+    "location": {
+      "x": 75.0,
+      "y": 15.0
+    },
+    "assigned_role": "cleaning",
+    "metadata": {
+      "action_required": "empty_bin",
+      "needs_service": false
+    }
+  },
+  {
+    "event_id": "25e74ee7-e073-4283-93d3-41273fa4a7c7",
+    "event_type": "crowd_density",
+    "timestamp": "2025-12-15T01:38:40.215813Z",
+    "area_id": "N7",
+    "area_type": "normal",
+    "current_count": 172,
+    "capacity": 150,
+    "occupancy_rate": 114.7,
+    "location": {
+      "x": 70.0,
+      "y": 10.0
+    },
+    "heat_level": "red"
+  },
+  {
+    "event_id": "43370375-63a9-4e4b-9488-a07669abe7eb",
+    "event_type": "gate_passage",
+    "timestamp": "2025-12-15T01:38:43.286190Z",
+    "gate_id": "Gate-1",
+    "person_id": "P_004891",
+    "direction": "entry",
+    "current_count": 1,
+    "throughput_per_min": 21.5,
+    "location": {
+      "x": 5.0,
+      "y": 10.0
+    },
+    "metadata": {
+      "heat_level": "green"
+    }
+  },
+  {
+    "event_id": "e5a134b2-81e6-4262-81d1-762a4c7aab01",
+    "event_type": "sos_event",
+    "timestamp": "2025-12-15T01:38:43.286190Z",
+    "sos_id": "SOS-c2313d",
+    "priority": "high",
+    "location_node": "N21",
     "location": {
       "x": 100.0,
       "y": 10.0
     },
+    "details": "chest_pain",
+    "assigned_role": "security",
+    "status": "active"
+  },
+  {
+    "event_id": "42fcab68-7833-426c-9298-a7c7afe77561",
+    "event_type": "gate_passage",
+    "timestamp": "2025-12-15T01:38:46.358819Z",
+    "gate_id": "Gate-14",
+    "person_id": "P_006266",
+    "direction": "entry",
+    "current_count": 3,
+    "throughput_per_min": 17.2,
+    "location": {
+      "x": 90.0,
+      "y": 5.0
+    },
+    "metadata": {
+      "heat_level": "green"
+    }
+  },
+  {
+    "event_id": "af5c6c4d-e5d0-4652-9270-f06eb7022bac",
+    "event_type": "bin_alert",
+    "timestamp": "2025-12-15T01:38:46.363840Z",
+    "bin_id": "Restroom-A3",
+    "fill_percentage": 39.8,
+    "priority": "medium",
+    "poi_node": "N4",
+    "location": {
+      "x": 45.0,
+      "y": 15.0
+    },
+    "assigned_role": "cleaning",
+    "metadata": {
+      "action_required": "empty_bin",
+      "needs_service": false
+    }
+  },
+  {
+    "event_id": "9492bfa8-a8ea-4c28-b193-6d5d5848d930",
+    "event_type": "gate_passage",
+    "timestamp": "2025-12-15T01:38:47.366051Z",
+    "gate_id": "Gate-2",
+    "person_id": "P_003745",
+    "direction": "entry",
+    "current_count": 2,
+    "throughput_per_min": 23.4,
+    "location": {
+      "x": 15.0,
+      "y": 5.0
+    },
+    "metadata": {
+      "heat_level": "green"
+    }
+  },
+  {
+    "event_id": "229e1e29-b721-4fd4-80d1-cf3275013fc7",
+    "event_type": "crowd_density",
+    "timestamp": "2025-12-15T01:38:48.367888Z",
+    "area_id": "N8",
+    "area_type": "normal",
+    "current_count": 49,
+    "capacity": 150,
+    "occupancy_rate": 32.7,
+    "location": {
+      "x": 80.0,
+      "y": 10.0
+    },
+    "heat_level": "green"
+  },
+  {
+    "event_id": "2527e59c-9657-4dba-92ad-a18114cf932a",
+    "event_type": "gate_passage",
+    "timestamp": "2025-12-15T01:38:50.369895Z",
+    "gate_id": "Gate-2",
+    "person_id": "P_000104",
+    "direction": "entry",
+    "current_count": 3,
+    "throughput_per_min": 21.7,
+    "location": {
+      "x": 15.0,
+      "y": 5.0
+    },
+    "metadata": {
+      "heat_level": "green"
+    }
+  },
+  {
+    "event_id": "38216bb1-90a0-49d3-898d-df669fdce322",
+    "event_type": "gate_passage",
+    "timestamp": "2025-12-15T01:38:51.371856Z",
+    "gate_id": "Gate-2",
+    "person_id": "P_001373",
+    "direction": "entry",
+    "current_count": 4,
+    "throughput_per_min": 17.7,
+    "location": {
+      "x": 15.0,
+      "y": 5.0
+    },
+    "metadata": {
+      "heat_level": "green"
+    }
+  },
+  {
+    "event_id": "016fceb7-a09c-4d92-9853-dff1e798b715",
+    "event_type": "gate_passage",
+    "timestamp": "2025-12-15T01:38:52.374493Z",
+    "gate_id": "Gate-1",
+    "person_id": "P_004834",
+    "direction": "entry",
+    "current_count": 2,
+    "throughput_per_min": 23.0,
+    "location": {
+      "x": 5.0,
+      "y": 10.0
+    },
+    "metadata": {
+      "heat_level": "green"
+    }
+  },
+  {
+    "event_id": "dac290d7-6815-4771-92a2-7100b4f80a9b",
+    "event_type": "gate_passage",
+    "timestamp": "2025-12-15T01:38:53.375527Z",
+    "gate_id": "Gate-3",
+    "person_id": "P_000258",
+    "direction": "entry",
+    "current_count": 1,
+    "throughput_per_min": 20.8,
+    "location": {
+      "x": 100.0,
+      "y": 15.0
+    },
+    "metadata": {
+      "heat_level": "green"
+    }
+  },
+  {
+    "event_id": "a2586231-0a0c-4a86-9366-b5eb5f6b3f4c",
+    "event_type": "gate_passage",
+    "timestamp": "2025-12-15T01:38:56.378182Z",
+    "gate_id": "Gate-2",
+    "person_id": "P_002933",
+    "direction": "entry",
+    "current_count": 5,
+    "throughput_per_min": 15.4,
+    "location": {
+      "x": 15.0,
+      "y": 5.0
+    },
+    "metadata": {
+      "heat_level": "green"
+    }
+  },
+  {
+    "event_id": "6330e740-47e7-4ab8-aa8d-0b3483b5dd5a",
+    "event_type": "bin_alert",
+    "timestamp": "2025-12-15T01:38:56.381195Z",
+    "bin_id": "Restroom-C2",
+    "fill_percentage": 62.0,
+    "priority": "medium",
+    "poi_node": "N9",
+    "location": {
+      "x": 55.0,
+      "y": 25.0
+    },
+    "assigned_role": "cleaning",
+    "metadata": {
+      "action_required": "empty_bin",
+      "needs_service": false
+    }
+  },
+  {
+    "event_id": "cf3e29ec-dbde-4ade-9288-a7389972df0a",
+    "event_type": "crowd_density",
+    "timestamp": "2025-12-15T01:38:56.381195Z",
+    "area_id": "N20",
+    "area_type": "normal",
+    "current_count": 91,
+    "capacity": 150,
+    "occupancy_rate": 60.7,
+    "location": {
+      "x": 90.0,
+      "y": 10.0
+    },
     "heat_level": "yellow"
+  },
+  {
+    "event_id": "76d3dd33-f1f5-42bc-8c28-ac0e6e240125",
+    "event_type": "gate_passage",
+    "timestamp": "2025-12-15T01:38:59.435142Z",
+    "gate_id": "Gate-2",
+    "person_id": "P_001989",
+    "direction": "entry",
+    "current_count": 6,
+    "throughput_per_min": 24.6,
+    "location": {
+      "x": 15.0,
+      "y": 5.0
+    },
+    "metadata": {
+      "heat_level": "green"
+    }
+  },
+  {
+    "event_id": "f8f43c2a-dd75-449a-9288-8a93933f6716",
+    "event_type": "gate_passage",
+    "timestamp": "2025-12-15T01:39:00.435624Z",
+    "gate_id": "Gate-2",
+    "person_id": "P_001102",
+    "direction": "entry",
+    "current_count": 7,
+    "throughput_per_min": 20.6,
+    "location": {
+      "x": 15.0,
+      "y": 5.0
+    },
+    "metadata": {
+      "heat_level": "green"
+    }
+  },
+  {
+    "event_id": "783c132c-a205-4b08-9e4e-86c7f072e877",
+    "event_type": "gate_passage",
+    "timestamp": "2025-12-15T01:39:04.441507Z",
+    "gate_id": "Gate-2",
+    "person_id": "P_004114",
+    "direction": "entry",
+    "current_count": 8,
+    "throughput_per_min": 21.7,
+    "location": {
+      "x": 15.0,
+      "y": 5.0
+    },
+    "metadata": {
+      "heat_level": "green"
+    }
+  },
+  {
+    "event_id": "b652357c-c709-4dfb-b282-19423287e056",
+    "event_type": "crowd_density",
+    "timestamp": "2025-12-15T01:39:04.443591Z",
+    "area_id": "N14",
+    "area_type": "normal",
+    "current_count": 96,
+    "capacity": 150,
+    "occupancy_rate": 64.0,
+    "location": {
+      "x": 80.0,
+      "y": 20.0
+    },
+    "heat_level": "yellow"
+  },
+  {
+    "event_id": "c8881df8-0ee1-46c1-93f2-13740a4ea59f",
+    "event_type": "gate_passage",
+    "timestamp": "2025-12-15T01:39:11.524458Z",
+    "gate_id": "Gate-3",
+    "person_id": "P_006582",
+    "direction": "entry",
+    "current_count": 2,
+    "throughput_per_min": 16.6,
+    "location": {
+      "x": 100.0,
+      "y": 15.0
+    },
+    "metadata": {
+      "heat_level": "green"
+    }
+  },
+  {
+    "event_id": "03f3e237-00fc-49e6-94ab-6139287d4eba",
+    "event_type": "gate_passage",
+    "timestamp": "2025-12-15T01:39:12.525845Z",
+    "gate_id": "Gate-2",
+    "person_id": "P_002221",
+    "direction": "entry",
+    "current_count": 9,
+    "throughput_per_min": 15.9,
+    "location": {
+      "x": 15.0,
+      "y": 5.0
+    },
+    "metadata": {
+      "heat_level": "green"
+    }
+  },
+  {
+    "event_id": "40744e8e-4f8f-4f57-8aed-16f8ca66a6c0",
+    "event_type": "crowd_density",
+    "timestamp": "2025-12-15T01:39:12.526263Z",
+    "area_id": "N18",
+    "area_type": "normal",
+    "current_count": 92,
+    "capacity": 150,
+    "occupancy_rate": 61.3,
+    "location": {
+      "x": 60.0,
+      "y": 20.0
+    },
+    "heat_level": "yellow"
+  },
+  {
+    "event_id": "786a4adf-1196-49dd-b708-0a9150557239",
+    "event_type": "gate_passage",
+    "timestamp": "2025-12-15T01:39:15.605996Z",
+    "gate_id": "Gate-1",
+    "person_id": "P_000459",
+    "direction": "entry",
+    "current_count": 3,
+    "throughput_per_min": 20.9,
+    "location": {
+      "x": 5.0,
+      "y": 10.0
+    },
+    "metadata": {
+      "heat_level": "green"
+    }
   }
 ]

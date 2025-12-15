@@ -15,8 +15,9 @@ except ImportError:
     print("⚠️  paho-mqtt not installed. Install with: pip install paho-mqtt")
 
 
-MQTT_BROKER = "localhost"
-MQTT_PORT = 1883
+import os
+MQTT_BROKER = os.getenv("MQTT_HOST", os.getenv("MQTT_BROKER", "localhost"))
+MQTT_PORT = int(os.getenv("MQTT_PORT", "1883"))
 # Subscribe to maintenance-specific topics
 MQTT_TOPICS = [
     "stadium/maintenance/bin-alerts",
@@ -227,6 +228,10 @@ def start_mqtt_listener(task_manager):
         client.on_connect = on_connect
         client.on_message = on_message
         
+        def on_disconnect(client, userdata, rc):
+            print(f"⚠️  MQTT listener disconnected (rc={rc})")
+
+        client.on_disconnect = on_disconnect
         try:
             client.connect(MQTT_BROKER, MQTT_PORT, 60)
             client.loop_forever()
