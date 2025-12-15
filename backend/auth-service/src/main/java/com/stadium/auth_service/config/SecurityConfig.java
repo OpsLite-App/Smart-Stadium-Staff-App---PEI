@@ -30,7 +30,7 @@ public class SecurityConfig {
     http
       .csrf(csrf -> csrf.disable())
       .authorizeHttpRequests(auth -> auth
-          .requestMatchers("/auth/login", "/actuator/health").permitAll()
+          .requestMatchers("/auth/login", "/actuator/health", "/auth/staff").permitAll()
           .anyRequest().authenticated()
       )
       .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class);

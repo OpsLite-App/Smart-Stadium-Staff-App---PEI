@@ -61,4 +61,17 @@ public class AuthController {
   public ResponseEntity<?> me(Authentication authentication) {
     return ResponseEntity.ok(Map.of("userId", authentication.getPrincipal()));
   }
+
+  @GetMapping("/staff")
+  public ResponseEntity<?> getAllStaff() {
+      var users = userService.findAll().stream()
+          .map(u -> java.util.Map.of(
+              "id", u.getId(),
+              "name", u.getName(),
+              "role", u.getRole(),
+              "location", u.getCurrentLocation() != null ? u.getCurrentLocation() : "Unknown"
+          ))
+          .collect(java.util.stream.Collectors.toList());
+      return ResponseEntity.ok(users);
+  }
 }

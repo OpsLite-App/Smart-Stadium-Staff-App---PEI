@@ -1,14 +1,22 @@
 import { create } from 'zustand';
-import { api, Node, POI, HeatmapPoint } from '../services/api';
-import { Client, StompSubscription } from '@stomp/stompjs';
+import { api, Node, POI, HeatmapPoint, StaffMember } from '../services/api';
+import { Client } from '@stomp/stompjs';
 import * as SecureStore from 'expo-secure-store';
 import 'text-encoding'; 
+import Constants from 'expo-constants';
 
-const WS_URL = 'ws://10.0.2.2:8081/ws/websocket'; 
+// 1. Lógica de IP Automático com Fallback de Segurança
+const debuggerHost = Constants.expoConfig?.hostUri || Constants.manifest2?.extra?.expoGo?.debuggerHost;
+const LOCAL_IP = debuggerHost?.split(':').shift() || '192.168.1.137'; 
+
+// WebSocket usa o IP dinâmico
+const WS_URL = `ws://${LOCAL_IP}:8089/ws/websocket`;
 
 interface MapState {
+  // Dados do Mapa
   nodes: Record<string, Node>;
   bins: POI[];
+  staffMembers: StaffMember[]; // <--- NOVO: Lista de colegas
   heatmapData: HeatmapPoint[];
   activeRoute: { latitude: number; longitude: number }[] | null;
   loading: boolean;
@@ -19,6 +27,7 @@ interface MapState {
 
   // Actions
   fetchMapData: () => Promise<void>;
+  fetchStaff: () => Promise<void>; // <--- NOVO: Função para buscar colegas
   connectWebSocket: (role: string) => Promise<void>;
   disconnectWebSocket: () => void;
   requestRoute: (from: string, to: string) => Promise<void>;
@@ -29,6 +38,7 @@ interface MapState {
 export const useMapStore = create<MapState>((set, get) => ({
   nodes: {},
   bins: [],
+  staffMembers: [], // Inicialmente vazio
   heatmapData: [],
   activeRoute: null,
   loading: false,
@@ -49,6 +59,7 @@ export const useMapStore = create<MapState>((set, get) => ({
         mapData.nodes.forEach(n => nodesMap[n.id] = n);
       }
 
+      // Filtra apenas POIs que são lixeiras
       const realBins = poisData
         .filter(p => p.category?.toLowerCase().includes('bin'))
         .map(p => ({ ...p, x: p.x, y: p.y }));
@@ -57,6 +68,15 @@ export const useMapStore = create<MapState>((set, get) => ({
     } catch (e) {
       console.error("❌ Erro ao carregar mapa:", e);
       set({ loading: false });
+    }
+  },
+
+  fetchStaff: async () => {
+    try {
+      const staff = await api.getStaff();
+      set({ staffMembers: staff });
+    } catch (e) {
+      console.warn("⚠️ Erro ao atualizar staff:", e);
     }
   },
 
@@ -72,12 +92,15 @@ export const useMapStore = create<MapState>((set, get) => ({
         Authorization: `Bearer ${token || 'dev-token'}`,
         role: role 
       },
-      debug: (str) => {
-      },
+      debug: (str) => {}, 
+      
       onConnect: () => {
         console.log("✅ WebSocket Conectado!");
         set({ connectionStatus: 'CONNECTED' });
 
+        // --- SUBSCRIÇÕES ---
+
+        // 1. Crowd / Heatmap (Security & Supervisor)
         if (role === 'Security' || role === 'Supervisor') {
           client.subscribe('/topic/crowd', (message) => {
             const payload = JSON.parse(message.body);
@@ -90,6 +113,7 @@ export const useMapStore = create<MapState>((set, get) => ({
               const newPoint = { latitude: node.x, longitude: node.y, weight };
               
               set(state => {
+                // Remove ponto antigo na mesma coordenada para não acumular
                 const filtered = state.heatmapData.filter(p => 
                   p.latitude !== newPoint.latitude || p.longitude !== newPoint.longitude
                 );
@@ -100,10 +124,10 @@ export const useMapStore = create<MapState>((set, get) => ({
           console.log("📡 Subscrito: /topic/crowd");
         }
 
+        // 2. Lixeiras (Cleaning & Supervisor)
         if (role === 'Cleaning' || role === 'Supervisor') {
           client.subscribe('/topic/maintenance', (message) => {
             const payload = JSON.parse(message.body);
-            
             if (payload.fill_pct > 80) {
                console.log(`⚠️ ALERTA: ${payload.bin_id} cheia!`);
             }
@@ -111,9 +135,11 @@ export const useMapStore = create<MapState>((set, get) => ({
           console.log("📡 Subscrito: /topic/maintenance");
         }
         
+        // 3. Emergência (Todos)
         client.subscribe('/topic/emergency', (message) => {
             const payload = JSON.parse(message.body);
             console.log("🚨 EMERGÊNCIA RECEBIDA:", payload);
+            alert(`🚨 EMERGÊNCIA: ${payload.message || 'Evacuar zona!'}`);
         });
       },
       onStompError: (frame) => {

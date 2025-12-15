@@ -17,6 +17,7 @@
     "@stomp/stompjs": "^7.2.1",
     "axios": "^1.13.2",
     "expo": "~54.0.25",
+    "expo-constants": "~18.0.12",
     "expo-secure-store": "^15.0.7",
     "expo-status-bar": "~3.0.8",
     "i18next": "^25.7.2",

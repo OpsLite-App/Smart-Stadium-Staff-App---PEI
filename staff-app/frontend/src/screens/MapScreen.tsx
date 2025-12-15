@@ -27,28 +27,44 @@ export default function MapScreen() {
   const { user } = useAuthStore();
   
   const { 
+    nodes,              
     heatmapData,        
-    bins,               
+    bins, 
+    staffMembers,       
     activeRoute, 
-    fetchMapData, 
+    fetchMapData,
+    fetchStaff,        
     connectWebSocket,    
     disconnectWebSocket, 
     clearRoute 
   } = useMapStore();
 
+  // EFEITO 1: Inicialização e WebSocket
   useEffect(() => {
+    // Carregar Mapa Estático (Geometria)
     fetchMapData();
+    
+    // Carregar Posições dos Colegas (Imediatamente)
+    fetchStaff();
 
+    // Polling: Atualizar colegas a cada 5 segundos (enquanto o WS não trata disto)
+    const staffInterval = setInterval(() => {
+      console.log("🔄 A atualizar posições da equipa...");
+      fetchStaff();
+    }, 5000);
+
+    // 4. Ligar WebSocket
     if (user?.role) {
       console.log(`🔌 A conectar WebSocket como ${user.role}...`);
       connectWebSocket(user.role);
     }
 
     return () => {
-      console.log("🔌 A desligar WebSocket...");
+      console.log("🔌 A desligar...");
       disconnectWebSocket();
+      clearInterval(staffInterval); // Limpar intervalo ao sair
     };
-  }, [user]); // Re-executa se o utilizador mudar (ex: logout/login)
+  }, [user]); 
 
   // EFEITO 2: Focar na Rota quando ela é calculada
   useEffect(() => {
@@ -63,6 +79,8 @@ export default function MapScreen() {
   // Permissões de Visualização
   const canViewHeatmap = user?.role === 'Security' || user?.role === 'Supervisor';
   const canViewBins = user?.role === 'Cleaning' || user?.role === 'Supervisor';
+  // Security vê todos, Cleaning vê Security (por segurança), Supervisor vê tudo
+  const canViewStaff = true; 
 
   const getOverlayText = () => {
     if (!user) return `Operacional • Live`;
@@ -79,7 +97,6 @@ export default function MapScreen() {
   };
 
   const setMapLimits = () => {
-    // Limites aproximados do Estádio do Dragão 
     const northEast = { latitude: 41.1647, longitude: -8.5809 };
     const southWest = { latitude: 41.1587, longitude: -8.5869 };
     mapRef.current?.setMapBoundaries(northEast, southWest);
@@ -105,7 +122,7 @@ export default function MapScreen() {
             color={showHeatmap ? "white" : theme.colors.text} 
           />
           <Text style={[styles.buttonLabel, showHeatmap && { color: 'white' }]}>
-            {showHeatmap ? "HEAT ON" : "Heatmap"}
+            Heatmap
           </Text>
         </TouchableOpacity>
       );
@@ -144,7 +161,7 @@ export default function MapScreen() {
         minZoomLevel={16}
         maxZoomLevel={20}
       >
-        {/* Camada Heatmap (Dados em Tempo Real do WebSocket) */}
+        {/* 1. Camada Heatmap */}
         {canViewHeatmap && showHeatmap && heatmapData.length > 0 && (
           <Heatmap
             points={heatmapData}
@@ -158,7 +175,7 @@ export default function MapScreen() {
           />
         )}
 
-        {/* Camada Lixeiras (Estática ou atualizada via WS maintenance) */}
+        {/* 2. Camada Lixeiras */}
         {canViewBins && showBins && bins.map((bin) => (
           <Marker
             key={bin.id}
@@ -172,7 +189,40 @@ export default function MapScreen() {
           </Marker>
         ))}
 
-        {/* Rota Ativa (Calculada pelo A*) */}
+        {/* 3. Camada STAFF  */}
+        {canViewStaff && staffMembers.map((member) => {
+          const node = nodes[member.location];
+          
+          if (!node) return null;
+
+          if (member.id === user?.id) return null;
+
+          // Cor: Azul (Security) vs Laranja (Cleaning/Outros)
+          const isSecurity = member.role === 'Security';
+          const color = isSecurity ? '#3B82F6' : '#F59E0B';
+          const icon = isSecurity ? 'shield-account' : 'broom';
+
+          return (
+            <Marker
+              key={`staff-${member.id}`}
+              coordinate={{ latitude: node.x, longitude: node.y }}
+              title={member.name}
+              description={`${member.role} • ${member.location}`}
+              anchor={{ x: 0.5, y: 0.5 }} // Centrar
+              zIndex={10} // Ficar por cima de tudo
+            >
+              <View style={[styles.staffMarker, { backgroundColor: color, borderColor: color }]}>
+                 <View style={styles.staffIconInner}>
+                    <MaterialCommunityIcons name={icon} size={14} color="white" />
+                 </View>
+                 {/* Pequena seta em baixo para indicar posição exata */}
+                 <View style={[styles.arrowDown, { borderTopColor: color }]} />
+              </View>
+            </Marker>
+          );
+        })}
+
+        {/* 4. Rota Ativa */}
         {activeRoute && (
           <>
             <Polyline
@@ -202,7 +252,7 @@ export default function MapScreen() {
         {renderControlButtons()}
       </View>
 
-      {/* Ação Específica: Limpeza  */}
+      {/* Ação: Limpeza */}
       {user?.role === 'Cleaning' && (
         <TouchableOpacity 
           style={styles.cleaningActionBtn}
@@ -217,7 +267,7 @@ export default function MapScreen() {
               setShowBins(true);
               Alert.alert("Zonas Prioritárias", "A focar nas lixeiras registadas no sistema.");
             } else {
-              Alert.alert("Info", "Nenhuma lixeira encontrada na base de dados.");
+              Alert.alert("Info", "Nenhuma lixeira encontrada.");
             }
           }}
         >
@@ -226,7 +276,7 @@ export default function MapScreen() {
         </TouchableOpacity>
       )}
 
-      {/* Ação Específica: Segurança (Botão Rápido de Emergência) */}
+      {/* Ação: Segurança */}
       {user?.role === 'Security' && (
         <TouchableOpacity 
           style={styles.emergencyBtn}
@@ -245,7 +295,7 @@ export default function MapScreen() {
         </TouchableOpacity>
       )}
 
-      {/* Botão Flutuante para Limpar Rota */}
+      {/* Botão Limpar Rota */}
       {activeRoute && (
         <TouchableOpacity style={styles.clearRouteBtn} onPress={clearRoute}>
           <MaterialCommunityIcons name="close" size={20} color="white" />
@@ -266,7 +316,7 @@ const styles = StyleSheet.create({
     height: '100%',
   },
   
-  // Overlay de Topo
+  // UI Elements
   topOverlay: {
     position: 'absolute',
     top: 60,
@@ -284,25 +334,10 @@ const styles = StyleSheet.create({
     elevation: 3,
     alignItems: 'center',
   },
-  overlayText: {
-    fontWeight: '700',
-    color: theme.colors.primary,
-    fontSize: 12,
-  },
-  supervisorNote: {
-    fontSize: 9,
-    color: theme.colors.error,
-    fontWeight: '700',
-    marginTop: 2,
-  },
+  overlayText: { fontWeight: '700', color: theme.colors.primary, fontSize: 12 },
+  supervisorNote: { fontSize: 9, color: theme.colors.error, fontWeight: '700', marginTop: 2 },
 
-  // Controlos
-  controlsContainer: {
-    position: 'absolute',
-    top: 110,
-    right: 16,
-    gap: 12,
-  },
+  controlsContainer: { position: 'absolute', top: 110, right: 16, gap: 12 },
   layerButton: {
     backgroundColor: 'white',
     padding: 10,
@@ -315,81 +350,73 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     minWidth: 60,
   },
-  layerButtonActive: {
-    backgroundColor: theme.colors.primary,
-    borderColor: theme.colors.primary,
-  },
-  buttonLabel: {
-    fontSize: 9,
-    marginTop: 4,
-    fontWeight: '700',
-    color: theme.colors.text,
-  },
+  layerButtonActive: { backgroundColor: theme.colors.primary, borderColor: theme.colors.primary },
+  buttonLabel: { fontSize: 9, marginTop: 4, fontWeight: '700', color: theme.colors.text },
 
-  // Botões de Ação
+  // Botões Flutuantes Inferiores
   cleaningActionBtn: {
-    position: 'absolute',
-    bottom: 110,
-    left: 16,
-    backgroundColor: '#10B981',
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderRadius: 30,
-    elevation: 6,
-    gap: 8,
+    position: 'absolute', bottom: 110, left: 16,
+    backgroundColor: '#10B981', flexDirection: 'row', alignItems: 'center',
+    paddingHorizontal: 16, paddingVertical: 12, borderRadius: 30, elevation: 6, gap: 8,
   },
   cleaningActionText: { color: 'white', fontWeight: 'bold', fontSize: 12 },
 
   emergencyBtn: {
-    position: 'absolute',
-    bottom: 110,
-    right: 16,
-    backgroundColor: theme.colors.error,
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    justifyContent: 'center',
-    alignItems: 'center',
-    elevation: 6,
-    shadowColor: theme.colors.error,
-    shadowOpacity: 0.4,
+    position: 'absolute', bottom: 110, right: 16,
+    backgroundColor: theme.colors.error, width: 56, height: 56, borderRadius: 28,
+    justifyContent: 'center', alignItems: 'center', elevation: 6,
   },
 
   clearRouteBtn: {
-    position: 'absolute',
-    bottom: 40,
-    alignSelf: 'center',
-    backgroundColor: theme.colors.primary,
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingVertical: 12,
-    borderRadius: 25,
-    elevation: 6,
-    gap: 8,
+    position: 'absolute', bottom: 40, alignSelf: 'center',
+    backgroundColor: theme.colors.primary, flexDirection: 'row', alignItems: 'center',
+    paddingHorizontal: 20, paddingVertical: 12, borderRadius: 25, elevation: 6, gap: 8,
   },
   clearRouteText: { color: 'white', fontWeight: 'bold' },
 
-  // Marcadores Personalizados
+  // Marcadores
   binMarker: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
+    width: 30, height: 30, borderRadius: 15,
+    justifyContent: 'center', alignItems: 'center',
+    borderWidth: 2, borderColor: 'white',
+    shadowColor: '#000', shadowOpacity: 0.3, elevation: 4,
+  },
+  destMarker: {
+    backgroundColor: theme.colors.error, padding: 8, borderRadius: 20,
+    borderWidth: 2, borderColor: 'white',
+  },
+
+  // ESTILO DOS COLEGAS (STAFF)
+  staffMarker: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: 40,
+    height: 40,
+  },
+  staffIconInner: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 2,
     borderColor: 'white',
-    shadowColor: '#000',
-    shadowOpacity: 0.3,
-    elevation: 4,
+    backgroundColor: 'inherit', 
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    elevation: 3
   },
-  destMarker: {
-    backgroundColor: theme.colors.error,
-    padding: 8,
-    borderRadius: 20,
-    borderWidth: 2,
-    borderColor: 'white',
-  },
+  arrowDown: {
+    width: 0,
+    height: 0,
+    backgroundColor: 'transparent',
+    borderStyle: 'solid',
+    borderLeftWidth: 5,
+    borderRightWidth: 5,
+    borderTopWidth: 6, 
+    borderLeftColor: 'transparent',
+    borderRightColor: 'transparent',
+    marginTop: -2, 
+  }
 });
