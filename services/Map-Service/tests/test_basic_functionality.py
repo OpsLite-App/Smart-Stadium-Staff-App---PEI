@@ -1,5 +1,5 @@
 """
-Simple functionality tests without external dependencies.
+Functionality tests without external dependencies.
 """
 import importlib.util
 import os
@@ -15,13 +15,13 @@ def test_serialization_functions():
             content = f.read()
             # Look for serialize functions
             if 'def serialize_node' in content:
-                print("✓ serialize_node() function found")
+                print("serialize_node() function found")
             if 'def serialize_edge' in content:
-                print("✓ serialize_edge() function found")
+                print("serialize_edge() function found")
             if 'def serialize_closure' in content:
-                print("✓ serialize_closure() function found")
+                print("serialize_closure() function found")
     
-    print("✓ Serialization functions structure test passed")
+    print("Serialization functions structure test passed")
 
 def test_api_endpoints():
     """Check API endpoint definitions."""
@@ -44,7 +44,7 @@ def test_api_endpoints():
                 else:
                     print(f"{description} not found (check pattern: {pattern})")
     
-    print("✓ API endpoints structure test passed")
+    print("API endpoints structure test passed")
 
 def test_model_classes():
     """Check model class definitions."""
@@ -56,9 +56,9 @@ def test_model_classes():
             model_classes = ['Node', 'Edge', 'Closure', 'POI', 'Seat', 'Gate']
             for model in model_classes:
                 if f'class {model}(' in content:
-                    print(f"✓ {model} model class found")
+                    print(f"{model} model class found")
                 else:
-                    print(f"⚠️  {model} model class not found")
+                    print(f"{model} model class not found")
     
     print("✓ Model classes structure test passed")
 

@@ -25,11 +25,6 @@ class MqttBridgeServiceTest {
         String topic = "stadium/test";
         String payload = "test message";
 
-        // Act - This should not throw an exception
         mqttBridgeService.publish(topic, payload);
-
-        // Assert - No exception thrown is the expected behavior
-        // Since we can't easily mock the MqttClient without refactoring,
-        // we just verify the method doesn't throw
     }
 }

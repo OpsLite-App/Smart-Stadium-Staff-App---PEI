@@ -23,7 +23,6 @@ def reset_global_state():
     crowd_data.clear()
     historical_data.clear()
     
-    # Add some test data
     test_data = {
         "SECTOR_A": {
             "area_id": "SECTOR_A",

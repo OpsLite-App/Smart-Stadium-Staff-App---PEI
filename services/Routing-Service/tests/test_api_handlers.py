@@ -39,14 +39,14 @@ def test_route_handler_basic():
     request = RouteRequest(from_node="N1", to_node="N4", avoid_crowds=False)
     response = handler.get_route(request)
     
-    print(f"✅ Route calculated: {response.path}")
-    print(f"✅ Distance: {response.distance}m")
-    print(f"✅ ETA: {response.eta_seconds}s")
+    print(f"Route calculated: {response.path}")
+    print(f"Distance: {response.distance}m")
+    print(f"ETA: {response.eta_seconds}s")
     
     assert response.path == ["N1", "N2", "N3", "N4"]
     assert response.distance == 30.0  # 10 + 10 + 10
     
-    print("✅ Basic route handler test passed")
+    print("Basic route handler test passed")
 
 def test_route_with_closure():
     """Test route calculation with closure"""
@@ -62,14 +62,14 @@ def test_route_with_closure():
     request = RouteRequest(from_node="N1", to_node="N4", avoid_crowds=False)
     response = handler.get_route(request)
     
-    print(f"✅ Route with closure: {response.path}")
-    print(f"✅ Distance with detour: {response.distance}m")
+    print(f"Route with closure: {response.path}")
+    print(f"Distance with detour: {response.distance}m")
     
     # Should take longer route N1 -> N2 -> N4
     assert response.path == ["N1", "N2", "N4"]
     assert response.distance == 35.0  # 10 + 25
     
-    print("✅ Route with closure test passed")
+    print("Route with closure test passed")
 
 def test_hazard_handler():
     """Test hazard management"""
@@ -86,25 +86,25 @@ def test_hazard_handler():
     )
     result = handler.update_hazard(update)
     
-    print(f"✅ Hazard added: {result}")
+    print(f"Hazard added: {result}")
     assert result["node_id"] == "N5"
     assert result["hazard_type"] == "smoke"
     assert result["severity"] == 0.8
     
     # Test crowd penalty
     result = handler.update_crowd_penalty("N6", 75.0)
-    print(f"✅ Crowd penalty: {result}")
+    print(f"Crowd penalty: {result}")
     
     # Test closure
     result = handler.add_closure("N1", "N2")
-    print(f"✅ Closure added: {result}")
+    print(f"Closure added: {result}")
     assert hazard_map.is_closed("N1", "N2")
     
     # Test status
     status = handler.get_hazard_status()
-    print(f"✅ Hazard status: {status}")
+    print(f"Hazard status: {status}")
     
-    print("✅ Hazard handler tests passed")
+    print("Hazard handler tests passed")
 
 if __name__ == "__main__":
     print("Running API handler tests...")
@@ -119,4 +119,4 @@ if __name__ == "__main__":
     test_hazard_handler()
     print("=" * 50)
     
-    print("✅ All API handler tests completed successfully!")
+    print("All API handler tests completed successfully!")

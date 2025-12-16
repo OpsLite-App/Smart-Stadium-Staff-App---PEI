@@ -21,8 +21,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 @SpringBootTest
 @AutoConfigureMockMvc
-@ActiveProfiles("test")  // Use test profile
-@Transactional  // Rollback database changes after each test
+@ActiveProfiles("test")  
+@Transactional  
 public class AuthServiceIntegrationTest {
 
     @Autowired

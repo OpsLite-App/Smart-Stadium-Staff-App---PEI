@@ -1,5 +1,5 @@
 """
-Test fixtures - FIXED VERSION
+Test fixtures
 """
 
 import pytest
@@ -18,7 +18,6 @@ from database import Base, get_db
 from staff_coordinator import get_staff_coordinator
 
 
-# ========== IN-MEMORY TEST DATABASE ==========
 
 # Use SQLite with StaticPool to avoid threading issues
 TEST_DATABASE_URL = "sqlite:///:memory:"

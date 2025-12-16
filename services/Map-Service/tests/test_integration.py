@@ -19,15 +19,15 @@ def test_database_config():
     
     # Check relationships
     if 'Config' in config_content and 'SQLALCHEMY_DATABASE_URI' in config_content:
-        print("✓ Config class with database URI found")
+        print("Config class with database URI found")
     
     if 'create_engine' in database_content and 'SessionLocal' in database_content:
-        print("✓ Database engine and session setup found")
+        print("Database engine and session setup found")
     
     if 'Config.SQLALCHEMY_DATABASE_URI' in database_content:
-        print("✓ Database module imports Config")
+        print("Database module imports Config")
     
-    print("✓ Database configuration test passed")
+    print("Database configuration test passed")
 
 def test_model_relationships():
     """Test that models have proper relationships."""
@@ -37,19 +37,19 @@ def test_model_relationships():
             
             # Check for SQLAlchemy imports
             if 'from sqlalchemy' in content or 'import sqlalchemy' in content:
-                print("✓ SQLAlchemy imports found")
+                print("SQLAlchemy imports found")
             
             # Check for Pydantic imports
             if 'from pydantic' in content or 'import pydantic' in content:
-                print("✓ Pydantic imports found")
+                print("Pydantic imports found")
             
             # Check for relationships in Node model
             if 'edges_from = relationship' in content:
-                print("✓ Node model has edges_from relationship")
+                print("Node model has edges_from relationship")
             if 'edges_to = relationship' in content:
-                print("✓ Node model has edges_to relationship")
+                print("Node model has edges_to relationship")
     
-    print("✓ Model relationships test passed")
+    print("Model relationships test passed")
 
 def test_api_handler_structure():
     """Test API handler structure."""
@@ -59,23 +59,23 @@ def test_api_handler_structure():
             
             # Check for FastAPI app
             if 'FastAPI(' in content:
-                print("✓ FastAPI app instantiation found")
+                print("FastAPI app instantiation found")
             
             # Check for route decorators
             if '@app.get' in content:
-                print("✓ GET routes defined")
+                print("GET routes defined")
             if '@app.post' in content:
-                print("✓ POST routes defined")
+                print("POST routes defined")
             if '@app.put' in content:
-                print("✓ PUT routes defined")
+                print("PUT routes defined")
             if '@app.delete' in content:
-                print("✓ DELETE routes defined")
+                print("DELETE routes defined")
             
             # Check for database dependency
             if 'Depends(get_db)' in content:
-                print("✓ Database dependency injection found")
+                print("Database dependency injection found")
     
-    print("✓ API handler structure test passed")
+    print("API handler structure test passed")
 
 if __name__ == "__main__":
     test_database_config()

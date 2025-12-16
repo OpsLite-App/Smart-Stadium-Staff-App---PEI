@@ -48,14 +48,14 @@ def test_code_patterns():
                 all_issues.extend([(file, i[0], i[2]) for i in issues])
     
     if not all_issues:
-        print("✓ Code patterns test passed (no issues found)")
+        print("Code patterns test passed (no issues found)")
     else:
-        print(f"\n⚠️  Found {len(all_issues)} code quality issues (warnings only)")
+        print(f"\nFound {len(all_issues)} code quality issues (warnings only)")
 
 def test_import_order():
     """Check import order convention."""
     # This is a simple check - more sophisticated check would parse AST
-    print("✓ Import order test skipped (basic test suite)")
+    print("Import order test skipped (basic test suite)")
 
 def test_docstrings():
     """Check for docstrings in key functions."""
@@ -73,11 +73,11 @@ def test_docstrings():
                         # Look for docstring after function definition
                         pattern = r'def\s+' + func + r'.*?:\s*\n\s*""".*?"""'
                         if re.search(pattern, content, re.DOTALL):
-                            print(f"✓ {func}() in {file} has docstring")
+                            print(f"{func}() in {file} has docstring")
                         else:
-                            print(f"⚠️  {func}() in {file} might be missing docstring")
+                            print(f"{func}() in {file} might be missing docstring")
     
-    print("✓ Docstring test completed")
+    print("Docstring test completed")
 
 if __name__ == "__main__":
     test_code_patterns()

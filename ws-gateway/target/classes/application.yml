@@ -1,8 +1,0 @@
-server:
-  port: 8089
-
-mqtt:
-  broker: ${MQTT_BROKER}
-
-auth:
-  serviceUrl: http://localhost:8081

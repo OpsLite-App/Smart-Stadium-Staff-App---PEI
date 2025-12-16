@@ -1,6 +1,5 @@
 """
 Test project structure and basic imports.
-These tests don't require any external dependencies.
 """
 import os
 import sys
@@ -20,14 +19,14 @@ def test_project_structure():
     for file in required_files:
         assert os.path.exists(file), f"Missing required file: {file}"
     
-    print("✓ Project structure test passed")
+    print("Project structure test passed")
 
 def test_python_version():
     """Test Python version."""
     version = sys.version_info
     assert version.major == 3, "Python 3 is required"
     assert version.minor >= 8, "Python 3.8 or higher is required"
-    print(f"✓ Python version test passed (using Python {version.major}.{version.minor}.{version.micro})")
+    print(f"Python version test passed (using Python {version.major}.{version.minor}.{version.micro})")
 
 def test_imports():
     """Test that basic Python imports work."""
@@ -40,17 +39,17 @@ def test_imports():
     try:
         # These might fail if external deps aren't installed, that's OK
         import config
-        print("✓ config.py import successful")
+        print("config.py import successful")
     except ImportError as e:
-        print(f"⚠️  config.py import failed (expected if deps not installed): {e}")
+        print(f"config.py import failed (expected if deps not installed): {e}")
     
     try:
         import models
-        print("✓ models.py import successful")
+        print("models.py import successful")
     except ImportError as e:
-        print(f"⚠️  models.py import failed (expected if deps not installed): {e}")
+        print(f"models.py import failed (expected if deps not installed): {e}")
     
-    print("✓ Basic imports test passed")
+    print("Basic imports test passed")
 
 def test_requirements_file():
     """Test that requirements.txt exists and has content."""
@@ -62,7 +61,7 @@ def test_requirements_file():
         assert 'fastapi' in content, "fastapi not in requirements.txt"
         assert 'sqlalchemy' in content, "sqlalchemy not in requirements.txt"
     
-    print("✓ Requirements file test passed")
+    print("Requirements file test passed")
 
 def test_docker_compose():
     """Test that docker-compose.yml exists and has basic structure."""
@@ -73,7 +72,7 @@ def test_docker_compose():
         assert 'postgres:' in content, "Postgres service not defined in docker-compose.yml"
         assert '5435:5432' in content, "Port mapping not found in docker-compose.yml"
     
-    print("✓ Docker compose test passed")
+    print("Docker compose test passed")
 
 if __name__ == "__main__":
     test_project_structure()

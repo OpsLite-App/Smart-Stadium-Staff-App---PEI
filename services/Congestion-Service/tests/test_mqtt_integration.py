@@ -34,9 +34,8 @@ def test_mqtt_message_processing():
     mock_msg.payload.decode.return_value = json_str
     
     # Mock the json import inside the function by patching builtins
-    # We need to ensure the json module inside the function works
     with patch('congestion_service.MQTT_AVAILABLE', True):
-        # Process message - this will use the real json module inside
+        # Process message 
         on_mqtt_message(None, None, mock_msg)
     
     # Verify data was added
@@ -146,7 +145,7 @@ def test_cleanup_stale_data():
         "last_update": datetime.now().isoformat()
     }
     
-    # Add stale data (5+ minutes old)
+    # Add stale data 
     stale_time = (datetime.now() - timedelta(minutes=6)).isoformat()
     stale_data = {
         "area_id": "STALE",
@@ -156,11 +155,10 @@ def test_cleanup_stale_data():
     crowd_data["FRESH"] = fresh_data
     crowd_data["STALE"] = stale_data
     
-    # Import and run cleanup logic (simplified)
+    # Import and run cleanup logic 
     from congestion_service import cleanup_stale_data
     import asyncio
     
-    # Note: We're not actually running the async function, just testing the logic
     now = datetime.now()
     stale_threshold = timedelta(minutes=5)
     

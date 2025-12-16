@@ -1,5 +1,5 @@
 """
-Simple tests for StaffCoordinator only (no database)
+Tests for StaffCoordinator
 """
 
 import pytest

@@ -1,6 +1,5 @@
 """
 Staff API Endpoint Tests
-Tests for staff registration, location updates, availability, and listing
 """
 
 import pytest

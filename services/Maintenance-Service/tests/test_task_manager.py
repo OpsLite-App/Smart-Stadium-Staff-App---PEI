@@ -1,5 +1,5 @@
 """
-Simple tests for TaskManager without complex dependencies
+Tests for TaskManager
 """
 
 import pytest

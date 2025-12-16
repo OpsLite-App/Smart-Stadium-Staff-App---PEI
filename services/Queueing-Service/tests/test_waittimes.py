@@ -1,5 +1,5 @@
 """
-Tests for Wait Times Service (mocking external dependencies)
+Tests for Wait Times Service
 """
 import pytest
 from unittest.mock import Mock, patch, AsyncMock

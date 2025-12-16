@@ -7,7 +7,6 @@ class HealthControllerTest {
     
     @Test
     void healthControllerExists() {
-        // Simple test that doesn't require Spring context
         HealthController controller = new HealthController();
         assertNotNull(controller);
     }

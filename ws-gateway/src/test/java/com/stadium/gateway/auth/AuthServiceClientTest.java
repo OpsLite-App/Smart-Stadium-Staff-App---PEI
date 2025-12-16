@@ -13,7 +13,5 @@ class AuthServiceClientTest {
         // Test null token returns null
         assertNull(client.validateToken(null));
         
-        // The actual HTTP call would require mocking, but at least
-        // we've tested the constructor and null handling
     }
 }

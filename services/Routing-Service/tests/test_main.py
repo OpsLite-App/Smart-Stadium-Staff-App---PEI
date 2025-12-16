@@ -16,12 +16,12 @@ def test_root_endpoint(client):
     response = client.get("/")
     data = response.json()
     
-    print(f"✅ Root response: {data}")
+    print(f"Root response: {data}")
     assert response.status_code == 200
     assert "service" in data
     assert "status" in data
     
-    print("✅ Root endpoint test passed")
+    print("Root endpoint test passed")
 
 
 def test_health_endpoint(client):
@@ -31,10 +31,10 @@ def test_health_endpoint(client):
     response = client.get("/health")
     data = response.json()
     
-    print(f"✅ Health response: {data}")
+    print(f"Health response: {data}")
     assert response.status_code == 200
     
-    print("✅ Health endpoint test passed")
+    print("Health endpoint test passed")
 
 
 def test_reload_endpoint(client):
@@ -44,12 +44,12 @@ def test_reload_endpoint(client):
     response = client.post("/api/reload")
     data = response.json()
     
-    print(f"✅ Reload response: {data}")
+    print(f"Reload response: {data}")
     assert response.status_code == 200
     assert "status" in data
     assert data["status"] == "success"
     
-    print("✅ Reload endpoint test passed")
+    print("Reload endpoint test passed")
 
 
 def test_route_endpoint(client):
@@ -61,16 +61,16 @@ def test_route_endpoint(client):
         "to_node": "N10"
     })
     
-    print(f"✅ Route endpoint status: {response.status_code}")
+    print(f"Route endpoint status: {response.status_code}")
     data = response.json()
     
-    print(f"✅ Route response: {data}")
+    print(f"Route response: {data}")
     assert "path" in data
     assert "distance" in data
     assert "eta_seconds" in data
     assert response.status_code == 200
     
-    print("✅ Route endpoint test completed")
+    print("Route endpoint test completed")
 
 
 def test_hazard_endpoints(client):
@@ -85,7 +85,7 @@ def test_hazard_endpoints(client):
     
     assert response.status_code == 200
     data = response.json()
-    print(f"✅ Add closure response: {data}")
+    print(f"Add closure response: {data}")
     assert "message" in data
     assert data["message"] == "Closure added"
     
@@ -98,19 +98,19 @@ def test_hazard_endpoints(client):
     
     assert response.status_code == 200
     data = response.json()
-    print(f"✅ Update hazard response: {data}")
+    print(f"Update hazard response: {data}")
     
     # Test hazard status
     response = client.get("/api/hazards/status")
     
     assert response.status_code == 200
     data = response.json()
-    print(f"✅ Hazard status: {data}")
+    print(f"Hazard status: {data}")
     assert "closures" in data
     assert "node_hazards" in data
     assert "edge_hazards" in data
     
-    print("✅ Hazard endpoint tests completed")
+    print("Hazard endpoint tests completed")
 
 
 def test_evacuation_endpoint(client):
@@ -121,10 +121,10 @@ def test_evacuation_endpoint(client):
         "from_node": "N15"
     })
     
-    print(f"✅ Evacuation endpoint status: {response.status_code}")
+    print(f"Evacuation endpoint status: {response.status_code}")
     
     assert response.status_code == 200
     data = response.json()
-    print(f"✅ Evacuation response: {data}")
+    print(f"Evacuation response: {data}")
     
-    print("✅ Evacuation endpoint test completed")
+    print("Evacuation endpoint test completed")

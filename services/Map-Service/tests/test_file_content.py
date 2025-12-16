@@ -20,12 +20,12 @@ def test_python_syntax():
             with open(file, 'r') as f:
                 try:
                     ast.parse(f.read(), filename=file)
-                    print(f"✓ {file} has valid Python syntax")
+                    print(f"{file} has valid Python syntax")
                 except SyntaxError as e:
-                    print(f"✗ {file} has syntax error: {e}")
+                    print(f"{file} has syntax error: {e}")
                     raise
         else:
-            print(f"⚠️  {file} not found, skipping syntax check")
+            print(f"{file} not found, skipping syntax check")
 
 def test_env_file():
     """Test .env.example if it exists."""
@@ -37,12 +37,12 @@ def test_env_file():
             content = f.read()
             assert 'DATABASE_URI' in content or 'postgresql' in content, \
                    ".env.example should contain DATABASE_URI"
-        print("✓ .env.example test passed")
+        print(".env.example test passed")
     
     if os.path.exists(env_file):
-        print("✓ .env file exists")
+        print(".env file exists")
     else:
-        print("⚠️  .env file not found (run 'cp .env.example .env' to create)")
+        print(".env file not found (run 'cp .env.example .env' to create)")
 
 def test_readme():
     """Test README.md exists and has content."""
@@ -54,7 +54,7 @@ def test_readme():
         assert 'Map-Service' in content, "README should mention Map-Service"
         assert 'docker-compose' in content, "README should mention docker-compose"
     
-    print("✓ README test passed")
+    print("README test passed")
 
 def test_wait_script():
     """Test wait-for-postgres.sh exists and is executable."""
@@ -66,11 +66,11 @@ def test_wait_script():
         
         # Check if executable (not required but good practice)
         if os.access('wait-for-postgres.sh', os.X_OK):
-            print("✓ wait-for-postgres.sh is executable")
+            print("wait-for-postgres.sh is executable")
         else:
-            print("⚠️  wait-for-postgres.sh is not executable (run 'chmod +x wait-for-postgres.sh')")
+            print("wait-for-postgres.sh is not executable (run 'chmod +x wait-for-postgres.sh')")
     else:
-        print("⚠️  wait-for-postgres.sh not found")
+        print("wait-for-postgres.sh not found")
 
 if __name__ == "__main__":
     test_python_syntax()

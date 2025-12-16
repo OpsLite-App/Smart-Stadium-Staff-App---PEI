@@ -77,18 +77,14 @@ def test_cors_configuration():
     # We need to check the actual structure by examining the middleware
     
     # The middleware object has a 'options' attribute or it's stored in kwargs
-    # Let's check what attributes are available
     config = {}
     
     # Try different ways to access the configuration based on Starlette version
     if hasattr(cors_middleware, 'options'):
         config = cors_middleware.options
     elif hasattr(cors_middleware, '__dict__'):
-        # Sometimes options are stored in the instance dict
         config = cors_middleware.__dict__.get('options', {})
     
-    # If we couldn't get config directly, let's check if it's a tuple
-    # (this was the structure in older versions)
     if not config and hasattr(cors_middleware, '__getitem__'):
         try:
             # Might be (cls, options) tuple
@@ -97,8 +93,6 @@ def test_cors_configuration():
             pass
     
     # Verify the configuration
-    # The actual values might be stored differently, so let's just check
-    # that the middleware is present and configured
     assert cors_middleware is not None
     
     # Alternative: Test CORS functionality directly with a request
