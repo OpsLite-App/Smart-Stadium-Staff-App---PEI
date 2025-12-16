@@ -1,24 +1,38 @@
 """
-ROUTING SERVICE - Main Application
-Only responsible for calculating routes, no emergency management
+ROUTING SERVICE - VERSÃO FINAL OTIMIZADA
+Calcula rotas (A*) e atualiza penalizações de perigo em tempo real via MQTT.
 """
 
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
-from typing import Optional, List
+from typing import Optional, List, Dict
 import httpx
 import asyncio
 import os
+import json
+import logging
+import threading
+import time
 
-from astar import Graph, HazardMap, hazard_aware_astar, find_nearest_node, multi_destination_route
-from api_handlers import RouteAPIHandler, HazardAPIHandler
+# Imports locais (certifica-te que tens astar.py e api_handlers.py na mesma pasta)
+from astar import Graph, HazardMap, HazardType
+from api_handlers import RouteAPIHandler, HazardAPIHandler, RouteRequest, NearestRequest
 
-# ========== FASTAPI APP ==========
+# Configuração de Logs
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("RoutingService")
+
+try:
+    import paho.mqtt.client as mqtt
+    MQTT_AVAILABLE = True
+except ImportError:
+    MQTT_AVAILABLE = False
+    logger.warning("⚠️ Biblioteca paho-mqtt não encontrada")
 
 app = FastAPI(
     title="Stadium Routing Service",
     description="Hazard-aware pathfinding with A* algorithm",
-    version="2.0.0"
+    version="2.1.0"
 )
 
 app.add_middleware(
@@ -31,328 +45,174 @@ app.add_middleware(
 
 # ========== CONFIGURATION ==========
 
-MAP_SERVICE_URL = os.getenv("MAP_SERVICE_URL", "http://localhost:8000")
+MAP_SERVICE_URL = os.getenv("MAP_SERVICE_URL", "http://map-service:8000")
+MQTT_BROKER = os.getenv("MQTT_HOST", "mosquitto")
+MQTT_PORT = int(os.getenv("MQTT_PORT", "1883"))
 
+# Tópicos que afetam a navegação
+MQTT_TOPICS = [
+    "stadium/crowd/density-updates", # Updates de congestão
+    "stadium/hazards/#",             # Novos perigos (fumo, fogo)
+    "stadium/emergency/#"            # Emergências globais
+]
 
 # ========== GLOBAL STATE ==========
 
 GRAPH: Optional[Graph] = None
 HAZARD_MAP: Optional[HazardMap] = None
-
-# API Handlers (only routing and hazards)
 route_handler: Optional[RouteAPIHandler] = None
 hazard_handler: Optional[HazardAPIHandler] = None
 
+# ========== MQTT LOGIC ==========
 
-# ========== STARTUP ==========
+def on_mqtt_message(client, userdata, msg):
+    """
+    Recebe updates em tempo real e atualiza o HAZARD_MAP.
+    Isto permite que o próximo pedido de rota 'avoid_crowds' desvie da zona.
+    """
+    global HAZARD_MAP
+    
+    if not HAZARD_MAP:
+        return
 
-@app.on_event("startup")
-async def startup():
-    """Initialize routing service"""
-    global HAZARD_MAP, route_handler, hazard_handler
-    
-    print("\n" + "="*60)
-    print("🚀 ROUTING SERVICE v2.0 - STARTING")
-    print("="*60)
-    
-    # Initialize hazard map
-    HAZARD_MAP = HazardMap()
-    print("✅ Hazard map initialized")
-    
-    # Load graph from Map Service
-    success = await load_graph_from_map_service()
-    
-    if success and GRAPH:
-        # Initialize API handlers (ONLY route and hazard)
-        route_handler = RouteAPIHandler(GRAPH, HAZARD_MAP)
-        hazard_handler = HazardAPIHandler(HAZARD_MAP)
-        print("✅ API handlers initialized")
+    try:
+        topic = msg.topic
+        payload = json.loads(msg.payload.decode())
         
-        print("\n" + "="*60)
-        print("✅ ROUTING SERVICE READY")
-        print(f"   - Nodes: {len(GRAPH.nodes)}")
-        print(f"   - Edges: {sum(len(v) for v in GRAPH.adjacency.values())}")
-        print(f"   - Map Service: {MAP_SERVICE_URL}")
-        print("="*60 + "\n")
-    else:
-        print("\n⚠️  WARNING: Could not load graph from Map Service")
-        print(f"   Make sure Map Service is running at {MAP_SERVICE_URL}")
-        print("   Service will retry on first request\n")
+        # 1. Atualização de Multidão (Vinda do Congestion Service)
+        if "crowd" in topic or payload.get("event_type") == "crowd_density":
+            node_id = payload.get("area_id")
+            occupancy = payload.get("occupancy_rate", 0)
+            
+            if node_id:
+                # Atualiza a penalidade no mapa de navegação (ex: +20m de custo)
+                HAZARD_MAP.set_crowd_penalty(node_id, float(occupancy))
+                # logger.debug(f"Penalidade de multidão atualizada para {node_id}: {occupancy}%")
 
+        # 2. Atualização de Perigos (Fogo, Fumo, etc)
+        elif "hazards" in topic:
+            node_id = payload.get("node_id")
+            hazard_str = payload.get("hazard_type", "").upper()
+            severity = float(payload.get("severity", 1.0))
+            
+            if node_id and hasattr(HazardType, hazard_str):
+                hazard_type = HazardType[hazard_str]
+                HAZARD_MAP.set_node_hazard(node_id, hazard_type, severity)
+                logger.warning(f"⚠️ PERIGO REGISTADO: {hazard_str} em {node_id}")
+
+    except Exception as e:
+        logger.error(f"Erro processando MQTT: {e}")
+
+def start_mqtt_listener():
+    if not MQTT_AVAILABLE: return
+    
+    def mqtt_thread():
+        client = mqtt.Client()
+        client.on_message = on_mqtt_message
+        
+        while True:
+            try:
+                logger.info(f"📡 Routing Service a ligar ao MQTT: {MQTT_BROKER}...")
+                client.connect(MQTT_BROKER, MQTT_PORT, 60)
+                
+                for topic in MQTT_TOPICS:
+                    client.subscribe(topic)
+                
+                logger.info("✅ Routing Service ligado ao MQTT")
+                client.loop_forever()
+            except Exception as e:
+                logger.warning(f"⚠️ Falha MQTT Routing ({e}). Retry em 5s...")
+                time.sleep(5)
+
+    thread = threading.Thread(target=mqtt_thread, daemon=True)
+    thread.start()
+
+# ========== INITIALIZATION ==========
 
 async def load_graph_from_map_service():
-    """Fetch graph data from Map Service"""
+    """Carrega a topologia (nós e arestas) do Map Service"""
     global GRAPH
-    
     try:
-        print(f"📥 Fetching graph from {MAP_SERVICE_URL}/api/map ...")
-        
+        logger.info(f"🗺️ A carregar grafo de {MAP_SERVICE_URL}...")
         async with httpx.AsyncClient(timeout=10.0) as client:
             response = await client.get(f"{MAP_SERVICE_URL}/api/map")
             data = response.json()
             
             nodes = data.get('nodes', [])
             edges = data.get('edges', [])
-            closures = data.get('closures', [])
             
-            # Build graph
             GRAPH = Graph(nodes, edges)
-            print(f"✅ Graph loaded: {len(nodes)} nodes, {len(edges)} edges")
-            
-            # Load closures
-            if closures:
-                for closure in closures:
-                    if closure.get('edge_id'):
-                        edge = next((e for e in edges if e['id'] == closure['edge_id']), None)
-                        if edge:
-                            HAZARD_MAP.add_closure(edge['from'], edge['to'])
-                print(f"✅ Loaded {len(closures)} closures")
-            
+            logger.info(f"✅ Grafo carregado com sucesso: {len(nodes)} nós, {len(edges)} arestas")
             return True
-            
     except Exception as e:
-        print(f"❌ Error loading graph: {e}")
+        logger.error(f"❌ Erro fatal ao carregar grafo: {e}")
         return False
 
-
-# ========== HEALTH & STATUS ==========
-
-@app.get("/")
-async def root():
-    """Health check"""
-    return {
-        "service": "Routing Service",
-        "version": "2.0.0",
-        "status": "running" if GRAPH else "no_graph_loaded",
-        "nodes": len(GRAPH.nodes) if GRAPH else 0,
-        "closures": len(HAZARD_MAP.closures) // 2 if HAZARD_MAP else 0,
-        "map_service": MAP_SERVICE_URL
-    }
-
-
-@app.get("/health")
-async def health():
-    """Detailed health check"""
-    if not GRAPH:
-        return {
-            "status": "degraded",
-            "message": "Graph not loaded",
-            "suggestion": "Call POST /api/reload to load graph"
-        }
+@app.on_event("startup")
+async def startup():
+    global HAZARD_MAP, route_handler, hazard_handler
     
-    return {
-        "status": "healthy",
-        "graph": {
-            "nodes": len(GRAPH.nodes),
-            "adjacency_entries": len(GRAPH.adjacency)
-        },
-        "hazards": {
-            "closures": len(HAZARD_MAP.closures) // 2,
-            "node_hazards": len(HAZARD_MAP.node_hazards),
-            "edge_hazards": len(HAZARD_MAP.edge_hazards) // 2
-        }
-    }
-
-
-@app.post("/api/reload")
-async def reload_graph():
-    """Reload graph from Map Service"""
+    logger.info("🚀 ROUTING SERVICE v2.1 - STARTING")
+    
+    # 1. Inicializar mapa de perigos (vazio)
+    HAZARD_MAP = HazardMap()
+    
+    # 2. Iniciar escuta de perigos via MQTT
+    start_mqtt_listener()
+    
+    # 3. Carregar o grafo estático
     success = await load_graph_from_map_service()
     
-    if not success:
-        raise HTTPException(status_code=503, detail="Failed to reload graph from Map Service")
-    
-    # Reinitialize handlers
-    global route_handler, hazard_handler
-    
-    if GRAPH and HAZARD_MAP:
+    if success and GRAPH:
         route_handler = RouteAPIHandler(GRAPH, HAZARD_MAP)
         hazard_handler = HazardAPIHandler(HAZARD_MAP)
-    
+    else:
+        logger.error("⚠️ Serviço iniciado em modo degradado (sem grafo)")
+
+# ========== ENDPOINTS ==========
+
+@app.get("/health")
+def health():
     return {
-        "status": "success",
-        "nodes": len(GRAPH.nodes),
-        "edges": sum(len(v) for v in GRAPH.adjacency.values())
+        "status": "healthy" if GRAPH else "degraded",
+        "nodes_loaded": len(GRAPH.nodes) if GRAPH else 0,
+        "active_hazards": len(HAZARD_MAP.node_hazards) if HAZARD_MAP else 0,
+        "crowd_penalties": len(HAZARD_MAP.crowd_penalties) if HAZARD_MAP else 0
     }
 
-
-# ========== ROUTING ENDPOINTS ==========
-
-@app.get("/api/route")
-async def get_route(
-    from_node: str = Query(..., description="Start node ID"),
-    to_node: str = Query(..., description="End node ID"),
-    avoid_crowds: bool = Query(False, description="Avoid crowded areas")
-):
+@app.post("/api/route")
+async def get_route(request: RouteRequest):
     """
-    Calculate shortest path between two nodes
-    
-    Example: /api/route?from_node=N1&to_node=N10&avoid_crowds=true
+    Calcula rota mais curta (A*).
+    Se request.avoid_crowds=True, considera os perigos recebidos via MQTT.
     """
     if not GRAPH:
+        # Tenta recuperar se falhou no arranque
         await load_graph_from_map_service()
-        if not GRAPH:
-            raise HTTPException(status_code=503, detail="Graph not loaded")
-    
-    from api_handlers import RouteRequest
-    
-    request = RouteRequest(
-        from_node=from_node,
-        to_node=to_node,
-        avoid_crowds=avoid_crowds
-    )
+        if not GRAPH: raise HTTPException(503, "Graph unavailable")
     
     return route_handler.get_route(request)
 
-
-@app.post("/api/route/multi")
-async def multi_destination_route(from_node: str = Query(...), to_nodes: List[str] = Query(...)):
-    """
-    Calculate route visiting multiple destinations
-    
-    Example: POST /api/route/multi?from_node=N1&to_nodes=N5&to_nodes=N10
-    """
-    if not GRAPH:
-        await load_graph_from_map_service()
-    
-    from api_handlers import MultiDestinationRequest
-    
-    request = MultiDestinationRequest(
-        start=from_node,
-        destinations=to_nodes
-    )
-    
-    return route_handler.get_multi_destination_route(request)
-
-
 @app.post("/api/route/nearest")
-async def find_nearest(target: str = Query(...), candidates: List[str] = Query(...)):
-    """
-    Find nearest node from a list of candidates
-    
-    Example: POST /api/route/nearest?target=N42&candidates=N10&candidates=N15
-    """
-    if not GRAPH:
-        await load_graph_from_map_service()
-    
-    from api_handlers import NearestRequest
-    
-    request = NearestRequest(
-        target=target,
-        candidates=candidates
-    )
-    
+async def find_nearest(request: NearestRequest):
+    """Encontra o segurança/staff mais próximo de um incidente"""
+    if not GRAPH: await load_graph_from_map_service()
     return route_handler.find_nearest_node_handler(request)
 
-
 @app.get("/api/route/evacuation")
-async def evacuation_route(from_node: str = Query(..., description="Current position")):
-    """
-    Find safest evacuation route to nearest exit
+async def evacuation_route(from_node: str = Query(...)):
+    """Calcula rota de fuga para a saída segura mais próxima"""
+    if not GRAPH: await load_graph_from_map_service()
     
-    Example: /api/route/evacuation?from_node=N42
-    """
-    if not GRAPH:
-        await load_graph_from_map_service()
+    # Lista de saídas conhecidas (idealmente viria do Map Service)
+    exit_nodes = ['Gate-1', 'Gate-2', 'Gate-3', 'Gate-4', 'Gate-5', 'Saida-Norte']
+    valid_exits = [e for e in exit_nodes if e in GRAPH.nodes]
     
-    # Get gates as exit nodes from Map Service
-    async with httpx.AsyncClient() as client:
-        try:
-            response = await client.get(f"{MAP_SERVICE_URL}/api/gates", timeout=5)
-            gates = response.json()
-            
-            # Find nodes near gates (within 20m)
-            exit_nodes = []
-            for gate in gates:
-                min_dist = float('inf')
-                closest = None
-                for node_id, node in GRAPH.nodes.items():
-                    dist = ((node.x - gate['x'])**2 + (node.y - gate['y'])**2)**0.5
-                    if dist < min_dist and dist < 20.0:
-                        min_dist = dist
-                        closest = node_id
-                if closest and closest not in exit_nodes:
-                    exit_nodes.append(closest)
-            
-            if not exit_nodes:
-                exit_nodes = ['N1', 'N21']
-            
-        except:
-            exit_nodes = ['N1', 'N21', 'N20']
-    
-    return route_handler.get_evacuation_route(from_node, exit_nodes)
+    if not valid_exits:
+        raise HTTPException(500, "No exit nodes defined in graph")
 
-
-# ========== HAZARD MANAGEMENT ==========
-
-@app.post("/api/hazards/closure")
-async def add_closure(from_node: str = Query(...), to_node: str = Query(...)):
-    """
-    Add corridor closure (e.g., during evacuation)
-    
-    Example: POST /api/hazards/closure?from_node=N2&to_node=N3
-    """
-    return hazard_handler.add_closure(from_node, to_node)
-
-
-@app.delete("/api/hazards/closure")
-async def remove_closure(from_node: str = Query(...), to_node: str = Query(...)):
-    """Remove corridor closure"""
-    return hazard_handler.remove_closure(from_node, to_node)
-
-
-@app.post("/api/hazards/update")
-async def update_hazard(node_id: str = Query(...), hazard_type: str = Query(...), severity: float = Query(1.0)):
-    """
-    Update hazard penalty for a node
-    
-    Example: POST /api/hazards/update?node_id=N42&hazard_type=smoke&severity=0.8
-    
-    Hazard types: smoke, crowd, fire, spill, structural
-    """
-    from api_handlers import HazardUpdate
-    
-    update = HazardUpdate(
-        node_id=node_id,
-        hazard_type=hazard_type,
-        severity=severity
-    )
-    
-    return hazard_handler.update_hazard(update)
-
-
-@app.post("/api/hazards/crowd")
-async def update_crowd(
-    node_id: str = Query(...),
-    occupancy_rate: float = Query(..., ge=0, le=100)
-):
-    """
-    Update crowd penalty based on occupancy rate
-    
-    Example: POST /api/hazards/crowd?node_id=N42&occupancy_rate=85
-    """
-    return hazard_handler.update_crowd_penalty(node_id, occupancy_rate)
-
-
-@app.delete("/api/hazards/clear")
-async def clear_hazards(node_id: str = Query(...)):
-    """Clear all hazards from a node"""
-    return hazard_handler.clear_hazards(node_id)
-
-
-@app.get("/api/hazards/status")
-async def hazard_status():
-    """Get summary of current hazards"""
-    return hazard_handler.get_hazard_status()
-
-
-# ========== RUN SERVER ==========
+    return route_handler.get_evacuation_route(from_node, valid_exits)
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(
-        app,
-        host="0.0.0.0",
-        port=8002,
-        log_level="info"
-    )
+    uvicorn.run(app, host="0.0.0.0", port=8002)

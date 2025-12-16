@@ -30,4 +30,5 @@ COPY wait-for-mqtt.py /wait-for-mqtt.py
 RUN chmod +x /wait-for-mqtt.py
 
 EXPOSE 8089
-ENTRYPOINT ["java","-jar","/app/app.jar"]
+
+ENTRYPOINT ["/bin/sh", "-c", "python3 /wait-for-mqtt.py && java -jar /app/app.jar"]

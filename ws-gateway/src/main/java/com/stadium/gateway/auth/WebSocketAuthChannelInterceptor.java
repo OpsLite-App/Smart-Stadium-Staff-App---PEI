@@ -65,12 +65,24 @@ public class WebSocketAuthChannelInterceptor implements ChannelInterceptor {
 
     private boolean allowed(String role, String destination) {
         if (role == null) return false;
-        if ("admin".equalsIgnoreCase(role)) return true;
+        
+        role = role.toLowerCase(); 
+
+        if ("admin".equals(role)) return true;
         if (destination == null) return false;
-        if (destination.startsWith("/topic/emergency") && "security".equalsIgnoreCase(role)) return true;
-        if (destination.startsWith("/topic/crowd") && ("security".equalsIgnoreCase(role) || "staff".equalsIgnoreCase(role))) return true;
-        if (destination.startsWith("/topic/maintenance") && ("cleaning".equalsIgnoreCase(role) || "maintenance".equalsIgnoreCase(role))) return true;
-        // fallback - deny
+
+        
+        if (destination.startsWith("/topic/emergency") && 
+        ("security".equals(role) || "supervisor".equals(role))) return true;
+
+        if (destination.startsWith("/topic/crowd") && 
+        ("security".equals(role) || "supervisor".equals(role))) return true;
+
+        if (destination.startsWith("/topic/maintenance") && 
+        ("cleaning".equals(role) || "supervisor".equals(role))) return true;
+        
+        if (destination.startsWith("/topic/events")) return true;
+
         return false;
     }
 }
