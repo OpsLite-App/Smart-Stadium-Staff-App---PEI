@@ -27,7 +27,6 @@ jobs:
 
       - name: Run linter (flake8)
         run: |
-          # Only run if Python files exist
           if find . -name "*.py" | grep -q .; then
             flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
             flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
@@ -37,7 +36,6 @@ jobs:
 
       - name: Run tests
         run: |
-          # Only run if test files exist
           if find . -name "*test*.py" | grep -q .; then
             pytest -v
           else

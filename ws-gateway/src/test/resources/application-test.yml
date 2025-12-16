@@ -1,0 +1,13 @@
+# src/test/resources/application-test.yml
+server:
+  port: 0  # Random port for tests
+
+mqtt:
+  broker: tcp://localhost:1884  # Different port for tests
+
+auth:
+  serviceUrl: http://localhost:8082
+
+logging:
+  level:
+    com.stadium.gateway: DEBUG

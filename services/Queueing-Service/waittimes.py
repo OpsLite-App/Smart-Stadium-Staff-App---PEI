@@ -11,6 +11,7 @@ from typing import Dict, List, Optional
 from datetime import datetime, timedelta
 import asyncio
 import requests
+import os
 
 try:
     import paho.mqtt.client as mqtt

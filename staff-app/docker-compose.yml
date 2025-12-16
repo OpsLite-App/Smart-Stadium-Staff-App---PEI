@@ -1,0 +1,83 @@
+version: '3.8'
+
+services:
+  # Database PostgreSQL
+  postgres:
+    image: postgres:15
+    environment:
+      POSTGRES_DB: stadium
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: password
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U admin"]
+      interval: 10s
+
+  # Cache Redis
+  redis:
+    image: redis:7-alpine
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+
+  # Kafka Message Broker
+  kafka:
+    image: bitnami/kafka:3.4
+    environment:
+      KAFKA_CFG_NODE_ID: 0
+      KAFKA_CFG_PROCESS_ROLES: controller,broker
+      KAFKA_CFG_LISTENERS: PLAINTEXT://:9092
+      KAFKA_CFG_CONTROLLER_LISTENER_NAMES: PLAINTEXT
+    ports:
+      - "9092:9092"
+
+  # Auth Service (Guilherme)
+  auth-service:
+    build: ./backend/auth-service
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/stadium
+
+  # WebSocket Gateway (Guilherme)
+  websocket-gateway:
+    build: ./backend/websocket-gateway
+    ports:
+      - "8081:8081"
+    depends_on:
+      - kafka
+      - redis
+
+  # Algorithms Service (Solomila)
+  algorithms-service:
+    build: ./algorithms-service
+    ports:
+      - "5000:5000"
+    depends_on:
+      - kafka
+      - postgres
+
+  # Data Simulator (Solomila)
+  data-simulator:
+    build: ./data-simulator
+    ports:
+      - "5001:5001"
+    depends_on:
+      - kafka
+
+  nginx:
+    build: ./nginx
+    ports:
+      - "80:80"
+    depends_on:
+      - auth-service
+      - websocket-gateway
+      - algorithms-service
+
+volumes:
+  postgres_data:
+  redis_data:

@@ -12,13 +12,17 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.transaction.annotation.Transactional;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 @SpringBootTest
 @AutoConfigureMockMvc
+@ActiveProfiles("test")  
+@Transactional  
 public class AuthServiceIntegrationTest {
 
     @Autowired
@@ -41,8 +45,8 @@ public class AuthServiceIntegrationTest {
 
     @BeforeEach
     void setUp() {
-        userRepository.deleteAll();
-
+        // No need to delete all - @Transactional will handle rollback
+        
         activeUser = User.builder()
                 .username("active@example.com")
                 .password(passwordEncoder.encode("password123"))
@@ -59,8 +63,9 @@ public class AuthServiceIntegrationTest {
                 .status("inactive")
                 .build();
 
-        userRepository.save(activeUser);
-        userRepository.save(inactiveUser);
+        // Save users
+        activeUser = userRepository.save(activeUser);
+        inactiveUser = userRepository.save(inactiveUser);
     }
 
     @Test
