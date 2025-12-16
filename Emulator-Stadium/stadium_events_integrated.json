@@ -1,0 +1,166 @@
+[
+  {
+    "event_id": "ab059747-e4d7-4f40-836b-d905c55048b5",
+    "event_type": "bin_alert",
+    "timestamp": "2025-12-16T04:03:02.519491Z",
+    "bin_id": "Bin-3",
+    "fill_percentage": 27.0,
+    "priority": "medium",
+    "poi_node": "N18",
+    "location": {
+      "x": 41.16155,
+      "y": -8.5835
+    },
+    "assigned_role": "cleaning",
+    "metadata": {
+      "action_required": "empty_bin",
+      "needs_service": false
+    }
+  },
+  {
+    "event_id": "2b392402-6373-4d4a-b01e-800ae5a08a45",
+    "event_type": "crowd_density",
+    "timestamp": "2025-12-16T04:03:02.519641Z",
+    "area_id": "N17",
+    "area_type": "normal",
+    "current_count": 16,
+    "capacity": 150,
+    "occupancy_rate": 10.7,
+    "location": {
+      "x": 41.1614,
+      "y": -8.5845
+    },
+    "heat_level": "green"
+  },
+  {
+    "event_id": "7401dcef-7d04-48c9-a463-2f730f496df8",
+    "event_type": "gate_passage",
+    "timestamp": "2025-12-16T04:03:09.542483Z",
+    "gate_id": "Gate-1",
+    "person_id": "P_000768",
+    "direction": "entry",
+    "current_count": 1,
+    "throughput_per_min": 18.8,
+    "location": {
+      "x": 41.161,
+      "y": -8.584
+    },
+    "metadata": {
+      "heat_level": "green"
+    }
+  },
+  {
+    "event_id": "824bcf2e-d1bd-4164-baf7-7abcbc65d3a9",
+    "event_type": "crowd_density",
+    "timestamp": "2025-12-16T04:03:10.547807Z",
+    "area_id": "N16",
+    "area_type": "stairs",
+    "current_count": 71,
+    "capacity": 150,
+    "occupancy_rate": 47.3,
+    "location": {
+      "x": 41.16155,
+      "y": -8.583
+    },
+    "heat_level": "green"
+  },
+  {
+    "event_id": "403e4140-981a-4619-a1c3-bffafbb3cfbc",
+    "event_type": "bin_alert",
+    "timestamp": "2025-12-16T04:03:12.556683Z",
+    "bin_id": "Bin-1",
+    "fill_percentage": 31.3,
+    "priority": "medium",
+    "poi_node": "N2",
+    "location": {
+      "x": 41.16135,
+      "y": -8.5842
+    },
+    "assigned_role": "cleaning",
+    "metadata": {
+      "action_required": "empty_bin",
+      "needs_service": false
+    }
+  },
+  {
+    "event_id": "7939a9dd-9f99-4d81-8eee-531f2fb0b045",
+    "event_type": "gate_passage",
+    "timestamp": "2025-12-16T04:03:14.564488Z",
+    "gate_id": "Gate-2",
+    "person_id": "P_007504",
+    "direction": "entry",
+    "current_count": 1,
+    "throughput_per_min": 19.0,
+    "location": {
+      "x": 41.1611,
+      "y": -8.583
+    },
+    "metadata": {
+      "heat_level": "green"
+    }
+  },
+  {
+    "event_id": "ebdeaec2-ddd6-4033-92f2-dd69602e6f3c",
+    "event_type": "gate_passage",
+    "timestamp": "2025-12-16T04:03:16.570671Z",
+    "gate_id": "Gate-2",
+    "person_id": "P_006276",
+    "direction": "entry",
+    "current_count": 2,
+    "throughput_per_min": 24.8,
+    "location": {
+      "x": 41.1611,
+      "y": -8.583
+    },
+    "metadata": {
+      "heat_level": "green"
+    }
+  },
+  {
+    "event_id": "867f03c2-fab8-46bc-98bc-5e03073933fa",
+    "event_type": "crowd_density",
+    "timestamp": "2025-12-16T04:03:18.581322Z",
+    "area_id": "N15",
+    "area_type": "stairs",
+    "current_count": 137,
+    "capacity": 150,
+    "occupancy_rate": 91.3,
+    "location": {
+      "x": 41.16155,
+      "y": -8.583
+    },
+    "heat_level": "red"
+  },
+  {
+    "event_id": "26da3f18-59eb-491d-81bb-efe9ccf7b4ff",
+    "event_type": "gate_passage",
+    "timestamp": "2025-12-16T04:03:19.602274Z",
+    "gate_id": "Gate-2",
+    "person_id": "P_009069",
+    "direction": "entry",
+    "current_count": 3,
+    "throughput_per_min": 24.4,
+    "location": {
+      "x": 41.1611,
+      "y": -8.583
+    },
+    "metadata": {
+      "heat_level": "green"
+    }
+  },
+  {
+    "event_id": "dc0183f4-e896-4ced-a32f-108bfa878a88",
+    "event_type": "sos_event",
+    "timestamp": "2025-12-16T04:03:20.607760Z",
+    "sos_id": "SOS-4cdec3",
+    "priority": "critical",
+    "location_node": "N18",
+    "location": {
+      "x": 41.16155,
+      "y": -8.5835
+    },
+    "details": "injury",
+    "assigned_role": "security",
+    "status": "active"
+  }
+]

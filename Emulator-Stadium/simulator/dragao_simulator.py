@@ -30,7 +30,9 @@ MQTT_PORT = int(os.getenv("MQTT_PORT", 1883))
 MQTT_TOPICS = {
     "gate_updates": "stadium/crowd/gate-updates",
     "bin_alerts": "stadium/maintenance/bin-alerts",
-    "sos_events": "stadium/emergency/sos-events"
+    "sos_events": "stadium/emergency/sos-events",
+    "crowd_density": "stadium/crowd/density-updates" 
+
 }
 
 # ========== MQTT PUBLISHER ==========

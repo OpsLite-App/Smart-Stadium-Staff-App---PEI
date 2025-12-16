@@ -4,9 +4,10 @@ import {
   View, 
   Text, 
   TouchableOpacity,
-  Alert 
+  Alert,
+  ActivityIndicator
 } from 'react-native';
-import MapView, { PROVIDER_GOOGLE, Heatmap, Polyline, Marker } from 'react-native-maps';
+import MapView, { PROVIDER_GOOGLE, Heatmap, Polyline, Marker, Circle } from 'react-native-maps';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { theme } from '../theme';
 import { useNavigation } from '@react-navigation/native';
@@ -15,6 +16,16 @@ import { useNavigation } from '@react-navigation/native';
 import { useMapStore } from '../stores/useMapStore';
 import { useAuthStore } from '../stores/useAuthStore';
 
+// Interface para pontos do heatmap
+interface HeatmapPointWithColor {
+  latitude: number;
+  longitude: number;
+  weight: number;
+  occupancy_rate?: number;
+  heat_level?: 'green' | 'yellow' | 'red';
+  area_id?: string;
+}
+
 export default function MapScreen() {
   const mapRef = useRef<MapView>(null);
   const navigation = useNavigation<any>();
@@ -22,6 +33,7 @@ export default function MapScreen() {
   // Estado Local para Controlo de Camadas
   const [showHeatmap, setShowHeatmap] = useState(true);
   const [showBins, setShowBins] = useState(false);
+  const [heatmapType, setHeatmapType] = useState<'gradient' | 'circles'>('gradient');
 
   // Estado Global
   const { user } = useAuthStore();
@@ -34,41 +46,68 @@ export default function MapScreen() {
     activeRoute, 
     fetchMapData,
     fetchStaff,        
-    connectWebSocket,    
-    disconnectWebSocket, 
-    clearRoute 
+    fetchHeatmapData,
+    clearRoute,
+    heatmapLoading,
+    loading
   } = useMapStore();
 
-  // EFEITO 1: Inicialização e WebSocket
+  // Permissões de Visualização
+  const canViewHeatmap = user?.role === 'Security' || user?.role === 'Supervisor';
+  const canViewBins = user?.role === 'Cleaning' || user?.role === 'Supervisor';
+  const canViewStaff = true;
+
+  // ========== EFEITOS ==========
+
+  // EFEITO 1: Inicialização do Mapa (roda apenas uma vez)
   useEffect(() => {
+    console.log("📍 MAP SCREEN MOUNTED - Iniciando carregamento...");
+    
     // Carregar Mapa Estático (Geometria)
     fetchMapData();
     
-    // Carregar Posições dos Colegas (Imediatamente)
+    // Carregar Posições dos Colegas
     fetchStaff();
 
-    // Polling: Atualizar colegas a cada 5 segundos (enquanto o WS não trata disto)
+    // Polling: Atualizar colegas a cada 10 segundos
     const staffInterval = setInterval(() => {
-      console.log("🔄 A atualizar posições da equipa...");
       fetchStaff();
-    }, 5000);
-
-    // 4. Ligar WebSocket
-    if (user?.role) {
-      console.log(`🔌 A conectar WebSocket como ${user.role}...`);
-      connectWebSocket(user.role);
-    }
+    }, 10000);
 
     return () => {
-      console.log("🔌 A desligar...");
-      disconnectWebSocket();
-      clearInterval(staffInterval); // Limpar intervalo ao sair
+      console.log("📍 MAP SCREEN UNMOUNTED - Limpando...");
+      clearInterval(staffInterval);
     };
-  }, [user]); 
+  }, []);
 
-  // EFEITO 2: Focar na Rota quando ela é calculada
+  // EFEITO 2: Atualização do Heatmap (quando permissões mudam)
+  useEffect(() => {
+    console.log("🔥 Efeito heatmap - canViewHeatmap:", canViewHeatmap, "showHeatmap:", showHeatmap);
+    
+    if (canViewHeatmap && showHeatmap) {
+      // Buscar heatmap imediatamente
+      console.log("🔥 Buscando heatmap inicial...");
+      fetchHeatmapData();
+      
+      // Configurar intervalo para atualizar a cada 10 segundos
+      const heatmapInterval = setInterval(() => {
+        console.log("🔄 Atualizando heatmap (interval)...");
+        fetchHeatmapData();
+      }, 10000);
+      
+      return () => {
+        console.log("🔥 Limpando intervalo do heatmap");
+        clearInterval(heatmapInterval);
+      };
+    } else {
+      console.log("🔥 Heatmap não visível - não buscando dados");
+    }
+  }, [canViewHeatmap, showHeatmap, fetchHeatmapData]);
+
+  // EFEITO 3: Focar na Rota quando ela é calculada
   useEffect(() => {
     if (activeRoute && activeRoute.length > 0 && mapRef.current) {
+      console.log("📍 Rota ativa detectada - focando no mapa");
       mapRef.current.fitToCoordinates(activeRoute, {
         edgePadding: { top: 50, right: 50, bottom: 50, left: 50 },
         animated: true,
@@ -76,16 +115,70 @@ export default function MapScreen() {
     }
   }, [activeRoute]);
 
-  // Permissões de Visualização
-  const canViewHeatmap = user?.role === 'Security' || user?.role === 'Supervisor';
-  const canViewBins = user?.role === 'Cleaning' || user?.role === 'Supervisor';
-  // Security vê todos, Cleaning vê Security (por segurança), Supervisor vê tudo
-  const canViewStaff = true; 
+  // EFEITO 4: Debug - Log de estado quando muda
+  useEffect(() => {
+    console.log("🔍 MAP SCREEN STATE UPDATE:");
+    console.log("👤 User role:", user?.role);
+    console.log("🔥 Can view heatmap:", canViewHeatmap);
+    console.log("🔥 Show heatmap:", showHeatmap);
+    console.log("🔥 Heatmap data:", heatmapData.length, "points");
+    
+    if (heatmapData.length > 0) {
+      console.log("🔥 Primeiro ponto:", heatmapData[0]);
+    }
+  }, [user, canViewHeatmap, showHeatmap, heatmapData]);
+
+  // ========== FUNÇÕES AUXILIARES ==========
 
   const getOverlayText = () => {
     if (!user) return `Operacional • Live`;
     if (user.role === 'Supervisor') return `Supervisão • Modo Global`;
     return `${user.role === 'Security' ? 'Segurança' : 'Limpeza'} • Ativo`;
+  };
+
+  // Função para obter cor baseada no heat_level
+  const getHeatLevelColor = (heatLevel?: 'green' | 'yellow' | 'red') => {
+    switch (heatLevel) {
+      case 'green': return 'rgba(34, 197, 94, 0.7)';  // Verde
+      case 'yellow': return 'rgba(234, 179, 8, 0.7)'; // Amarelo
+      case 'red': return 'rgba(239, 68, 68, 0.7)';    // Vermelho
+      default: return 'rgba(59, 130, 246, 0.7)';      // Azul padrão
+    }
+  };
+
+  // Função para obter tamanho do círculo baseado no occupancy_rate
+  const getCircleRadius = (occupancyRate?: number) => {
+    if (!occupancyRate) return 25;
+    
+    // Escala o raio baseado na ocupação (20-100%)
+    const minRadius = 20;
+    const maxRadius = 80;
+    return minRadius + (occupancyRate / 100) * (maxRadius - minRadius);
+  };
+
+  // Função para renderizar heatmap como círculos coloridos
+  const renderHeatmapCircles = () => {
+    if (!canViewHeatmap || !showHeatmap || heatmapData.length === 0) return null;
+
+    return heatmapData.map((point, index) => {
+      // Tipo o ponto para acessar heat_level
+      const typedPoint = point as HeatmapPointWithColor;
+      
+      return (
+        <Circle
+          key={`heat-circle-${index}-${typedPoint.area_id || index}`}
+          center={{
+            latitude: typedPoint.latitude,
+            longitude: typedPoint.longitude
+          }}
+          radius={getCircleRadius(typedPoint.occupancy_rate)}
+          fillColor={getHeatLevelColor(typedPoint.heat_level)}
+          strokeColor="rgba(255, 255, 255, 0.8)"
+          strokeWidth={1}
+          zIndex={1}
+        />
+      );
+    });
   };
 
   // DEFINIÇÕES DO MAPA
@@ -94,12 +187,6 @@ export default function MapScreen() {
     longitude: -8.583933,
     latitudeDelta: 0.005, 
     longitudeDelta: 0.005,
-  };
-
-  const setMapLimits = () => {
-    const northEast = { latitude: 41.1647, longitude: -8.5809 };
-    const southWest = { latitude: 41.1587, longitude: -8.5869 };
-    mapRef.current?.setMapBoundaries(northEast, southWest);
   };
 
   const renderControlButtons = () => {
@@ -114,7 +201,10 @@ export default function MapScreen() {
             showHeatmap && styles.layerButtonActive,
             showHeatmap && { backgroundColor: theme.colors.error }
           ]}
-          onPress={() => setShowHeatmap(!showHeatmap)}
+          onPress={() => {
+            console.log("🔥 Toggling heatmap:", !showHeatmap);
+            setShowHeatmap(!showHeatmap);
+          }}
         >
           <MaterialCommunityIcons 
             name={showHeatmap ? "fire" : "fire-off"} 
@@ -126,6 +216,31 @@ export default function MapScreen() {
           </Text>
         </TouchableOpacity>
       );
+
+      // Botão para alternar entre gradiente e círculos
+      buttons.push(
+        <TouchableOpacity 
+          key="heatmap-type"
+          style={[
+            styles.layerButton,
+            { backgroundColor: heatmapType === 'circles' ? '#8B5CF6' : 'white' }
+          ]}
+          onPress={() => {
+            const newType = heatmapType === 'gradient' ? 'circles' : 'gradient';
+            console.log("🔄 Alternando tipo de heatmap:", newType);
+            setHeatmapType(newType);
+          }}
+        >
+          <MaterialCommunityIcons 
+            name={heatmapType === 'circles' ? "circle-slice-8" : "gradient"} 
+            size={24} 
+            color={heatmapType === 'circles' ? "white" : theme.colors.text} 
+          />
+          <Text style={[styles.buttonLabel, heatmapType === 'circles' && { color: 'white' }]}>
+            {heatmapType === 'circles' ? 'Círculos' : 'Gradiente'}
+          </Text>
+        </TouchableOpacity>
+      );
     }
     
     if (canViewBins) {
@@ -133,7 +248,10 @@ export default function MapScreen() {
         <TouchableOpacity 
           key="bins"
           style={[styles.layerButton, showBins && styles.layerButtonActive]}
-          onPress={() => setShowBins(!showBins)}
+          onPress={() => {
+            console.log("🗑️ Toggling bins:", !showBins);
+            setShowBins(!showBins);
+          }}
         >
           <MaterialCommunityIcons 
             name={showBins ? "delete" : "delete-outline"} 
@@ -148,11 +266,21 @@ export default function MapScreen() {
     return buttons;
   };
 
+  // ========== RENDERIZAÇÃO ==========
+
+  if (loading) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color={theme.colors.primary} />
+        <Text style={styles.loadingText}>A carregar mapa...</Text>
+      </View>
+    );
+  }
+
   return (
     <View style={styles.container}>
       <MapView
         ref={mapRef}
-        onMapReady={setMapLimits}
         style={styles.map}
         initialRegion={INITIAL_REGION}
         provider={PROVIDER_GOOGLE} 
@@ -160,22 +288,33 @@ export default function MapScreen() {
         showsCompass={false}
         minZoomLevel={16}
         maxZoomLevel={20}
+        onMapReady={() => console.log("🗺️ Mapa pronto!")}
       >
-        {/* 1. Camada Heatmap */}
-        {canViewHeatmap && showHeatmap && heatmapData.length > 0 && (
+        {/* 1. Camada Heatmap - Gradiente */}
+        {canViewHeatmap && showHeatmap && heatmapType === 'gradient' && heatmapData.length > 0 && (
           <Heatmap
             points={heatmapData}
-            opacity={0.8}
-            radius={40}
+            opacity={0.8}  // Mais opaco
+            radius={70}    // Raio maior para melhor visualização
             gradient={{
-              colors: ['#00000000', '#60A5FA', '#FBBF24', '#EF4444'],
-              startPoints: [0.1, 0.4, 0.7, 1.0], 
+              colors: [
+                'rgba(34, 197, 94, 0.1)',   // Verde claro (0-30%)
+                'rgba(34, 197, 94, 0.4)',   // Verde (30-50%)
+                'rgba(234, 179, 8, 0.6)',   // Amarelo (50-70%)
+                'rgba(234, 179, 8, 0.8)',   // Amarelo forte (70-80%)
+                'rgba(239, 68, 68, 0.9)',   // Vermelho (80-90%)
+                'rgba(239, 68, 68, 1.0)'    // Vermelho forte (90-100%)
+              ],
+              startPoints: [0.1, 0.3, 0.5, 0.7, 0.8, 0.9],
               colorMapSize: 256
             }}
           />
         )}
 
-        {/* 2. Camada Lixeiras */}
+        {/* 2. Camada Heatmap - Círculos Coloridos */}
+        {canViewHeatmap && showHeatmap && heatmapType === 'circles' && renderHeatmapCircles()}
+
+        {/* 3. Camada Lixeiras */}
         {canViewBins && showBins && bins.map((bin) => (
           <Marker
             key={bin.id}
@@ -189,15 +328,13 @@ export default function MapScreen() {
           </Marker>
         ))}
 
-        {/* 3. Camada STAFF  */}
+        {/* 4. Camada STAFF */}
         {canViewStaff && staffMembers.map((member) => {
           const node = nodes[member.location];
           
           if (!node) return null;
-
           if (member.id === user?.id) return null;
 
-          // Cor: Azul (Security) vs Laranja (Cleaning/Outros)
           const isSecurity = member.role === 'Security';
           const color = isSecurity ? '#3B82F6' : '#F59E0B';
           const icon = isSecurity ? 'shield-account' : 'broom';
@@ -208,22 +345,21 @@ export default function MapScreen() {
               coordinate={{ latitude: node.x, longitude: node.y }}
               title={member.name}
               description={`${member.role} • ${member.location}`}
-              anchor={{ x: 0.5, y: 0.5 }} // Centrar
-              zIndex={10} // Ficar por cima de tudo
+              anchor={{ x: 0.5, y: 0.5 }}
+              zIndex={10}
             >
               <View style={[styles.staffMarker, { backgroundColor: color, borderColor: color }]}>
                  <View style={styles.staffIconInner}>
                     <MaterialCommunityIcons name={icon} size={14} color="white" />
                  </View>
-                 {/* Pequena seta em baixo para indicar posição exata */}
                  <View style={[styles.arrowDown, { borderTopColor: color }]} />
               </View>
             </Marker>
           );
         })}
 
-        {/* 4. Rota Ativa */}
-        {activeRoute && (
+        {/* 5. Rota Ativa */}
+        {activeRoute && activeRoute.length > 0 && (
           <>
             <Polyline
               coordinates={activeRoute}
@@ -237,7 +373,33 @@ export default function MapScreen() {
             </Marker>
           </>
         )}
+
+        {/* 6. Legenda do Heatmap (se estiver visível) */}
+        {canViewHeatmap && showHeatmap && heatmapData.length > 0 && (
+          <View style={styles.legendContainer}>
+            <View style={styles.legendItem}>
+              <View style={[styles.legendColor, { backgroundColor: 'rgba(34, 197, 94, 0.7)' }]} />
+              <Text style={styles.legendText}>Baixo (0-50%)</Text>
+            </View>
+            <View style={styles.legendItem}>
+              <View style={[styles.legendColor, { backgroundColor: 'rgba(234, 179, 8, 0.7)' }]} />
+              <Text style={styles.legendText}>Médio (50-80%)</Text>
+            </View>
+            <View style={styles.legendItem}>
+              <View style={[styles.legendColor, { backgroundColor: 'rgba(239, 68, 68, 0.7)' }]} />
+              <Text style={styles.legendText}>Alto (80-100%)</Text>
+            </View>
+          </View>
+        )}
       </MapView>
+
+      {/* Loading Indicator para Heatmap */}
+      {heatmapLoading && (
+        <View style={styles.heatmapLoading}>
+          <ActivityIndicator size="small" color={theme.colors.error} />
+          <Text style={styles.heatmapLoadingText}>Atualizando heatmap...</Text>
+        </View>
+      )}
 
       {/* Overlay de Informação no Topo */}
       <View style={styles.topOverlay}>
@@ -251,6 +413,36 @@ export default function MapScreen() {
       <View style={styles.controlsContainer}>
         {renderControlButtons()}
       </View>
+
+      {/* Botão de Debug (visível apenas em desenvolvimento) */}
+      {__DEV__ && (
+        <TouchableOpacity 
+          style={styles.debugButton}
+          onPress={() => {
+            console.log("🔍 === DEBUG MAPSCREEN ===");
+            console.log("👤 User:", user);
+            console.log("🔍 Permissões: heatmap=" + canViewHeatmap);
+            console.log("🔥 Heatmap data:", heatmapData);
+            console.log("🔥 Tipo heatmap:", heatmapType);
+            console.log("🗺️ Nodes count:", Object.keys(nodes).length);
+            console.log("🗑️ Bins:", bins.length);
+            
+            // Forçar atualização
+            fetchHeatmapData();
+            
+            Alert.alert(
+              "Debug Info",
+              `Role: ${user?.role}\n` +
+              `Heatmap: ${heatmapData.length} pontos\n` +
+              `Tipo: ${heatmapType}\n` +
+              `Mostrando: ${showHeatmap ? 'SIM' : 'NÃO'}\n` +
+              `Última atualização: ${new Date().toLocaleTimeString()}`
+            );
+          }}
+        >
+          <MaterialCommunityIcons name="bug" size={24} color="white" />
+        </TouchableOpacity>
+      )}
 
       {/* Ação: Limpeza */}
       {user?.role === 'Cleaning' && (
@@ -296,7 +488,7 @@ export default function MapScreen() {
       )}
 
       {/* Botão Limpar Rota */}
-      {activeRoute && (
+      {activeRoute && activeRoute.length > 0 && (
         <TouchableOpacity style={styles.clearRouteBtn} onPress={clearRoute}>
           <MaterialCommunityIcons name="close" size={20} color="white" />
           <Text style={styles.clearRouteText}>Limpar Rota</Text>
@@ -314,6 +506,65 @@ const styles = StyleSheet.create({
   map: {
     width: '100%',
     height: '100%',
+  },
+  
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#fff',
+  },
+  loadingText: {
+    marginTop: 10,
+    color: theme.colors.primary,
+    fontSize: 16,
+  },
+  
+  heatmapLoading: {
+    position: 'absolute',
+    top: 100,
+    alignSelf: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.9)',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  heatmapLoadingText: {
+    fontSize: 12,
+    color: theme.colors.error,
+  },
+  
+  // Legenda do Heatmap
+  legendContainer: {
+    position: 'absolute',
+    bottom: 120,
+    left: 16,
+    backgroundColor: 'rgba(255, 255, 255, 0.9)',
+    padding: 12,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    elevation: 5,
+  },
+  legendItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+  legendColor: {
+    width: 20,
+    height: 20,
+    borderRadius: 4,
+    marginRight: 8,
+    borderWidth: 1,
+    borderColor: '#666',
+  },
+  legendText: {
+    fontSize: 12,
+    color: '#333',
   },
   
   // UI Elements
@@ -353,7 +604,22 @@ const styles = StyleSheet.create({
   layerButtonActive: { backgroundColor: theme.colors.primary, borderColor: theme.colors.primary },
   buttonLabel: { fontSize: 9, marginTop: 4, fontWeight: '700', color: theme.colors.text },
 
-  // Botões Flutuantes Inferiores
+  debugButton: {
+    position: 'absolute',
+    bottom: 180,
+    right: 16,
+    backgroundColor: '#8B5CF6',
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    justifyContent: 'center',
+    alignItems: 'center',
+    elevation: 6,
+    shadowColor: '#000',
+    shadowOpacity: 0.3,
+    shadowOffset: { width: 0, height: 2 }
+  },
+  
   cleaningActionBtn: {
     position: 'absolute', bottom: 110, left: 16,
     backgroundColor: '#10B981', flexDirection: 'row', alignItems: 'center',
@@ -386,7 +652,6 @@ const styles = StyleSheet.create({
     borderWidth: 2, borderColor: 'white',
   },
 
-  // ESTILO DOS COLEGAS (STAFF)
   staffMarker: {
     alignItems: 'center',
     justifyContent: 'center',
