@@ -291,11 +291,14 @@ export default function MapScreen() {
         onMapReady={() => console.log("🗺️ Mapa pronto!")}
       >
         {/* 1. Camada Heatmap - Gradiente */}
-        {canViewHeatmap && showHeatmap && heatmapType === 'gradient' && heatmapData.length > 0 && (
+        {canViewHeatmap && showHeatmap && heatmapType === 'gradient' && heatmapData && heatmapData.length > 0 && (
           <Heatmap
+            key={`heatmap-${heatmapData.length}-${JSON.stringify(heatmapData.map(p => p.weight))}`}
+            
             points={heatmapData}
-            opacity={0.8}  // Mais opaco
-            //radius={70}    // Raio maior para melhor visualização
+            opacity={0.8}  
+            radius={45}    
+            
             gradient={{
               colors: [
                 'rgba(34, 197, 94, 0.1)',   // Verde claro (0-30%)
@@ -309,7 +312,7 @@ export default function MapScreen() {
               colorMapSize: 256
             }}
           />
-        )}
+      )}
 
         {/* 2. Camada Heatmap - Círculos Coloridos */}
         {canViewHeatmap && showHeatmap && heatmapType === 'circles' && renderHeatmapCircles()}

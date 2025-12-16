@@ -1,38 +1,28 @@
 """
-CONGESTION SERVICE - VERSÃO FINAL OTIMIZADA
-Inclui cache de geometria para garantir coordenadas no Heatmap e listener MQTT resiliente.
+CONGESTION SERVICE
+Real-time crowd density monitoring and heatmap generation
+Listens to MQTT crowd_density events and provides heatmap API
 """
 
 import requests
-import logging
-import os
-import asyncio
-import json
-import threading
-import time
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Dict, List, Optional
 from datetime import datetime, timedelta
 from collections import defaultdict
+import asyncio
 
-# Configuração de Logs
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger("CongestionService")
-
-# Verificar biblioteca MQTT
 try:
     import paho.mqtt.client as mqtt
     MQTT_AVAILABLE = True
 except ImportError:
     MQTT_AVAILABLE = False
-    logger.warning("⚠️ Biblioteca paho-mqtt não encontrada. Instale com: pip install paho-mqtt")
 
 app = FastAPI(
     title="Congestion Service",
-    description="Real-time crowd density monitoring and heatmap generation",
-    version="1.1.0"
+    description="Real-time crowd density monitoring and heatmap",
+    version="1.0.0"
 )
 
 app.add_middleware(
@@ -45,31 +35,31 @@ app.add_middleware(
 
 # ========== CONFIGURATION ==========
 
-# Variáveis de Ambiente (com defaults para Docker)
-MQTT_BROKER = os.getenv("MQTT_HOST", "mosquitto")
+import os
+MQTT_BROKER = os.getenv("MQTT_HOST", os.getenv("MQTT_BROKER", "localhost"))
 MQTT_PORT = int(os.getenv("MQTT_PORT", "1883"))
 MAP_SERVICE_URL = os.getenv("MAP_SERVICE_URL", "http://map-service:8000")
-
-# Tópicos MQTT a subscrever
+# Subscribe to crowd-specific topics
 MQTT_TOPICS = [
     "stadium/crowd/gate-updates",
     "stadium/crowd/#",
     "stadium/crowd/density-updates"
+
 ]
 
-MAX_HISTORY = 100  # Manter últimos 100 registos por área
+THRESHOLD_GREEN = 50    # 0-50% occupancy
+THRESHOLD_RED = 80      # 80-100% occupancy
 
 # ========== STATE ==========
 
-# Dados principais: { "Gate-1": { ...dados..., "location": {x, y} } }
 crowd_data: Dict[str, Dict] = {}
+# {area_id: {count, capacity, occupancy_rate, heat_level, last_update, ...}}
 
-# Histórico para gráficos
 historical_data: Dict[str, List] = defaultdict(list)
+# {area_id: [{timestamp, occupancy_rate}, ...]}
 
-# 🔥 CACHE DE NÓS: Guarda a geometria estática (Gate-1 -> {x: 41.1, y: -8.5})
-# Isto resolve o problema de sensores que não enviam GPS
-node_cache: Dict[str, Dict] = {} 
+MAX_HISTORY = 100  # Keep last 100 readings per area
+
 
 # ========== MODELS ==========
 
@@ -80,229 +70,474 @@ class CrowdDensity(BaseModel):
     capacity: int
     occupancy_rate: float
     heat_level: str  # green, yellow, red
-    status: str      # empty, normal, busy, crowded, critical
+    status: str  # empty, normal, busy, crowded, critical
     last_update: str
+
 
 class HeatmapResponse(BaseModel):
     timestamp: str
     total_areas: int
     areas: List[CrowdDensity]
-    summary: Dict[str, int]
-
-# ========== HELPER: MAP SERVICE SYNC ==========
-
-def update_node_cache():
-    """
-    Vai buscar a geometria ao Map Service no arranque.
-    Permite desenhar o heatmap mesmo que o MQTT só traga o ID da zona.
-    """
-    try:
-        logger.info(f"🗺️ A sincronizar geometria com Map Service: {MAP_SERVICE_URL}/api/map")
-        response = requests.get(f"{MAP_SERVICE_URL}/api/map", timeout=5)
-        
-        if response.status_code == 200:
-            data = response.json()
-            nodes = data.get("nodes", [])
-            count = 0
-            for n in nodes:
-                # Mapeia ID -> Coordenadas
-                node_cache[n["id"]] = {"x": n["x"], "y": n["y"]}
-                count += 1
-            logger.info(f"✅ Cache de geometria atualizada: {count} nós mapeados")
-        else:
-            logger.error(f"❌ Erro Map Service: {response.status_code}")
-            
-    except Exception as e:
-        logger.error(f"⚠️ Não foi possível contactar Map Service: {e}")
+    summary: Dict[str, int]  # {green: 10, yellow: 5, red: 2}
 
 # ========== MQTT LISTENER ==========
 
+import logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
 def on_mqtt_message(client, userdata, msg):
-    """Processa eventos de densidade vindos dos sensores/simulador"""
+    """Process crowd density events from MQTT"""
     try:
-        payload = msg.payload.decode()
-        event = json.loads(payload)
+        logger.info(f"📨 MQTT Recebido: {msg.topic}")
+        
+        import json
+        event = json.loads(msg.payload.decode())
         event_type = event.get("event_type")
+        
+        logger.info(f"📊 Evento: {event_type}")
         
         if event_type == "crowd_density":
             area_id = event.get("area_id")
+            area_type = event.get("area_type", "normal")
+            current_count = event.get("current_count", 0)
+            capacity = event.get("capacity", 100)
+            occupancy_rate = event.get("occupancy_rate", 0)
+            heat_level = event.get("heat_level", "green")
             
-            # 1. Tentar obter localização do evento
+            # 🔥🔥🔥 CRÍTICO: Extrair a localização corretamente
             location = event.get("location", {})
-            x = location.get("x")
-            y = location.get("y")
+            x = location.get("x")  # latitude
+            y = location.get("y")  # longitude
             
-            # 2. 🔥 FALLBACK: Se não vier no evento, usar a Cache!
-            if (x is None or y is None) and area_id in node_cache:
-                x = node_cache[area_id]["x"]
-                y = node_cache[area_id]["y"]
+            logger.info(f"📍 {area_id}: ({x}, {y}) - {occupancy_rate}%")
             
-            occupancy_rate = float(event.get("occupancy_rate", 0))
+            if x is None or y is None:
+                logger.warning(f"⚠️ {area_id}: Sem coordenadas!")
+                return
             
-            # Determinar estado
-            if occupancy_rate < 50: status = "normal"
-            elif occupancy_rate < 80: status = "busy"
-            else: status = "critical"
+            # Determine status
+            if occupancy_rate < 20:
+                status = "empty"
+            elif occupancy_rate < 50:
+                status = "normal"
+            elif occupancy_rate < 80:
+                status = "busy"
+            elif occupancy_rate < 95:
+                status = "crowded"
+            else:
+                status = "critical"
             
-            # Atualizar estado global
+            # Update current data - INCLUIR AS COORDENADAS
             crowd_data[area_id] = {
                 "area_id": area_id,
-                "area_type": event.get("area_type", "normal"),
-                "current_count": event.get("current_count", 0),
-                "capacity": event.get("capacity", 100),
+                "area_type": area_type,
+                "current_count": current_count,
+                "capacity": capacity,
                 "occupancy_rate": round(occupancy_rate, 2),
-                "heat_level": event.get("heat_level", "green"),
+                "heat_level": heat_level,
                 "status": status,
                 "last_update": datetime.now().isoformat(),
-                "location": {"x": x, "y": y} # Pode ser None se desconhecido
+                "location": {"x": x, "y": y}  # 🔥 GUARDAR AS COORDENADAS!
             }
             
-            # Atualizar histórico
+            logger.info(f"✅ {area_id} guardado. Total áreas: {len(crowd_data)}")
+            
+            # Add to historical data
             historical_data[area_id].append({
                 "timestamp": datetime.now().isoformat(),
                 "occupancy_rate": occupancy_rate
             })
-            # Manter tamanho fixo
+            
+            # Trim history
             if len(historical_data[area_id]) > MAX_HISTORY:
                 historical_data[area_id] = historical_data[area_id][-MAX_HISTORY:]
-                
-            # Log ocasional para debug
-            # logger.info(f"📍 Atualizado {area_id}: {occupancy_rate}%")
             
     except Exception as e:
-        logger.error(f"❌ Erro a processar mensagem MQTT: {e}")
+        logger.error(f"❌ Erro no MQTT: {e}")
+        import traceback
+        traceback.print_exc()
 
 def start_mqtt_listener():
-    """Inicia a thread do cliente MQTT"""
+    """Start MQTT listener in background"""
     if not MQTT_AVAILABLE:
-        logger.warning("🚫 MQTT não disponível, serviço a correr em modo API-only")
         return
     
     def mqtt_thread():
-        client = mqtt.Client() # Protocolo auto-negociado
+        client = mqtt.Client(protocol=mqtt.MQTTv5)
         client.on_message = on_mqtt_message
         
-        while True:
-            try:
-                logger.info(f"📡 A ligar ao MQTT Broker em {MQTT_BROKER}:{MQTT_PORT}...")
-                client.connect(MQTT_BROKER, MQTT_PORT, 60)
-                
-                for topic in MQTT_TOPICS:
-                    client.subscribe(topic)
-                    
-                logger.info("✅ Conectado ao MQTT!")
-                client.loop_forever()
-                
-            except Exception as e:
-                logger.warning(f"⚠️ Falha na conexão MQTT ({e}). Nova tentativa em 5s...")
-                time.sleep(5)
+        def on_disconnect(client, userdata, rc):
+            print(f"⚠️  MQTT disconnected (rc={rc})")
 
+        client.on_disconnect = on_disconnect
+        try:
+            client.connect(MQTT_BROKER, MQTT_PORT, 60)
+            for topic in MQTT_TOPICS:
+                client.subscribe(topic)
+            client.loop_forever()
+        except:
+            pass
+    
+    import threading
     thread = threading.Thread(target=mqtt_thread, daemon=True)
     thread.start()
 
-# ========== BACKGROUND TASKS ==========
+
+# ========== CLEANUP TASK ==========
 
 async def cleanup_stale_data():
-    """Remove dados com mais de 10 minutos sem updates"""
+    """Remove stale data (no updates for 5+ minutes)"""
     while True:
-        try:
-            now = datetime.now()
-            threshold = timedelta(minutes=10)
-            to_remove = []
-            
-            for area_id, data in crowd_data.items():
-                last_update = datetime.fromisoformat(data["last_update"])
-                if now - last_update > threshold:
-                    to_remove.append(area_id)
-            
-            for area_id in to_remove:
-                del crowd_data[area_id]
-                
-        except Exception as e:
-            logger.error(f"Erro no cleanup: {e}")
-            
-        await asyncio.sleep(60)
+        now = datetime.now()
+        stale_threshold = timedelta(minutes=5)
+        
+        to_remove = []
+        for area_id, data in crowd_data.items():
+            last_update = datetime.fromisoformat(data["last_update"])
+            if now - last_update > stale_threshold:
+                to_remove.append(area_id)
+        
+        for area_id in to_remove:
+            del crowd_data[area_id]
+        
+        await asyncio.sleep(60)  # Run every minute
 
-# ========== LIFECYCLE ==========
+
+# ========== STARTUP ==========
 
 @app.on_event("startup")
 async def startup():
-    logger.info("🚀 Congestion Service a iniciar...")
+    """Initialize service"""
+    print("\n📊 Congestion Service starting...")
     
-    # 1. Iniciar MQTT Listener
+    # Start MQTT listener
     start_mqtt_listener()
+    print("✓ MQTT listener started")
     
-    # 2. Preencher Cache de Nós (Fundamental para o Heatmap)
-    update_node_cache()
-    
-    # 3. Tarefa de Limpeza
+    # Start cleanup task
     asyncio.create_task(cleanup_stale_data())
+    print("✓ Cleanup task started")
+    
+    print("✅ Congestion Service ready\n")
+
 
 # ========== ENDPOINTS ==========
 
-@app.get("/health")
-def health():
+@app.get("/")
+@app.get("/health")  # Para o health check do Docker
+def root():
+    """Health check"""
     return {
-        "status": "active",
-        "mqtt_connected": MQTT_AVAILABLE,
+        "service": "Congestion Service",
+        "version": "1.0.0",
+        "status": "running",
         "tracked_areas": len(crowd_data),
-        "nodes_cached": len(node_cache)
+        "mqtt_broker": f"{MQTT_BROKER}:{MQTT_PORT}"
     }
+
+@app.get("/api/heatmap", response_model=HeatmapResponse)
+def get_heatmap():
+    """
+    Get complete stadium heatmap
+    
+    Returns all areas with current crowd density
+    """
+    areas = [CrowdDensity(**data) for data in crowd_data.values()]
+    
+    # Calculate summary
+    summary = {"green": 0, "yellow": 0, "red": 0}
+    for area in areas:
+        summary[area.heat_level] += 1
+    
+    return HeatmapResponse(
+        timestamp=datetime.now().isoformat(),
+        total_areas=len(areas),
+        areas=areas,
+        summary=summary
+    )
+
 
 @app.get("/api/heatmap/points")
 def get_heatmap_points():
     """
-    ENDPOINT CRÍTICO: Usado pelo Frontend para desenhar o Heatmap.
-    Retorna apenas pontos com coordenadas válidas.
+    Get heatmap points with geographic coordinates
+    Returns: [{latitude, longitude, weight, occupancy_rate, area_id}, ...]
     """
-    points = []
-    
-    # Se a cache estiver vazia (Map Service estava offline no boot), tenta de novo agora
-    if not node_cache:
-        update_node_cache()
-
-    for area_id, data in crowd_data.items():
-        loc = data.get("location", {})
-        x = loc.get("x")
-        y = loc.get("y")
+    try:
+        points = []
         
-        # Fallback para cache se não tivermos coords no evento
-        if (x is None or y is None) and area_id in node_cache:
-            x = node_cache[area_id]["x"]
-            y = node_cache[area_id]["y"]
-
-        if x is not None and y is not None:
+        for area_id, data in crowd_data.items():
             occupancy = data.get('occupancy_rate', 0)
             
-            # Converter percentagem (0-100) em peso (0.0-1.0)
-            weight = occupancy / 100.0
-            
-            # Boost visual: áreas críticas ficam mais fortes
-            if occupancy > 80: weight = 1.0
-            
-            points.append({
-                "latitude": x,
-                "longitude": y,
-                "weight": weight,
-                "occupancy_rate": occupancy,
-                "area_id": area_id,
-                "heat_level": data.get("heat_level", "green")
-            })
+            # Se já temos coordenadas nos dados de crowd, usamos
+            if 'location' in data and data['location']:
+                lat = data['location'].get('x')  # x é latitude
+                lon = data['location'].get('y')  # y é longitude
+                
+                if lat is not None and lon is not None:
+                    # Converter occupancy para weight (0-1)
+                    if occupancy < 50:
+                        weight = occupancy / 100  # 0-0.5
+                    elif occupancy < 80:
+                        weight = 0.5 + (occupancy - 50) / 30 * 0.3  # 0.5-0.8
+                    else:
+                        weight = 0.8 + (occupancy - 80) / 20 * 0.2  # 0.8-1.0
+                    
+                    points.append({
+                        "latitude": lat,
+                        "longitude": lon,
+                        "weight": round(weight, 3),
+                        "occupancy_rate": round(occupancy, 1),
+                        "area_id": area_id,
+                        "heat_level": data.get("heat_level", "green")
+                    })
+                    continue  # Já temos coordenadas, passa para o próximo
+        
+        # Se ainda não temos todos os pontos, tenta mapear pelos IDs dos nodes
+        # Primeiro, tenta buscar do Map Service
+        try:
+            if MAP_SERVICE_URL:
+                map_response = requests.get(f"{MAP_SERVICE_URL}/api/map", timeout=3)
+                map_data = map_response.json()
+                
+                node_lookup = {n['id']: n for n in map_data.get('nodes', [])}
+                
+                for area_id, data in crowd_data.items():
+                    # Se já processámos este área, salta
+                    if any(p['area_id'] == area_id for p in points):
+                        continue
+                    
+                    if area_id in node_lookup:
+                        node = node_lookup[area_id]
+                        occupancy = data.get('occupancy_rate', 0)
+                        
+                        # Converter occupancy para weight
+                        weight = min(1.0, occupancy / 100)
+                        
+                        points.append({
+                            "latitude": node['x'],
+                            "longitude": node['y'],
+                            "weight": round(weight, 3),
+                            "occupancy_rate": round(occupancy, 1),
+                            "area_id": area_id,
+                            "heat_level": data.get("heat_level", "green")
+                        })
+        except Exception as e:
+            print(f"⚠️ Map Service não disponível: {e}")
+            # Continua com os pontos que já temos
+        
+        print(f"✅ Gerados {len(points)} pontos de heatmap")
+        return {
+            "timestamp": datetime.now().isoformat(),
+            "points": points,
+            "count": len(points)
+        }
+    
+    except Exception as e:
+        print(f"❌ Erro ao gerar heatmap points: {e}")
+        return {"points": [], "count": 0, "error": str(e)}
+    
+@app.get("/api/heatmap/{area_id}", response_model=CrowdDensity)
+def get_area_density(area_id: str):
+    """
+    Get crowd density for specific area
+    
+    Example: /api/heatmap/SECTOR_44
+    """
+    if area_id not in crowd_data:
+        raise HTTPException(status_code=404, detail=f"No data for area {area_id}")
+    
+    return CrowdDensity(**crowd_data[area_id])
+
+
+@app.get("/api/heatmap/by-type/{area_type}")
+def get_density_by_type(area_type: str):
+    """
+    Get crowd density filtered by area type
+    
+    Example: /api/heatmap/by-type/seating
+    """
+    filtered = [
+        CrowdDensity(**data)
+        for data in crowd_data.values()
+        if data["area_type"] == area_type
+    ]
+    
+    if not filtered:
+        raise HTTPException(status_code=404, detail=f"No {area_type} areas found")
     
     return {
-        "timestamp": datetime.now().isoformat(),
-        "points": points,
-        "count": len(points)
+        "area_type": area_type,
+        "count": len(filtered),
+        "areas": filtered
     }
+
+@app.get("/api/congestion/alerts")
+def get_congestion_alerts(threshold: float = Query(80.0, description="Alert if occupancy > threshold%")):
+    """
+    Get areas with high congestion
+    
+    Example: /api/congestion/alerts?threshold=80
+    """
+    alerts = []
+    
+    for data in crowd_data.values():
+        if data["occupancy_rate"] >= threshold:
+            alerts.append({
+                **data,
+                "severity": "critical" if data["occupancy_rate"] >= 95 else "high"
+            })
+    
+    alerts.sort(key=lambda x: x["occupancy_rate"], reverse=True)
+    
+    return {
+        "threshold": threshold,
+        "alert_count": len(alerts),
+        "alerts": alerts
+    }
+
 
 @app.get("/api/congestion/summary")
-def get_summary():
+def get_congestion_summary():
+    """
+    Get overall stadium congestion summary
+    """
+    if not crowd_data:
+        return {
+            "total_areas": 0,
+            "avg_occupancy": 0,
+            "total_people": 0,
+            "total_capacity": 0,
+            "overall_status": "unknown"
+        }
+    
+    total_count = sum(d["current_count"] for d in crowd_data.values())
+    total_capacity = sum(d["capacity"] for d in crowd_data.values())
+    avg_occupancy = (total_count / total_capacity * 100) if total_capacity > 0 else 0
+    
+    # Determine overall status
+    if avg_occupancy < 40:
+        overall_status = "low"
+    elif avg_occupancy < 70:
+        overall_status = "moderate"
+    elif avg_occupancy < 85:
+        overall_status = "high"
+    else:
+        overall_status = "critical"
+    
+    # Count by heat level
+    heat_counts = {"green": 0, "yellow": 0, "red": 0}
+    for data in crowd_data.values():
+        heat_counts[data["heat_level"]] += 1
+    
     return {
         "total_areas": len(crowd_data),
-        "areas": list(crowd_data.values())
+        "avg_occupancy": round(avg_occupancy, 2),
+        "total_people": total_count,
+        "total_capacity": total_capacity,
+        "overall_status": overall_status,
+        "by_heat_level": heat_counts
     }
 
-# Para testes manuais
+
+@app.get("/api/congestion/history/{area_id}")
+def get_area_history(
+    area_id: str,
+    limit: int = Query(20, description="Number of historical readings")
+):
+    """
+    Get historical occupancy data for an area
+    
+    Example: /api/congestion/history/SECTOR_44?limit=50
+    """
+    if area_id not in historical_data:
+        raise HTTPException(status_code=404, detail=f"No historical data for {area_id}")
+    
+    history = historical_data[area_id][-limit:]
+    
+    return {
+        "area_id": area_id,
+        "readings": len(history),
+        "history": history
+    }
+
+
+@app.get("/api/congestion/hotspots")
+def get_hotspots(top_n: int = Query(5, description="Number of top hotspots")):
+    """
+    Get most crowded areas (hotspots)
+    
+    Example: /api/congestion/hotspots?top_n=10
+    """
+    sorted_areas = sorted(
+        crowd_data.values(),
+        key=lambda x: x["occupancy_rate"],
+        reverse=True
+    )
+    
+    hotspots = sorted_areas[:top_n]
+    
+    return {
+        "top_n": top_n,
+        "hotspots": [CrowdDensity(**area) for area in hotspots]
+    }
+
+
+@app.get("/api/congestion/safest-areas")
+def get_safest_areas(top_n: int = Query(5, description="Number of safest areas")):
+    """
+    Get least crowded areas
+    
+    Example: /api/congestion/safest-areas?top_n=5
+    """
+    sorted_areas = sorted(
+        crowd_data.values(),
+        key=lambda x: x["occupancy_rate"]
+    )
+    
+    safest = sorted_areas[:top_n]
+    
+    return {
+        "top_n": top_n,
+        "safest_areas": [CrowdDensity(**area) for area in safest]
+    }
+
+
+@app.get("/api/congestion/trends")
+def get_trends():
+    """
+    Get congestion trends (increasing/decreasing)
+    """
+    trends = {}
+    
+    for area_id, history in historical_data.items():
+        if len(history) < 2:
+            continue
+        
+        # Compare last 2 readings
+        recent = history[-2:]
+        trend = recent[1]["occupancy_rate"] - recent[0]["occupancy_rate"]
+        
+        if trend > 5:
+            trend_status = "increasing"
+        elif trend < -5:
+            trend_status = "decreasing"
+        else:
+            trend_status = "stable"
+        
+        trends[area_id] = {
+            "current": recent[1]["occupancy_rate"],
+            "previous": recent[0]["occupancy_rate"],
+            "change": round(trend, 2),
+            "trend": trend_status
+        }
+    
+    return trends
+
+
+# ========== RUN ==========
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8005)
