@@ -20,4 +20,5 @@ venv/
 
 # Ignorar ficheiros de compilação
 backend/auth-service/target/
+ws-gateway/target/
 
