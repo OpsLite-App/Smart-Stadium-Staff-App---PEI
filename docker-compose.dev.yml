@@ -11,10 +11,10 @@ services:
       - mosquitto_log:/mosquitto/log
       - ./mosquitto/config/mosquitto.conf:/mosquitto/config/mosquitto.conf
     healthcheck:
-      test: ["CMD-SHELL", "nc -z localhost 1883 || exit 1"]
+      test: ["CMD-SHELL", "mosquitto_sub -h localhost -p 1883 -t '$$SYS/broker/uptime' -C 1 -W 2 >/dev/null 2>&1 || exit 1"]
       interval: 5s
-      timeout: 2s
-      retries: 5
+      timeout: 3s
+      retries: 10
       start_period: 5s
 
   postgres_auth:
@@ -29,6 +29,12 @@ services:
     volumes:
       - postgres_auth_data:/var/lib/postgresql/data
       - ./backend/database/init:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U admin -d stadium -h localhost"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 5s
 
   postgres_map:
     image: postgres:15-alpine
@@ -48,7 +54,8 @@ services:
       dockerfile: Dockerfile
     container_name: auth-service
     depends_on:
-      - postgres_auth
+      postgres_auth:
+        condition: service_healthy
     environment:
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres_auth:5432/stadium
       SPRING_DATASOURCE_USERNAME: admin
