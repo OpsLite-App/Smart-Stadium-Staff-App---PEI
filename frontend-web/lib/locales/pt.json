@@ -1,0 +1,65 @@
+{
+  "login": {
+    "title": "Entrar no Sistema",
+    "email_label": "Nome de Utilizador",
+    "pass_label": "Palavra-passe",
+    "role_select": "SELECIONE A SUA FUNÇÃO",
+    "button": "ENTRAR"
+  },
+  "tab": {
+    "map": "Mapa",
+    "alerts": "Alertas",
+    "emergency": "SOS",
+    "profile": "Perfil"
+  },
+  "dashboard": {
+    "title": "Painel de Segurança",
+    "subtitle": "Sistema Operacional • Ao Vivo",
+    "stats": {
+      "gates": "Portas",
+      "people": "Pessoas",
+      "sos": "SOS Ativos",
+      "zones": "Zonas Crít."
+    },
+    "sections": {
+      "priority": "ALERTAS PRIORITÁRIOS",
+      "gates": "ESTADO DAS PORTAS"
+    }
+  },
+  "profile": {
+    "duty_on": "Em Serviço",
+    "duty_off": "Fora de Serviço",
+    "stats": {
+      "incidents": "Incidentes",
+      "success": "Sucesso",
+      "avg_time": "Tempo Médio"
+    },
+    "actions": {
+      "title": "AÇÕES RÁPIDAS",
+      "end_shift": "Terminar Turno",
+      "protocols": "Protocolos Emerg.",
+      "training": "Materiais Treino",
+      "supervisor": "Ligar Supervisor"
+    },
+    "preferences": {
+      "title": "PREFERÊNCIAS",
+      "push": "Notificações Push",
+      "sound": "Som de Alerta",
+      "vibration": "Vibração"
+    },
+    "analytics": {
+      "title_stats": "ESTATÍSTICAS DE ALERTAS",
+      "title_history": "ANÁLISE E DADOS HISTÓRICOS",
+      "critical_zones": "Zonas Mais Críticas (Histórico)",
+      "peak_times": "Horários de Pico de Incidentes",
+      "team_perf": "Desempenho das Equipas",
+      "kpi_progress": "Progresso de KPIs"
+    },
+    "kpi": {
+      "response_target": "Tempo de Resposta",
+      "crowd_mgmt": "Gestão de Multidões",
+      "security_checks": "Verificações de Segurança"
+    },
+    "logout": "TERMINAR SESSÃO"
+  }
+}
