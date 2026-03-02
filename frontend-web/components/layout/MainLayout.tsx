@@ -1,6 +1,6 @@
 'use client';
 
-import { ReactNode } from 'react';
+import { ReactNode, useEffect } from 'react';
 import { useAuthStore } from '@/lib/stores/useAuthStore';
 import { usePathname, useRouter } from 'next/navigation';
 import { 
@@ -27,8 +27,13 @@ export function MainLayout({ children }: MainLayoutProps) {
   const router = useRouter();
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
+  useEffect(() => {
+    if (!user && pathname !== '/auth-routes/login') {
+      router.replace('/auth-routes/login');
+    }
+  }, [user, pathname, router]);
+
   if (!user) {
-    router.push('/auth-routes/login');
     return null;
   }
 

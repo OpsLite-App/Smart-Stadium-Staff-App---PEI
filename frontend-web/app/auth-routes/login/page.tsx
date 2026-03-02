@@ -39,7 +39,7 @@ export default function LoginPage() {
   }
 
   const handleLogin = async () => {
-    await login(email, role);
+    await login(email, password, role);
   };
 
   return (

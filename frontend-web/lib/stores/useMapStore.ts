@@ -1,11 +1,11 @@
 import { create } from 'zustand';
-import { api, Node, POI, HeatmapPoint, StaffMember, LOCAL_IP } from '../services/api';
+import { api, Node, POI, HeatmapPoint, StaffMember, WS_GATEWAY } from '../services/api';
 import { Client } from '@stomp/stompjs';
 import 'text-encoding';
 
-const WS_URL = `ws://${LOCAL_IP}:8089/ws/websocket`;
+const WS_URL = WS_GATEWAY;
 
-console.log(`useMapStore: IP = ${LOCAL_IP}, WebSocket = ${WS_URL}`);
+console.log(`useMapStore: WS_GATEWAY = ${WS_GATEWAY}`);
 
 interface MapState {
   // Dados do Mapa
@@ -47,41 +47,35 @@ export const useMapStore = create<MapState>((set, get) => ({
   set({ loading: true });
   try {
     console.log("🌍 A tentar buscar dados da API...");
-    console.log(`📍 IP: ${LOCAL_IP}`);
-    
+    console.log(`📍 API via rewrites (/api/...) | WS: ${WS_GATEWAY}`);    
     let apiSuccess = false;
     let nodesMap: Record<string, Node> = {};
     let binsList: POI[] = [];
     
     // TENTAR API PRIMEIRO
     try {
-      const isHealthy = await api.checkMapServiceHealth?.();
-      console.log(`🏥 Map Service health: ${isHealthy ? 'ONLINE' : 'OFFLINE'}`);
+      const [mapData, poisData] = await Promise.all([
+        api.getMapGraph(),
+        api.getPOIs()
+      ]);
       
-      if (isHealthy) {
-        const [mapData, poisData] = await Promise.all([
-          api.getMapGraph(),
-          api.getPOIs()
-        ]);
-        
-        if (mapData && mapData.nodes) {
-          mapData.nodes.forEach((n: Node) => {
-            nodesMap[n.id] = { ...n, latitude: n.x, longitude: n.y };
-          });
-        }
-        
-        binsList = poisData
-          .filter((p: POI) => p.category?.toLowerCase().includes('bin') || p.category === 'restroom')
-          .map((p: POI) => ({ 
-            ...p, 
-            latitude: p.x, 
-            longitude: p.y,
-            name: p.name || `Ponto ${p.id}`
-          }));
-        
-        apiSuccess = true;
-        console.log("✅ API respondeu com sucesso!");
+      if (mapData && mapData.nodes) {
+        mapData.nodes.forEach((n: Node) => {
+          nodesMap[n.id] = { ...n, latitude: n.x, longitude: n.y };
+        });
       }
+      
+      binsList = poisData
+        .filter((p: POI) => p.category?.toLowerCase().includes('bin') || p.category === 'restroom')
+        .map((p: POI) => ({ 
+          ...p, 
+          latitude: p.x, 
+          longitude: p.y,
+          name: p.name || `Ponto ${p.id}`
+        }));
+      
+      apiSuccess = Object.keys(nodesMap).length > 0;
+      console.log(`✅ API respondeu com sucesso! nodes=${Object.keys(nodesMap).length} pois=${binsList.length}`);
     } catch (apiError) {
       console.warn("⚠️ API falhou:", apiError instanceof Error ? apiError.message : 'Erro desconhecido');
     }
@@ -238,14 +232,12 @@ fetchHeatmapData: async () => {
     console.log(`URL: ${WS_URL}`);
 
     const client = new Client({
-      brokerURL: WS_URL,
+      webSocketFactory: () => new WebSocket(WS_URL),
       connectHeaders: {
         Authorization: `Bearer ${token || 'dev-token'}`,
-        role: role 
+        role
       },
-      debug: (str) => {
-        console.log(`WebSocket Debug: ${str}`);
-      },
+      debug: (str) => console.log(`WebSocket Debug: ${str}`),
       
       onConnect: () => {
         console.log("WebSocket Conectado!");

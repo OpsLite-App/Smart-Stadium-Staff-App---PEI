@@ -4,7 +4,6 @@ import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-// @ts-ignore
 import 'leaflet.heat';
 import { useMapStore } from '@/lib/stores/useMapStore';
 import { useAuthStore } from '@/lib/stores/useAuthStore';
@@ -21,7 +20,9 @@ import {
 
 // Fix para ícones do Leaflet no Next.js
 const fixLeafletIcons = () => {
-  delete (L.Icon.Default.prototype as any)._getIconUrl;
+  delete (
+    (L.Icon.Default as unknown as { prototype: { _getIconUrl?: unknown } }).prototype
+  )._getIconUrl;
   L.Icon.Default.mergeOptions({
     iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
     iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
@@ -46,6 +47,7 @@ export default function MapPage() {
   const markersRef = useRef<L.Marker[]>([]);
   const heatLayerRef = useRef<L.Layer | null>(null);
   const circleLayersRef = useRef<L.Circle[]>([]);
+  const missingNodeWarningsRef = useRef<Set<string>>(new Set());
   
   const { user } = useAuthStore();
   const { 
@@ -120,56 +122,13 @@ useEffect(() => {
   if (heatmapData.length > 0) {
     console.log(`🔥 Desenhando heatmap gradiente com ${heatmapData.length} pontos`);
     
-    const points = heatmapData.map(point => [
+    const points: [number, number, number][] = heatmapData.map((point): [number, number, number] => [
       point.latitude,
       point.longitude,
       point.weight
     ]);
 
-    // @ts-ignore - Ignorar erro de tipo do leaflet.heat
     heatLayerRef.current = L.heatLayer(points, {
-      radius: 30,
-      blur: 20,
-      maxZoom: 17,
-      gradient: {
-        0.2: '#10B981',
-        0.5: '#F59E0B',
-        0.8: '#EF4444'
-      }
-    }).addTo(mapRef.current);
-  }
-
-  return () => {
-    if (heatLayerRef.current && mapRef.current) {
-      mapRef.current.removeLayer(heatLayerRef.current);
-    }
-  };
-}, [heatmapData, showHeatmap, canViewHeatmap, heatmapType]);
- // Atualizar heatmap (gradiente)
-useEffect(() => {
-  if (!mapRef.current || !canViewHeatmap || !showHeatmap || heatmapType !== 'gradient') {
-    if (heatLayerRef.current && mapRef.current) {
-      mapRef.current.removeLayer(heatLayerRef.current);
-      heatLayerRef.current = null;
-    }
-    return;
-  }
-
-  if (heatLayerRef.current) {
-    mapRef.current.removeLayer(heatLayerRef.current);
-  }
-
-  if (heatmapData.length > 0) {
-    console.log(`🔥 Desenhando heatmap gradiente com ${heatmapData.length} pontos`);
-    
-    // 🔥 SOLUÇÃO SIMPLES: usar any
-    const points: any = heatmapData.map(point => [
-      point.latitude,
-      point.longitude,
-      point.weight
-    ]);
-
-    heatLayerRef.current = (L as any).heatLayer(points, {
       radius: 30,
       blur: 20,
       maxZoom: 17,
@@ -197,7 +156,11 @@ useEffect(() => {
     staffMembers.forEach(member => {
       const node = nodes[member.location];
       if (!node) {
-        console.warn(`⚠️ Node ${member.location} não encontrado para staff ${member.name}`);
+        const warningKey = `${member.location}:${member.id}`;
+        if (!missingNodeWarningsRef.current.has(warningKey)) {
+          missingNodeWarningsRef.current.add(warningKey);
+          console.warn(`⚠️ Node ${member.location} não encontrado para staff ${member.name}`);
+        }
         return;
       }
       if (member.id === user?.id) return;

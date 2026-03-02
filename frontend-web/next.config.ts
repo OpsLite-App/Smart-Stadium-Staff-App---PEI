@@ -1,24 +1,54 @@
+// next.config.ts
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  allowedDevOrigins: ['192.168.1.64', 'localhost'],
   async rewrites() {
     return [
+      // AUTH
+      // next.config.ts
       {
-        source: '/api/auth/:path*',
-        destination: 'http://192.168.1.137:8081/auth/:path*',
+        source: "/api/auth/:path*",
+        destination: "http://localhost:8081/auth/:path*",
       },
       {
-        source: '/api/map/:path*',
-        destination: 'http://192.168.1.137:8000/api/:path*',
+        source: "/api/map/:path*",
+        destination: "http://localhost:8000/api/:path*",
       },
       {
-        source: '/api/route/:path*',
-        destination: 'http://192.168.1.137:8002/api/:path*',
+        source: "/api/routing/:path*",
+        destination: "http://localhost:8002/api/:path*",
       },
       {
-        source: '/api/congestion/:path*',
-        destination: 'http://192.168.1.137:8005/api/:path*',
+        source: "/api/congestion/alerts/:path*",
+        destination: "http://localhost:8005/api/congestion/alerts/:path*",
+      },
+      {
+        source: "/api/congestion/:path*",
+        destination: "http://localhost:8005/api/:path*",
+      },
+      {
+        source: "/api/emergency/sensors/alerts/:path*",
+        destination: "http://localhost:8006/api/emergency/sensors/alerts/:path*",
+      },
+      {
+        source: "/api/emergency/sensors/alert/:path*",
+        destination: "http://localhost:8006/api/emergency/sensors/alert/:path*",
+      },
+      {
+        source: "/api/emergency/:path*",
+        destination: "http://localhost:8006/api/:path*",
+      },
+      {
+        source: "/api/maintenance/:path*",
+        destination: "http://localhost:8007/api/:path*",
+      },
+      {
+        source: "/api/queueing/:path*",
+        destination: "http://localhost:8003/api/:path*",
+      },
+      {
+        source: "/api/chat/:path*",
+        destination: "http://localhost:8008/:path*",
       },
     ];
   },

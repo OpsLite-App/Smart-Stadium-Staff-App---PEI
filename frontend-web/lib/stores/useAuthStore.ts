@@ -23,10 +23,13 @@ interface AuthState {
   user: User | null;
   isLoading: boolean;
   hydrated: boolean;
-  login: (email: string, role: Role) => Promise<void>;
+  error: string | null;
+
+  login: (email: string, password: string, role: Role) => Promise<boolean>;
   logout: () => Promise<void>;
   checkStorage: () => void;
   setHydrated: () => void;
+  clearError: () => void;
 }
 
 export const useAuthStore = create<AuthState>()(
@@ -35,63 +38,65 @@ export const useAuthStore = create<AuthState>()(
       user: null,
       isLoading: false,
       hydrated: false,
+      error: null,
+
+      clearError: () => set({ error: null }),
 
       setHydrated: () => {
         set({ hydrated: true });
-        // Verifica o estado depois de hidratar
         const state = get();
         console.log('Store hidratado:', state.user ? 'User existe' : 'Sem user');
       },
 
-      login: async (email, role) => {
-        set({ isLoading: true });
+      login: async (email, password, role) => {
+        set({ isLoading: true, error: null });
 
         try {
-          console.log('A fazer login com:', { email, role });
-          const data = await api.login(email, role);
-          console.log('Resposta do login:', data);
-          
-          const token = data.token;
-          const userId = data.user_id;
-          
-          const permissions = {
-            canViewHeatmap: role === 'Security' || role === 'Supervisor',
-            canViewBins: role === 'Cleaning' || role === 'Supervisor',
-            canViewAlerts: true
+          const data = await api.login(email, password, role);
+
+          const userData = {
+            email,
+            role,
+            token: data.token,
+            id: data.user_id,
+            permissions: {
+              canViewHeatmap: role === 'Security' || role === 'Supervisor',
+              canViewBins: role === 'Cleaning' || role === 'Supervisor',
+              canViewAlerts: true,
+            },
           };
 
-          const userData = { 
-            email, 
-            role, 
-            token,
-            id: userId,
-            permissions 
-          };
+          set({ user: userData, isLoading: false });
+          return true;
 
-          console.log('A guardar user:', userData);
-          
-          set({ 
-            user: userData, 
-            isLoading: false 
+        } catch (err: unknown) {
+          const status =
+            typeof err === 'object' &&
+            err !== null &&
+            'response' in err &&
+            typeof (err as { response?: { status?: number } }).response?.status === 'number'
+              ? (err as { response?: { status?: number } }).response?.status
+              : undefined;
+
+          if (status === 401) {
+            set({
+              isLoading: false,
+              error: "Email ou password incorretos.",
+            });
+            return false;
+          }
+
+          set({
+            isLoading: false,
+            error: "Erro de ligação ao servidor.",
           });
-
-          // Verifica se guardou corretamente
-          setTimeout(() => {
-            const state = get();
-            console.log('User após set:', state.user);
-          }, 100);
-
-        } catch (error) {
-          console.error("Erro no Login Store:", error);
-          alert("Erro ao entrar. Verifica se o backend está ligado.");
-          set({ isLoading: false });
+          return false;
         }
       },
 
       logout: async () => {
         console.log('A fazer logout');
-        set({ user: null });
-        // Limpa completamente o localStorage
+        set({ user: null, error: null });
         localStorage.removeItem('auth-storage');
       },
 
@@ -100,13 +105,12 @@ export const useAuthStore = create<AuthState>()(
         const storage = localStorage.getItem('auth-storage');
         console.log('Estado atual da store:', state.user ? 'Logado' : 'Não logado');
         console.log('LocalStorage tem dados:', storage ? 'Sim' : 'Não');
-        
+
         if (storage) {
           try {
             const parsed = JSON.parse(storage);
             console.log('Dados no localStorage:', parsed);
-            
-            // Verifica se os dados são válidos
+
             if (parsed.state?.user?.email) {
               console.log('Email no storage:', parsed.state.user.email);
             } else {
@@ -118,7 +122,7 @@ export const useAuthStore = create<AuthState>()(
             localStorage.removeItem('auth-storage');
           }
         }
-      }
+      },
     }),
     {
       name: 'auth-storage',
@@ -126,12 +130,7 @@ export const useAuthStore = create<AuthState>()(
       partialize: (state) => ({ user: state.user }),
       onRehydrateStorage: () => (state) => {
         console.log('A hidratar store...');
-        if (state) {
-          // Pequeno atraso para garantir que a hidratação está completa
-          setTimeout(() => {
-            state.setHydrated();
-          }, 0);
-        }
+        if (state) setTimeout(() => state.setHydrated(), 0);
       },
     }
   )

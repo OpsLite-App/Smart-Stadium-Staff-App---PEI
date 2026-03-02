@@ -136,7 +136,10 @@ export default function AnalyticsPage() {
           <div className="flex gap-3">
             <select
               value={timeRange}
-              onChange={(e) => setTimeRange(e.target.value as any)}
+              onChange={(e) => {
+                const value = e.target.value as 'today' | 'week' | 'month';
+                setTimeRange(value);
+              }}
               className="px-4 py-2 bg-white border border-gray-200 rounded-lg text-sm font-medium text-[#1F2937] focus:outline-none focus:ring-2 focus:ring-[#4F46E5]"
             >
               <option value="today">Hoje</option>

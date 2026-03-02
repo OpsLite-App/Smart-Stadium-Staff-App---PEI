@@ -4,7 +4,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { MainLayout } from '@/components/layout/MainLayout';
 import { useAuthStore } from '@/lib/stores/useAuthStore';
-import { AUTH_SERVICE } from '@/lib/services/api';
+import { AUTH_SERVICE, CHAT_SERVICE } from '@/lib/services/api';
 import axios from 'axios';
 import {
   MessageSquare,
@@ -39,7 +39,7 @@ import {
   Settings
 } from 'lucide-react';
 
-// Tipos de mensagem
+// Message types
 interface Message {
   id: string;
   chat_id: string;
@@ -67,10 +67,10 @@ interface Message {
     name: string;
     size: number;
   }[];
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
 }
 
-// Tipos de chat
+// Chat types
 interface Chat {
   id: string;
   type: 'direct' | 'group' | 'channel' | 'emergency';
@@ -94,7 +94,7 @@ interface Chat {
   emergency_level?: 'critical' | 'high' | 'medium' | 'low';
 }
 
-// Participante do chat
+// Chat participant
 interface ChatParticipant {
   id: number;
   name: string;
@@ -105,16 +105,16 @@ interface ChatParticipant {
   typing_in?: string;
 }
 
-// Tipos para WebSocket
+// WebSocket types
 interface WebSocketMessage {
   type: 'message' | 'typing' | 'read' | 'delivered' | 'presence' | 'reaction';
   chat_id: string;
   sender_id: number;
-  data: any;
+  data: Record<string, unknown>;
   timestamp: string;
 }
 
-// Contacto para nova conversa
+// Contact for a new conversation
 interface Contact {
   id: number;
   name: string;
@@ -122,6 +122,24 @@ interface Contact {
   status: 'online' | 'offline' | 'away';
   last_seen: string;
   avatar?: string;
+}
+
+interface ChatApiMessage {
+  id: number;
+  room: string;
+  sender_id: string;
+  sender_name: string;
+  text: string;
+  ts: string;
+}
+
+interface StaffApiUser {
+  id: number;
+  name?: string;
+  email?: string;
+  username?: string;
+  role?: string;
+  status?: string | null;
 }
 
 export default function ChatPage() {
@@ -139,8 +157,9 @@ export default function ChatPage() {
   const [showChatInfo, setShowChatInfo] = useState(false);
   const [onlineCount, setOnlineCount] = useState(0);
   const [typingUsers, setTypingUsers] = useState<Map<string, string>>(new Map());
-  const [wsConnected, setWsConnected] = useState(false);
-  const [wsError, setWsError] = useState(false);
+  const [wsConnected, setWsConnected] = useState<boolean | null>(null);
+  const [usingMockData, setUsingMockData] = useState(false);
+  const [chatApiDisabledUntil, setChatApiDisabledUntil] = useState<number>(0);
   const [replyingTo, setReplyingTo] = useState<Message | null>(null);
   const [editingMessage, setEditingMessage] = useState<Message | null>(null);
   const [showAttachMenu, setShowAttachMenu] = useState(false);
@@ -155,18 +174,17 @@ export default function ChatPage() {
   // Refs
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const wsRef = useRef<WebSocket | null>(null);
-  const typingTimeoutRef = useRef<NodeJS.Timeout | undefined>(undefined);
+  const chatApiErrorLoggedRef = useRef(false);
 
-  // Scroll para o fundo quando novas mensagens chegam
+  // Scroll to bottom when new messages arrive
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  // Carregar chats - USA MOCK DIRETAMENTE
+  // Load local conversations (until backend chat listing endpoint exists)
   const fetchChats = async () => {
     try {
-      console.log('💬 Usando dados MOCK de conversas...');
+      console.log('💬 Loading local conversations...');
       
       const mockChats = generateMockChats();
       
@@ -181,7 +199,7 @@ export default function ChatPage() {
       setLoading(false);
 
     } catch (error) {
-      console.error('❌ Erro ao buscar chats:', error);
+      console.error('❌ Error while loading chats:', error);
       const mockChats = generateMockChats();
       setChats(mockChats);
       setFilteredChats(mockChats);
@@ -189,57 +207,142 @@ export default function ChatPage() {
     }
   };
 
-  // Carregar contactos - USA MOCK DIRETAMENTE
+  const mapStaffStatusToContactStatus = (status?: string | null): Contact['status'] => {
+    const normalized = (status || '').toLowerCase();
+    if (normalized === 'active') return 'online';
+    if (normalized === 'patrol' || normalized === 'break') return 'away';
+    return 'offline';
+  };
+
+  // Load real contacts
   const fetchContacts = async () => {
     try {
-      console.log('👥 Usando contactos MOCK...');
-      
-      const mockContacts: Contact[] = [
-        { id: 101, name: 'Ana Silva', role: 'Security', status: 'online', last_seen: new Date().toISOString() },
-        { id: 102, name: 'João Santos', role: 'Security', status: 'online', last_seen: new Date().toISOString() },
-        { id: 103, name: 'Maria Oliveira', role: 'Cleaning', status: 'away', last_seen: new Date().toISOString() },
-        { id: 104, name: 'Pedro Costa', role: 'Supervisor', status: 'online', last_seen: new Date().toISOString() },
-        { id: 105, name: 'Sofia Ferreira', role: 'Medical', status: 'offline', last_seen: new Date().toISOString() },
-        { id: 106, name: 'Carlos Rodrigues', role: 'Security', status: 'online', last_seen: new Date().toISOString() },
-        { id: 107, name: 'Inês Pereira', role: 'Cleaning', status: 'away', last_seen: new Date().toISOString() },
-      ];
-      
-      setContacts(mockContacts);
-      
+      console.log(`👥 Loading real contacts from ${AUTH_SERVICE}/staff...`);
+
+      const response = await axios.get<StaffApiUser[]>(`${AUTH_SERVICE}/staff`, {
+        timeout: 5000,
+        headers: user?.token ? { Authorization: `Bearer ${user.token}` } : undefined,
+      });
+
+      const contactList: Contact[] = response.data
+        .filter((staff) => typeof staff.id === 'number' && staff.id !== user?.id)
+        .map((staff) => ({
+          id: staff.id,
+          name: staff.name || staff.username || staff.email || `User ${staff.id}`,
+          role: staff.role || 'Staff',
+          status: mapStaffStatusToContactStatus(staff.status),
+          last_seen: new Date().toISOString(),
+        }));
+
+      setContacts(contactList);
+      console.log(`✅ Real contacts loaded: ${contactList.length}`);
     } catch (error) {
-      console.warn('⚠️ Erro ao buscar contactos:', error);
+      console.error('❌ Error while loading real contacts:', error);
+      setContacts([]);
     }
   };
 
-  // Carregar mensagens de um chat - USA MOCK
-  const fetchMessages = async (chatId: string) => {
+  const mapApiMessageToUi = (message: ChatApiMessage): Message => {
+    const senderId = Number.parseInt(message.sender_id, 10);
+    return {
+      id: String(message.id),
+      chat_id: message.room,
+      sender_id: Number.isNaN(senderId) ? 0 : senderId,
+      sender_name: message.sender_name,
+      sender_role: 'Staff',
+      content: message.text,
+      type: 'text',
+      timestamp: message.ts,
+      read_by: [],
+      delivered_to: [],
+      edited: false,
+      deleted: false,
+      pinned: false,
+    };
+  };
+
+  const canUseChatApi = () => Date.now() >= chatApiDisabledUntil;
+  const getDirectRoomId = (userAId: number, userBId: number) => {
+    const [low, high] = [userAId, userBId].sort((a, b) => a - b);
+    return `dm-${low}-${high}`;
+  };
+  const resolveRoomId = (chat: Chat) => {
+    if (chat.type !== 'direct' || !user?.id) return chat.id;
+    const peer = chat.participants.find((p) => p.id !== user.id);
+    if (!peer) return chat.id;
+    return getDirectRoomId(user.id, peer.id);
+  };
+
+  // Load messages for a chat
+  const fetchMessages = async (chatId: string, options?: { showLoader?: boolean }) => {
+    const shouldShowLoader = options?.showLoader ?? true;
+    if (!canUseChatApi()) {
+      setWsConnected(false);
+      setUsingMockData(true);
+      if (shouldShowLoader) {
+        setMessages(generateMockMessages(chatId));
+        setLoading(false);
+      }
+      return;
+    }
+
     try {
-      setLoading(true);
-      console.log(`📨 Usando mensagens MOCK para chat ${chatId}...`);
-      
-      const messageList = generateMockMessages(chatId);
-      
+      if (shouldShowLoader) {
+        setLoading(true);
+      }
+
+      console.log(`📨 Loading real messages for chat ${chatId}...`);
+      const response = await axios.get<ChatApiMessage[]>(`${CHAT_SERVICE}/messages/${chatId}`, {
+        timeout: 8000,
+      });
+
+      const messageList = [...response.data]
+        .sort((a, b) => new Date(a.ts).getTime() - new Date(b.ts).getTime())
+        .map(mapApiMessageToUi);
+
       setMessages(messageList);
+      setWsConnected(true);
+      setUsingMockData(false);
+      chatApiErrorLoggedRef.current = false;
       
       if (user) {
         setChats(prev => 
           prev.map(c => 
-            c.id === chatId 
-              ? { ...c, unread_count: 0 }
+            c.id === chatId
+              ? {
+                  ...c,
+                  unread_count: 0,
+                  updated_at: messageList.at(-1)?.timestamp || c.updated_at,
+                  last_message: messageList.at(-1)
+                    ? {
+                        content: messageList.at(-1)!.content,
+                        timestamp: messageList.at(-1)!.timestamp,
+                        sender_name: messageList.at(-1)!.sender_name,
+                      }
+                    : c.last_message,
+                }
               : c
           )
         );
       }
 
     } catch (error) {
-      console.error('❌ Erro ao buscar mensagens:', error);
+      if (!chatApiErrorLoggedRef.current) {
+        console.warn('⚠️ Chat Service unavailable, falling back to mock:', error);
+        chatApiErrorLoggedRef.current = true;
+      }
+      setWsConnected(false);
+      setUsingMockData(true);
+      setChatApiDisabledUntil(Date.now() + 60_000);
       setMessages(generateMockMessages(chatId));
     } finally {
-      setLoading(false);
+      if (shouldShowLoader) {
+        setLoading(false);
+      }
     }
   };
 
-  // Marcar mensagens como lidas
+  // Mark messages as read
   const markMessagesAsRead = (chatId: string, messageList: Message[]) => {
     if (!user) return;
 
@@ -266,7 +369,7 @@ export default function ChatPage() {
     }
   };
 
-  // Gerar chats mock
+  // Generate mock chats
   const generateMockChats = (): Chat[] => {
     const now = new Date();
     
@@ -387,7 +490,7 @@ export default function ChatPage() {
     ];
   };
 
-  // Gerar mensagens mock
+  // Generate mock messages
   const generateMockMessages = (chatId: string): Message[] => {
     const now = new Date();
     const messages: Message[] = [];
@@ -552,21 +655,7 @@ export default function ChatPage() {
     return messages;
   };
 
-  // WebSocket (comentado para testes)
-  useEffect(() => {
-    if (!user) return;
-    
-    console.log('🔌 WebSocket desativado (modo mock)');
-    setWsConnected(false);
-    setWsError(false);
-    
-    return () => {};
-  }, [user]);
-
-  // Processar mensagens WebSocket (vazio por enquanto)
-  const handleWebSocketMessage = (wsMessage: WebSocketMessage) => {};
-
-  // Enviar mensagem
+  // Send message
   const sendMessage = async () => {
     if (!selectedChat || !newMessage.trim() || !user) return;
 
@@ -601,84 +690,145 @@ export default function ChatPage() {
       setReplyingTo(null);
     }
 
-    setSending(false);
+    if (!canUseChatApi()) {
+      setWsConnected(false);
+      setUsingMockData(true);
+      setSending(false);
+      return;
+    }
+
+    try {
+      const response = await axios.post<ChatApiMessage>(
+        `${CHAT_SERVICE}/messages/`,
+        {
+          room: selectedChat.id,
+          sender_id: String(user.id || 0),
+          sender_name: user.email?.split('@')[0] || 'Staff',
+          text: messageContent,
+        },
+        { timeout: 8000 }
+      );
+
+      const persisted = mapApiMessageToUi(response.data);
+      setMessages(prev =>
+        prev.map(m => (m.id === tempMessage.id ? persisted : m))
+      );
+
+      setChats(prev =>
+        prev.map(chat =>
+          chat.id === selectedChat.id
+            ? {
+                ...chat,
+                updated_at: persisted.timestamp,
+                last_message: {
+                  content: persisted.content,
+                  timestamp: persisted.timestamp,
+                  sender_name: persisted.sender_name,
+                },
+              }
+            : chat
+        )
+      );
+
+      setWsConnected(true);
+      setUsingMockData(false);
+      chatApiErrorLoggedRef.current = false;
+    } catch (error) {
+      if (!chatApiErrorLoggedRef.current) {
+        console.error('❌ Error while sending message:', error);
+        chatApiErrorLoggedRef.current = true;
+      }
+      setWsConnected(false);
+      setUsingMockData(true);
+      setChatApiDisabledUntil(Date.now() + 60_000);
+    } finally {
+      setSending(false);
+    }
   };
 
-  // Enviar indicador de escrita (mock)
+  // Send typing indicator (mock)
   const sendTyping = () => {};
 
-  // Parar de escrever (mock)
+  // Stop typing (mock)
   const stopTyping = () => {};
 
-  // Selecionar chat
+  // Select chat
   const handleSelectChat = (chat: Chat) => {
-    setSelectedChat(chat);
+    const roomId = resolveRoomId(chat);
+    const resolvedChat = roomId === chat.id ? chat : { ...chat, id: roomId };
+
     setMessages([]);
     setTypingUsers(new Map());
     setReplyingTo(null);
     setEditingMessage(null);
     setShowPinned(false);
     
-    fetchMessages(chat.id);
+    setSelectedChat(resolvedChat);
+    fetchMessages(roomId);
     
     setChats(prev =>
       prev.map(c =>
-        c.id === chat.id
+        c.id === chat.id || c.id === roomId
           ? { ...c, unread_count: 0 }
           : c
       )
     );
   };
 
-  // Iniciar conversa com contacto
+  // Start conversation with a contact
   const startConversation = (contact: Contact) => {
-    const existingChat = chats.find(c => 
-      c.type === 'direct' && 
-      c.participants.some(p => p.id === contact.id)
-    );
+    if (!user?.id) {
+      console.error('❌ Could not start conversation: missing user.id');
+      return;
+    }
+
+    const directRoomId = getDirectRoomId(user.id, contact.id);
+    const existingChat = chats.find(c => c.id === directRoomId);
 
     if (existingChat) {
       handleSelectChat(existingChat);
-    } else {
-      const newChat: Chat = {
-        id: `new-${Date.now()}`,
-        type: 'direct',
-        name: contact.name,
-        participants: [
-          { 
-            id: contact.id, 
-            name: contact.name, 
-            role: contact.role, 
-            status: contact.status, 
-            last_seen: contact.last_seen,
-            typing: false 
-          },
-          { 
-            id: user?.id || 0, 
-            name: user?.email?.split('@')[0] || 'Eu', 
-            role: user?.role || 'Staff', 
-            status: 'online', 
-            last_seen: new Date().toISOString(),
-            typing: false 
-          }
-        ],
-        unread_count: 0,
-        pinned: false,
-        muted: false,
-        archived: false,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-        created_by: user?.id || 0
-      };
-
-      setChats(prev => [newChat, ...prev]);
-      handleSelectChat(newChat);
+      setShowContacts(false);
+      return;
     }
+
+    const newChat: Chat = {
+      id: directRoomId,
+      type: 'direct',
+      name: contact.name,
+      participants: [
+        { 
+          id: contact.id, 
+          name: contact.name, 
+          role: contact.role, 
+          status: contact.status, 
+          last_seen: contact.last_seen,
+          typing: false 
+        },
+        { 
+          id: user.id, 
+          name: user.email?.split('@')[0] || 'Eu', 
+          role: user.role || 'Staff', 
+          status: 'online', 
+          last_seen: new Date().toISOString(),
+          typing: false 
+        }
+      ],
+      unread_count: 0,
+      pinned: false,
+      muted: false,
+      archived: false,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      created_by: user.id
+    };
+
+    setChats(prev => [newChat, ...prev]);
+    handleSelectChat(newChat);
 
     setShowContacts(false);
   };
 
-  // Aplicar filtros
+  // Apply filters
   useEffect(() => {
     let filtered = [...chats];
 
@@ -710,13 +860,44 @@ export default function ChatPage() {
     setFilteredChats(filtered);
   }, [chats, filters, searchTerm]);
 
-  // Carregar dados iniciais
+  // Load initial data
   useEffect(() => {
     fetchChats();
     fetchContacts();
   }, []);
 
-  // Formatar hora
+  // Periodic refresh for active conversation
+  useEffect(() => {
+    if (!selectedChat) return;
+
+    if (!canUseChatApi()) return;
+
+    const intervalId = setInterval(() => {
+      fetchMessages(selectedChat.id, { showLoader: false });
+    }, 3000);
+
+    return () => clearInterval(intervalId);
+  }, [selectedChat, chatApiDisabledUntil]);
+
+  // Immediate refresh when returning to tab/app
+  useEffect(() => {
+    if (!selectedChat) return;
+
+    const refreshNow = () => {
+      if (document.visibilityState === 'visible') {
+        fetchMessages(selectedChat.id, { showLoader: false });
+      }
+    };
+
+    window.addEventListener('focus', refreshNow);
+    document.addEventListener('visibilitychange', refreshNow);
+    return () => {
+      window.removeEventListener('focus', refreshNow);
+      document.removeEventListener('visibilitychange', refreshNow);
+    };
+  }, [selectedChat, chatApiDisabledUntil]);
+
+  // Format time
   const formatTime = (timestamp: string) => {
     const date = new Date(timestamp);
     const now = new Date();
@@ -728,7 +909,7 @@ export default function ChatPage() {
     return date.toLocaleDateString('pt-PT', { day: '2-digit', month: '2-digit' });
   };
 
-  // Obter ícone do tipo de chat
+  // Get chat type icon
   const getChatIcon = (chat: Chat) => {
     switch (chat.type) {
       case 'direct': return User;
@@ -739,7 +920,7 @@ export default function ChatPage() {
     }
   };
 
-  // Obter cor do tipo de chat
+  // Get chat type color
   const getChatColor = (chat: Chat) => {
     switch (chat.type) {
       case 'direct': return 'text-blue-600 bg-blue-100';
@@ -750,7 +931,7 @@ export default function ChatPage() {
     }
   };
 
-  // Obter cor do status
+  // Get status color
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'online': return 'bg-green-500';
@@ -777,9 +958,9 @@ export default function ChatPage() {
   return (
     <MainLayout>
       <div className="h-[calc(100vh-4rem)] flex">
-        {/* Sidebar de Chats */}
+        {/* Chats sidebar */}
         <div className={`${selectedChat ? 'hidden md:flex' : 'flex'} md:w-80 flex-col border-r border-gray-200 bg-white`}>
-          {/* Header da Sidebar */}
+          {/* Sidebar header */}
           <div className="p-4 border-b border-gray-200">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-xl font-bold text-gray-900">Mensagens</h2>
@@ -800,16 +981,30 @@ export default function ChatPage() {
               </div>
             </div>
 
-            {/* Status WebSocket */}
+            {/* WebSocket status */}
             <div className="flex items-center justify-between mb-3">
               <div className="flex items-center gap-2">
-                <WifiOff size={14} className="text-red-600" />
-                <span className="text-xs text-red-600">Modo Mock</span>
+                {wsConnected === null ? (
+                  <>
+                    <WifiOff size={14} className="text-gray-500" />
+                    <span className="text-xs text-gray-500">Abrir conversa para ligar</span>
+                  </>
+                ) : wsConnected ? (
+                  <>
+                    <Wifi size={14} className="text-green-600" />
+                    <span className="text-xs text-green-600">Chat API ligada</span>
+                  </>
+                ) : (
+                  <>
+                    <WifiOff size={14} className="text-red-600" />
+                    <span className="text-xs text-red-600">{usingMockData ? 'Fallback local' : 'Chat API offline'}</span>
+                  </>
+                )}
               </div>
               <span className="text-xs text-gray-600">{onlineCount} online</span>
             </div>
 
-            {/* Pesquisa */}
+            {/* Search */}
             <div className="relative">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={18} />
               <input
@@ -822,7 +1017,7 @@ export default function ChatPage() {
             </div>
           </div>
 
-          {/* Filtros Rápidos */}
+          {/* Quick filters */}
           <div className="px-4 py-2 flex gap-2 border-b border-gray-200">
             <button
               onClick={() => setFilters(prev => ({ ...prev, unreadOnly: !prev.unreadOnly }))}
@@ -856,7 +1051,7 @@ export default function ChatPage() {
             </button>
           </div>
 
-          {/* Lista de Contactos */}
+          {/* Contacts list */}
           {showContacts && (
             <div className="p-4 border-b border-gray-200 max-h-60 overflow-y-auto">
               <h3 className="text-sm font-semibold text-gray-700 mb-3">Contactos</h3>
@@ -883,7 +1078,7 @@ export default function ChatPage() {
             </div>
           )}
 
-          {/* Lista de Chats */}
+          {/* Chats list */}
           <div className="flex-1 overflow-y-auto">
             {filteredChats.length === 0 ? (
               <div className="p-8 text-center">
@@ -966,11 +1161,11 @@ export default function ChatPage() {
           </div>
         </div>
 
-        {/* Área Principal do Chat */}
+        {/* Main chat area */}
         <div className={`flex-1 flex flex-col bg-white ${!selectedChat ? 'hidden md:flex' : 'flex'}`}>
           {selectedChat ? (
             <>
-              {/* Header do Chat */}
+              {/* Chat header */}
               <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
                 <div className="flex items-center gap-3">
                   <button
@@ -1023,7 +1218,7 @@ export default function ChatPage() {
                 </div>
               </div>
 
-              {/* Área de Mensagens */}
+              {/* Messages area */}
               <div className="flex-1 overflow-y-auto p-6 space-y-4">
                 {loading ? (
                   <div className="flex justify-center py-8">
@@ -1136,7 +1331,7 @@ export default function ChatPage() {
                 )}
               </div>
 
-              {/* Reply Preview */}
+              {/* Reply preview */}
               {replyingTo && (
                 <div className="px-6 py-2 bg-gray-100 border-t border-gray-200 flex items-center justify-between">
                   <div className="flex-1">
@@ -1149,7 +1344,7 @@ export default function ChatPage() {
                 </div>
               )}
 
-              {/* Input de Mensagem */}
+              {/* Message input */}
               <div className="px-6 py-4 border-t border-gray-200">
                 <div className="flex items-end gap-2">
                   <button
@@ -1221,7 +1416,7 @@ export default function ChatPage() {
           )}
         </div>
 
-        {/* Sidebar de Informações do Chat */}
+        {/* Chat info sidebar */}
         {showChatInfo && selectedChat && (
           <div className="w-80 border-l border-gray-200 bg-white p-4 overflow-y-auto">
             <div className="flex items-center justify-between mb-4">
@@ -1289,7 +1484,7 @@ export default function ChatPage() {
           </div>
         )}
 
-        {/* Sidebar de Mensagens Fixadas */}
+        {/* Pinned messages sidebar */}
         {showPinned && selectedChat && (
           <div className="w-80 border-l border-gray-200 bg-white p-4 overflow-y-auto">
             <div className="flex items-center justify-between mb-4">

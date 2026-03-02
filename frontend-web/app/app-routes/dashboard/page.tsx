@@ -1,7 +1,7 @@
 // app/app-routes/dashboard/page.tsx
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useAuthStore } from '@/lib/stores/useAuthStore';
 import { useMapStore } from '@/lib/stores/useMapStore';
 import { MainLayout } from '@/components/layout/MainLayout';
@@ -38,31 +38,18 @@ export default function DashboardPage() {
   } = useMapStore();
 
   const [currentTime, setCurrentTime] = useState(new Date());
-  const [stats, setStats] = useState({
-    activeStaff: 0,
-    fullBins: 0,
-    highRiskAreas: 0,
-    completedTasks: 0
-  });
+  const stats = useMemo(() => ({
+    activeStaff: staffMembers.length,
+    fullBins: bins.length > 0 ? Math.floor(bins.length * 0.3) : 0,
+    highRiskAreas: heatmapData.filter((h) => h.weight > 0.7).length,
+    completedTasks: Math.max(5, Math.floor(staffMembers.length * 1.2))
+  }), [staffMembers, bins, heatmapData]);
 
   // Atualizar relógio
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
     return () => clearInterval(timer);
   }, []);
-
-  // Calcular estatísticas
-  useEffect(() => {
-    if (staffMembers && bins && heatmapData) {
-      // Para lixeiras, como não temos status/level, usamos um mock ou dados diferentes
-      setStats({
-        activeStaff: staffMembers.length,
-        fullBins: bins.length > 0 ? Math.floor(bins.length * 0.3) : 0, // Mock: 30% das lixeiras cheias
-        highRiskAreas: heatmapData.filter(h => h.weight > 0.7).length,
-        completedTasks: Math.floor(Math.random() * 10) + 5
-      });
-    }
-  }, [staffMembers, bins, heatmapData]);
 
   // Formatar hora
   const formattedTime = currentTime.toLocaleTimeString('pt-PT', {

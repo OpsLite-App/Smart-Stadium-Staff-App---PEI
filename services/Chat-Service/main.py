@@ -4,6 +4,7 @@ import threading
 import logging
 import paho.mqtt.client as mqtt
 from fastapi import FastAPI, Depends
+from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 import models, schemas
 from database import SessionLocal, engine, get_db
@@ -14,6 +15,18 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 models.Base.metadata.create_all(bind=engine)
 
 app = FastAPI()
+
+# Allow local frontend origins in development.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # MQTT settings from environment variables
 MQTT_BROKER = os.getenv("MQTT_BROKER", "mosquitto")
@@ -60,6 +73,7 @@ def mqtt_client_thread():
 
     client.loop_forever()
 
+@app.post("/messages", response_model=schemas.ChatMessage)
 @app.post("/messages/", response_model=schemas.ChatMessage)
 def create_message(message: schemas.ChatMessageCreate, db: Session = Depends(get_db)):
     db_message = models.ChatMessage(**message.dict())
@@ -68,6 +82,7 @@ def create_message(message: schemas.ChatMessageCreate, db: Session = Depends(get
     db.refresh(db_message)
     return db_message
 
+@app.get("/messages/{room}/", response_model=list[schemas.ChatMessage])
 @app.get("/messages/{room}", response_model=list[schemas.ChatMessage])
 def get_messages_for_room(room: str, db: Session = Depends(get_db)):
     return db.query(models.ChatMessage).filter(models.ChatMessage.room == room).all()

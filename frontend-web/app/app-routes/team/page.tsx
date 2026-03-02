@@ -125,6 +125,23 @@ interface TeamGroup {
   location: string;
 }
 
+interface ApiStaffMember {
+  id?: number;
+  name?: string;
+  email?: string;
+  role?: string;
+  status?: TeamMember['status'];
+  location?: string;
+  last_active?: string;
+  tasks_completed?: number;
+  tasks_pending?: number;
+}
+
+function toTeamRole(role: string | undefined): TeamMember['role'] {
+  const allowedRoles: TeamMember['role'][] = ['Security', 'Cleaning', 'Supervisor', 'Medical', 'Maintenance', 'Staff'];
+  return allowedRoles.includes(role as TeamMember['role']) ? (role as TeamMember['role']) : 'Staff';
+}
+
 export default function TeamPage() {
   const { user } = useAuthStore();
   const [members, setMembers] = useState<TeamMember[]>([]);
@@ -183,16 +200,16 @@ export default function TeamPage() {
       let teamMembers: TeamMember[] = [];
 
       try {
-        const response = await axios.get(`${AUTH_SERVICE}/auth/staff`, { timeout: 5000 });
+        const response = await axios.get<ApiStaffMember[]>(`${AUTH_SERVICE}/auth/staff`, { timeout: 5000 });
         if (response.data && Array.isArray(response.data)) {
           console.log(`✅ API respondeu com ${response.data.length} membros`);
           
           // Mapear resposta da API para o formato TeamMember
-          teamMembers = response.data.map((staff: any) => ({
-            id: staff.id,
-            name: staff.name,
-            email: staff.email || `${staff.name.toLowerCase().replace(' ', '.')}@fcp.pt`,
-            role: staff.role as any,
+          teamMembers = response.data.map((staff, index) => ({
+            id: staff.id ?? 10000 + index,
+            name: staff.name || `Staff ${staff.id || 'N/A'}`,
+            email: staff.email || `${(staff.name || 'staff').toLowerCase().replace(' ', '.')}@fcp.pt`,
+            role: toTeamRole(staff.role),
             status: staff.status || 'active',
             location: staff.location || 'Estádio',
             last_active: staff.last_active || new Date().toISOString(),
@@ -210,7 +227,7 @@ export default function TeamPage() {
               alerts_handled: Math.floor(Math.random() * 15) + 5
             },
             device: {
-              id: `DEV-${staff.id}`,
+              id: `DEV-${staff.id ?? 10000 + index}`,
               type: 'mobile',
               battery: Math.floor(Math.random() * 100),
               status: Math.random() > 0.2 ? 'online' : 'offline',
@@ -793,7 +810,10 @@ export default function TeamPage() {
                 </label>
                 <select
                   value={filters.sortBy}
-                  onChange={(e) => setFilters(prev => ({ ...prev, sortBy: e.target.value as any }))}
+                  onChange={(e) => {
+                    const value = e.target.value as 'name' | 'status' | 'location' | 'tasks';
+                    setFilters(prev => ({ ...prev, sortBy: value }));
+                  }}
                   className="w-full rounded-lg border-gray-300 text-gray-700"
                 >
                   <option value="name">Nome</option>

@@ -1,7 +1,8 @@
 // app/app-routes/alerts/page.tsx
 'use client';
-
-import { useState, useEffect } from 'react';
+import { Client } from '@stomp/stompjs';
+import { WS_GATEWAY } from '@/lib/services/api';
+import { useState, useEffect, useRef } from 'react';
 import { MainLayout } from '@/components/layout/MainLayout';
 import { useAuthStore } from '@/lib/stores/useAuthStore';
 import { api, CONGESTION_SERVICE, EMERGENCY_SERVICE, AUTH_SERVICE } from '@/lib/services/api';
@@ -38,7 +39,9 @@ import {
   EyeOff
 } from 'lucide-react';
 
-// Tipos de alerta
+type FilterTimeRange = 'all' | 'today' | 'hour' | '24h';
+
+// Alert types
 interface Alert {
   id: string;
   type: 'security' | 'cleaning' | 'emergency' | 'system' | 'crowd' | 'maintenance';
@@ -71,10 +74,10 @@ interface Alert {
     role: string;
   };
   source: 'api' | 'websocket' | 'system';
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
 }
 
-// Estatísticas de alertas
+// Alert statistics
 interface AlertStats {
   total: number;
   critical: number;
@@ -92,6 +95,108 @@ interface AlertStats {
     crowd: number;
     maintenance: number;
   };
+}
+
+const ALERT_SEVERITIES = ['critical', 'high', 'medium', 'low', 'info'] as const;
+
+function normalizeSeverity(value: unknown): Alert['severity'] {
+  if (typeof value === 'string' && (ALERT_SEVERITIES as readonly string[]).includes(value)) {
+    return value as Alert['severity'];
+  }
+  return 'medium';
+}
+
+function safeTimestamp(value: unknown): string {
+  if (typeof value === 'string' && !Number.isNaN(new Date(value).getTime())) {
+    return value;
+  }
+  return new Date().toISOString();
+}
+
+function normalizeEmergencyAlert(raw: Record<string, unknown>): Alert {
+  const sensorType = typeof raw.sensor_type === 'string' ? raw.sensor_type : 'sensor';
+  const reading = typeof raw.reading_value === 'number' ? raw.reading_value : undefined;
+  const threshold = typeof raw.threshold === 'number' ? raw.threshold : undefined;
+  const unit = typeof raw.unit === 'string' ? raw.unit : '';
+  const status = typeof raw.status === 'string' ? raw.status : 'active';
+  const locationNode = typeof raw.location_node === 'string' ? raw.location_node : 'Desconhecido';
+
+  return {
+    id: String(raw.id ?? raw.incident_id ?? `emergency-${Date.now()}`),
+    type: 'emergency',
+    severity: normalizeSeverity(raw.severity),
+    title: `Alerta de ${sensorType}`,
+    description:
+      reading !== undefined && threshold !== undefined
+        ? `Leitura ${reading}${unit ? ` ${unit}` : ''} (limite ${threshold}${unit ? ` ${unit}` : ''}).`
+        : 'Alerta de sensor recebido.',
+    location: `Nó ${locationNode}`,
+    location_details: {
+      node_id: locationNode,
+    },
+    timestamp: safeTimestamp(raw.detected_at),
+    read: status === 'acknowledged' || status === 'resolved',
+    acknowledged: status === 'acknowledged' || status === 'resolved' || !!raw.acknowledged_at,
+    resolved: status === 'resolved' || !!raw.resolved_at,
+    resolved_at: typeof raw.resolved_at === 'string' ? raw.resolved_at : undefined,
+    source: 'api',
+    metadata:
+      raw.incident_metadata && typeof raw.incident_metadata === 'object'
+        ? (raw.incident_metadata as Record<string, unknown>)
+        : {},
+  };
+}
+
+function normalizeCongestionAlert(raw: Record<string, unknown>): Alert {
+  const occupancy = typeof raw.occupancy_rate === 'number' ? raw.occupancy_rate : 0;
+  const capacity = typeof raw.capacity === 'number' ? raw.capacity : undefined;
+  const currentCount = typeof raw.current_count === 'number' ? raw.current_count : undefined;
+  const areaId = typeof raw.area_id === 'string' ? raw.area_id : 'Área desconhecida';
+  const areaType = typeof raw.area_type === 'string' ? raw.area_type : 'unknown';
+  const severity = normalizeSeverity(raw.severity ?? (occupancy >= 95 ? 'critical' : occupancy >= 80 ? 'high' : 'medium'));
+
+  return {
+    id: String(raw.id ?? `congestion-${areaId}-${Date.now()}`),
+    type: 'crowd',
+    severity,
+    title: 'Alta concentração de pessoas',
+    description:
+      currentCount !== undefined && capacity !== undefined
+        ? `Ocupação ${occupancy.toFixed(1)}% (${currentCount}/${capacity} pessoas).`
+        : `Ocupação ${occupancy.toFixed(1)}%.`,
+    location: areaId,
+    location_details: {
+      node_id: areaId,
+      area: areaType,
+      coordinates:
+        typeof raw.latitude === 'number' && typeof raw.longitude === 'number'
+          ? { lat: raw.latitude, lng: raw.longitude }
+          : undefined,
+    },
+    timestamp: safeTimestamp(raw.last_update ?? raw.timestamp),
+    read: false,
+    acknowledged: false,
+    resolved: false,
+    source: 'api',
+    metadata: {
+      occupancy_rate: occupancy,
+      area_type: areaType,
+      current_count: currentCount,
+      capacity,
+      heat_level: raw.heat_level,
+    },
+  };
+}
+
+function normalizeAlertsFromSource(sourceName: string, payload: unknown): Alert[] {
+  if (!Array.isArray(payload)) return [];
+  return payload
+    .filter((item): item is Record<string, unknown> => typeof item === 'object' && item !== null)
+    .map((item) =>
+      sourceName === 'Emergency Service'
+        ? normalizeEmergencyAlert(item)
+        : normalizeCongestionAlert(item)
+    );
 }
 
 export default function AlertsPage() {
@@ -119,69 +224,126 @@ export default function AlertsPage() {
     }
   });
 
-  // Filtros
+  // Filters
   const [filters, setFilters] = useState({
     severity: [] as string[],
     type: [] as string[],
     showResolved: false,
     showRead: true,
-    timeRange: 'all' as 'all' | 'today' | 'hour' | '24h'
+    timeRange: 'all' as FilterTimeRange
   });
 
-  // Estados para expansão
+  // Expansion state
   const [expandedAlert, setExpandedAlert] = useState<string | null>(null);
   const [showFilters, setShowFilters] = useState(false);
+  const resolvedOverridesRef = useRef<Record<string, string>>({});
 
-  // Carregar alertas da API
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      const stored = localStorage.getItem('alerts-resolved-overrides');
+      if (stored) {
+        const parsed = JSON.parse(stored) as Record<string, string>;
+        resolvedOverridesRef.current = parsed;
+      }
+    } catch {
+      // ignore parse errors
+    }
+  }, []);
+
+  const persistResolvedOverrides = (overrides: Record<string, string>) => {
+    if (typeof window === 'undefined') return;
+    localStorage.setItem('alerts-resolved-overrides', JSON.stringify(overrides));
+  };
+
+  // Load alerts from API
   const fetchAlerts = async () => {
     try {
       setRefreshing(true);
-      console.log('🔍 A buscar alertas...');
+      console.log('🔍 Fetching alerts...');
 
-      // Tentar buscar de múltiplas fontes
+      // Try fetching from multiple sources
       const sources = [
-        { url: `${CONGESTION_SERVICE}/api/alerts`, name: 'Congestion Service' },
-        { url: `${EMERGENCY_SERVICE}/api/alerts`, name: 'Emergency Service' },
-        { url: `${AUTH_SERVICE}/auth/alerts`, name: 'Auth Service' }
+        {
+          name: 'Congestion Service',
+          urls: [`${CONGESTION_SERVICE}/alerts`],
+        },
+        {
+          name: 'Emergency Service',
+          urls: [`${EMERGENCY_SERVICE}/sensors/alerts`],
+        },
       ];
 
       let allAlerts: Alert[] = [];
       let hasData = false;
 
       for (const source of sources) {
-        try {
-          console.log(`📡 A tentar ${source.name}...`);
-          const response = await axios.get(source.url, { timeout: 3000 });
-          
-          if (response.data && Array.isArray(response.data)) {
-            console.log(`✅ ${source.name}: ${response.data.length} alertas`);
-            allAlerts = [...allAlerts, ...response.data];
-            hasData = true;
-          } else if (response.data && response.data.alerts) {
-            console.log(`✅ ${source.name}: ${response.data.alerts.length} alertas`);
-            allAlerts = [...allAlerts, ...response.data.alerts];
-            hasData = true;
+        let sourceSuccess = false;
+
+        for (const url of source.urls) {
+          try {
+            console.log(`📡 Trying ${source.name}: ${url}...`);
+            const response = await axios.get(url, { timeout: 3000 });
+
+            if (response.data && Array.isArray(response.data)) {
+              const normalized = normalizeAlertsFromSource(source.name, response.data);
+              console.log(`✅ ${source.name}: ${normalized.length} alerts`);
+              allAlerts = [...allAlerts, ...normalized];
+              hasData = true;
+              sourceSuccess = true;
+              break;
+            }
+
+            if (response.data && response.data.alerts) {
+              const rawAlerts = (response.data as { alerts: unknown[] }).alerts;
+              const normalized = normalizeAlertsFromSource(source.name, rawAlerts);
+              console.log(`✅ ${source.name}: ${normalized.length} alerts`);
+              allAlerts = [...allAlerts, ...normalized];
+              hasData = true;
+              sourceSuccess = true;
+              break;
+            }
+          } catch {
+            // try next endpoint
           }
-        } catch (error) {
-          console.warn(`⚠️ ${source.name} indisponível`);
+        }
+
+        if (!sourceSuccess) {
+          console.warn(`⚠️ ${source.name} unavailable`);
         }
       }
 
-      // Se não conseguiu dados reais, usar dados mock
-      if (!hasData || allAlerts.length === 0) {
-        console.log('📊 Usando dados mock de alertas');
+      // Use mock data only when no service returns a valid response format.
+      // If services return an empty list, show real "0 alerts".
+      if (!hasData) {
+        console.log('📊 Using mock alert data');
         allAlerts = generateMockAlerts();
+      } else if (allAlerts.length === 0) {
+        console.log('ℹ️ No active alerts from services');
       }
 
-      // Ordenar por timestamp (mais recentes primeiro)
+      // Reapply local resolved overrides after polling to avoid reappearing alerts
+      allAlerts = allAlerts.map((alert) => {
+        const resolvedAt = resolvedOverridesRef.current[alert.id];
+        if (!resolvedAt) return alert;
+        return {
+          ...alert,
+          resolved: true,
+          resolved_at: resolvedAt,
+          read: true,
+          acknowledged: true,
+        };
+      });
+
+      // Sort by timestamp (most recent first)
       allAlerts.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
 
       setAlerts(allAlerts);
       calculateStats(allAlerts);
       
     } catch (error) {
-      console.error('❌ Erro ao buscar alertas:', error);
-      // Fallback para dados mock
+      console.error('❌ Error while fetching alerts:', error);
+      // Fallback to mock data
       const mockAlerts = generateMockAlerts();
       setAlerts(mockAlerts);
       calculateStats(mockAlerts);
@@ -191,7 +353,7 @@ export default function AlertsPage() {
     }
   };
 
-  // Gerar dados mock para desenvolvimento
+  // Generate mock data for development
   const generateMockAlerts = (): Alert[] => {
     const now = new Date();
     const alerts: Alert[] = [
@@ -363,7 +525,7 @@ export default function AlertsPage() {
     return alerts;
   };
 
-  // Calcular estatísticas
+  // Calculate statistics
   const calculateStats = (alertList: Alert[]) => {
     const newStats: AlertStats = {
       total: alertList.length,
@@ -385,55 +547,57 @@ export default function AlertsPage() {
     };
 
     alertList.forEach(alert => {
-      // Contagem por severidade
-      switch (alert.severity) {
-        case 'critical': newStats.critical++; break;
-        case 'high': newStats.high++; break;
-        case 'medium': newStats.medium++; break;
-        case 'low': newStats.low++; break;
-        case 'info': newStats.info++; break;
-      }
-
-      // Contagem por tipo
-      if (alert.type in newStats.byType) {
-        newStats.byType[alert.type as keyof typeof newStats.byType]++;
-      }
-
-      // Não lidos
+      // Unread
       if (!alert.read) newStats.unread++;
 
-      // Não resolvidos
-      if (!alert.resolved) newStats.unresolved++;
+      // Unresolved
+      if (!alert.resolved) {
+        newStats.unresolved++;
+
+        // Count by severity (active only)
+        switch (alert.severity) {
+          case 'critical': newStats.critical++; break;
+          case 'high': newStats.high++; break;
+          case 'medium': newStats.medium++; break;
+          case 'low': newStats.low++; break;
+          case 'info': newStats.info++; break;
+        }
+
+        // Count by type (active only)
+        if (alert.type in newStats.byType) {
+          newStats.byType[alert.type as keyof typeof newStats.byType]++;
+        }
+      }
     });
 
     setStats(newStats);
   };
 
-  // Aplicar filtros
+  // Apply filters
   useEffect(() => {
     let filtered = [...alerts];
 
-    // Filtrar por severidade
+    // Filter by severity
     if (filters.severity.length > 0) {
       filtered = filtered.filter(alert => filters.severity.includes(alert.severity));
     }
 
-    // Filtrar por tipo
+    // Filter by type
     if (filters.type.length > 0) {
       filtered = filtered.filter(alert => filters.type.includes(alert.type));
     }
 
-    // Filtrar resolvidos
+    // Filter resolved
     if (!filters.showResolved) {
       filtered = filtered.filter(alert => !alert.resolved);
     }
 
-    // Filtrar lidos
+    // Filter read
     if (!filters.showRead) {
       filtered = filtered.filter(alert => !alert.read);
     }
 
-    // Filtrar por tempo
+    // Filter by time
     if (filters.timeRange !== 'all') {
       const now = new Date();
       const threshold = new Date();
@@ -456,53 +620,69 @@ export default function AlertsPage() {
     setFilteredAlerts(filtered);
   }, [alerts, filters]);
 
-  // Carregar alertas ao montar componente
+  // Load alerts on component mount
   useEffect(() => {
     fetchAlerts();
 
-    // WebSocket para alertas em tempo real
-    let ws: WebSocket | null = null;
-    
-    try {
-      ws = new WebSocket(`ws://${process.env.NEXT_PUBLIC_API_IP || '192.168.1.137'}:8089/ws/alerts`);
-      
-      ws.onmessage = (event) => {
-        try {
-          const newAlert = JSON.parse(event.data) as Alert;
-          console.log('🔔 Novo alerta em tempo real:', newAlert);
-          
-          setAlerts(prev => {
-            // Verificar se já existe
-            const exists = prev.some(a => a.id === newAlert.id);
-            if (exists) return prev;
-            
-            // Adicionar novo alerta
-            const updated = [newAlert, ...prev];
-            calculateStats(updated);
-            return updated;
-          });
-        } catch (e) {
-          console.error('Erro ao processar websocket:', e);
-        }
-      };
-      
-      ws.onerror = (error) => {
-        console.warn('⚠️ WebSocket de alertas não disponível:', error);
-      };
-    } catch (error) {
-      console.warn('⚠️ WebSocket não suportado');
-    }
+    // WebSocket for real-time alerts
+    // STOMP WebSocket for real-time alerts
+    const client = new Client({
+      brokerURL: WS_GATEWAY,
+      connectHeaders: user?.token
+        ? { Authorization: `Bearer ${user.token}` }
+        : {},
 
-    // Refresh automático a cada 30 segundos
+      debug: (str) => {
+        console.log('STOMP:', str);
+      },
+
+      onConnect: () => {
+        console.log('✅ STOMP connected (alerts)');
+
+        client.subscribe('/topic/alerts', (msg) => {
+          try {
+            const newAlert = JSON.parse(msg.body) as Alert;
+
+            setAlerts(prev => {
+              const exists = prev.some(a => a.id === newAlert.id);
+              if (exists) return prev;
+
+              const updated = [newAlert, ...prev];
+              calculateStats(updated);
+              return updated;
+            });
+
+          } catch (e) {
+            console.error('Error processing alert:', e);
+          }
+        });
+      },
+
+      onStompError: (frame) => {
+        console.error('STOMP error:', frame.headers['message']);
+      },
+
+      onWebSocketError: (e) => {
+        console.warn('WebSocket error:', e);
+      },
+
+      onWebSocketClose: () => {
+        console.warn('WebSocket closed');
+      }
+    });
+
+    client.activate();
+
+    // Auto refresh every 30 seconds
     const interval = setInterval(fetchAlerts, 30000);
 
     return () => {
-      if (ws) ws.close();
+      client.deactivate();
       clearInterval(interval);
     };
   }, []);
 
-  // Marcar alerta como lido
+  // Mark alert as read
   const markAsRead = (alertId: string) => {
     setAlerts(prev => {
       const updated = prev.map(alert => 
@@ -513,22 +693,22 @@ export default function AlertsPage() {
     });
   };
 
-  // Marcar alerta como reconhecido
+  // Mark alert as acknowledged
   const acknowledgeAlert = async (alertId: string) => {
     if (!user) return;
 
     try {
-      // Tentar enviar confirmação para API
+      // Try sending acknowledgment to API
       if (process.env.NODE_ENV === 'development') {
-        console.log('✅ Alerta reconhecido (dev mode):', alertId);
+        console.log('✅ Alert acknowledged (dev mode):', alertId);
       } else {
-        await axios.post(`${CONGESTION_SERVICE}/api/alerts/${alertId}/acknowledge`, {
+        await axios.post(`${CONGESTION_SERVICE}/alerts/${alertId}/acknowledge`, {
           user_id: user.id,
           user_name: user.email?.split('@')[0] || 'Staff'
         });
       }
 
-      // Atualizar localmente
+      // Update locally
       setAlerts(prev => {
         const updated = prev.map(alert => 
           alert.id === alertId ? { 
@@ -545,9 +725,9 @@ export default function AlertsPage() {
         return updated;
       });
     } catch (error) {
-      console.error('Erro ao reconhecer alerta:', error);
+      console.error('Error acknowledging alert:', error);
       
-      // Fallback: atualizar localmente mesmo assim
+      // Fallback: still update locally
       setAlerts(prev => {
         const updated = prev.map(alert => 
           alert.id === alertId ? { 
@@ -566,41 +746,48 @@ export default function AlertsPage() {
     }
   };
 
-  // Resolver alerta
+  // Resolve alert
   const resolveAlert = async (alertId: string) => {
     if (!user) return;
+    const resolvedAt = new Date().toISOString();
 
     try {
       if (process.env.NODE_ENV === 'development') {
-        console.log('✅ Alerta resolvido (dev mode):', alertId);
+        console.log('✅ Alert resolved (dev mode):', alertId);
       } else {
-        await axios.post(`${CONGESTION_SERVICE}/api/alerts/${alertId}/resolve`, {
+        await axios.post(`${CONGESTION_SERVICE}/alerts/${alertId}/resolve`, {
           user_id: user.id,
-          resolved_at: new Date().toISOString()
+          resolved_at: resolvedAt
         });
       }
+
+      resolvedOverridesRef.current = { ...resolvedOverridesRef.current, [alertId]: resolvedAt };
+      persistResolvedOverrides(resolvedOverridesRef.current);
 
       setAlerts(prev => {
         const updated = prev.map(alert => 
           alert.id === alertId ? { 
             ...alert, 
             resolved: true,
-            resolved_at: new Date().toISOString()
+            resolved_at: resolvedAt
           } : alert
         );
         calculateStats(updated);
         return updated;
       });
     } catch (error) {
-      console.error('Erro ao resolver alerta:', error);
+      console.error('Error resolving alert:', error);
       
       // Fallback
+      resolvedOverridesRef.current = { ...resolvedOverridesRef.current, [alertId]: resolvedAt };
+      persistResolvedOverrides(resolvedOverridesRef.current);
+
       setAlerts(prev => {
         const updated = prev.map(alert => 
           alert.id === alertId ? { 
             ...alert, 
             resolved: true,
-            resolved_at: new Date().toISOString()
+            resolved_at: resolvedAt
           } : alert
         );
         calculateStats(updated);
@@ -609,7 +796,7 @@ export default function AlertsPage() {
     }
   };
 
-  // Toggle filtro de severidade
+  // Toggle severity filter
   const toggleSeverityFilter = (severity: string) => {
     setFilters(prev => ({
       ...prev,
@@ -619,7 +806,7 @@ export default function AlertsPage() {
     }));
   };
 
-  // Toggle filtro de tipo
+  // Toggle type filter
   const toggleTypeFilter = (type: string) => {
     setFilters(prev => ({
       ...prev,
@@ -629,7 +816,7 @@ export default function AlertsPage() {
     }));
   };
 
-  // Reset filtros
+  // Reset filters
   const resetFilters = () => {
     setFilters({
       severity: [],
@@ -640,7 +827,7 @@ export default function AlertsPage() {
     });
   };
 
-  // Formatar tempo relativo
+  // Format relative time
   const formatRelativeTime = (timestamp: string) => {
     const now = new Date();
     const alertTime = new Date(timestamp);
@@ -655,7 +842,7 @@ export default function AlertsPage() {
     return `Há ${diffDays} dias`;
   };
 
-  // Obter ícone do tipo de alerta
+  // Get alert type icon
   const getAlertTypeIcon = (type: string) => {
     switch (type) {
       case 'security': return Shield;
@@ -668,7 +855,7 @@ export default function AlertsPage() {
     }
   };
 
-  // Obter cor do tipo de alerta
+  // Get alert type color
   const getAlertTypeColor = (type: string) => {
     switch (type) {
       case 'security': return 'text-blue-600 bg-blue-100';
@@ -681,7 +868,7 @@ export default function AlertsPage() {
     }
   };
 
-  // Obter cor da severidade
+  // Get severity color
   const getSeverityColor = (severity: string) => {
     switch (severity) {
       case 'critical': return 'bg-red-600 text-white';
@@ -693,7 +880,7 @@ export default function AlertsPage() {
     }
   };
 
-  // Obter ícone da severidade
+  // Get severity icon
   const getSeverityIcon = (severity: string) => {
     switch (severity) {
       case 'critical': return AlertTriangle;
@@ -717,6 +904,8 @@ export default function AlertsPage() {
       </MainLayout>
     );
   }
+
+  const completedCount = Math.max(0, stats.total - stats.unresolved);
 
   return (
     <MainLayout>
@@ -754,7 +943,7 @@ export default function AlertsPage() {
         </div>
 
         {/* Stats Cards */}
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
+        <div className="grid grid-cols-2 md:grid-cols-6 gap-4 mb-6">
           <div className="bg-white rounded-lg shadow-sm p-4 border-l-4 border-red-500">
             <p className="text-sm text-gray-600">Críticos</p>
             <p className="text-2xl font-bold text-gray-900">{stats.critical}</p>
@@ -774,6 +963,10 @@ export default function AlertsPage() {
           <div className="bg-white rounded-lg shadow-sm p-4 border-l-4 border-gray-500">
             <p className="text-sm text-gray-600">Info</p>
             <p className="text-2xl font-bold text-gray-900">{stats.info}</p>
+          </div>
+          <div className="bg-white rounded-lg shadow-sm p-4 border-l-4 border-emerald-500">
+            <p className="text-sm text-gray-600">Concluídos</p>
+            <p className="text-2xl font-bold text-gray-900">{completedCount}</p>
           </div>
         </div>
 
@@ -838,7 +1031,10 @@ export default function AlertsPage() {
                 </label>
                 <select
                   value={filters.timeRange}
-                  onChange={(e) => setFilters(prev => ({ ...prev, timeRange: e.target.value as any }))}
+                  onChange={(e) => {
+                    const value = e.target.value as FilterTimeRange;
+                    setFilters(prev => ({ ...prev, timeRange: value }));
+                  }}
                   className="w-full rounded-lg border-gray-300 text-gray-700 mb-4"
                 >
                   <option value="all">Todo o período</option>
@@ -1063,7 +1259,7 @@ export default function AlertsPage() {
                           {alert.location_details?.coordinates && (
                             <button
                               onClick={() => {
-                                // Abrir no mapa
+                                // Open in map
                                 window.location.href = `/app-routes/map?lat=${alert.location_details?.coordinates?.lat}&lng=${alert.location_details?.coordinates?.lng}`;
                               }}
                               className="flex items-center gap-1 px-3 py-1.5 text-sm bg-purple-100 text-purple-700 rounded-lg hover:bg-purple-200"
