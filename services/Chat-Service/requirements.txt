@@ -1,0 +1,6 @@
+fastapi
+uvicorn[standard]
+SQLAlchemy
+pydantic
+psycopg2-binary
+paho-mqtt
