@@ -41,5 +41,4 @@ from pydantic import ValidationError
 def test_schema_field_types():
     """Checks that Pydantic enforces correct field types."""
     with pytest.raises(ValidationError):
-        # Tenta passar um dicionário sem campos obrigatórios
         ChatMessageCreate(room="Sala")

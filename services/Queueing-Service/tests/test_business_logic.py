@@ -3,7 +3,6 @@ from waittimes import get_alerts, wait_times_cache, get_fastest_location
 from service import queue_state, remove_queue # Name corrected
 from models import mm1_queue, QueueStatus
 
-# Auxiliar para criar dados que o Pydantic (WaitTimeInfo) aceite
 def create_mock_location(loc_id, loc_type, wait_time):
     return {
         "location_id": loc_id,
