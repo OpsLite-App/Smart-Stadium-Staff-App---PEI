@@ -12,8 +12,6 @@ from database import SessionLocal, engine, get_db
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
-models.Base.metadata.create_all(bind=engine)
-
 app = FastAPI()
 
 # Allow local frontend origins in development.
@@ -32,6 +30,11 @@ app.add_middleware(
 MQTT_BROKER = os.getenv("MQTT_BROKER", "mosquitto")
 MQTT_PORT = int(os.getenv("MQTT_PORT", 1883))
 MQTT_TOPIC = "stadium/chat/#"
+
+@app.on_event("startup")
+def on_startup():
+    # Só tenta criar as tabelas quando o servidor realmente inicia
+    models.Base.metadata.create_all(bind=engine)
 
 def on_connect(client, userdata, flags, rc):
     if rc == 0:
