@@ -3,8 +3,6 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useParams } from 'next/navigation';
-import { useAuthStore } from '@/lib/stores/useAuthStore';
-import { useMapStore } from '@/lib/stores/useMapStore';
 import { api } from '@/lib/services/api';
 import { theme } from '@/lib/theme';
 import { 
@@ -62,8 +60,6 @@ interface TaskDetails {
 export default function TaskDetailsPage() {
   const router = useRouter();
   const params = useParams();
-  const { user } = useAuthStore();
-  const { requestRoute } = useMapStore();
   const [loading, setLoading] = useState(true);
   const [task, setTask] = useState<TaskDetails | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -160,12 +156,7 @@ export default function TaskDetailsPage() {
   };
 
   const handleRoute = () => {
-    if (task?.coordinates) {
-      const fromNode = user?.id ? `staff-${user.id}` : 'current';
-      const toNode = `task-${taskId}`;
-      requestRoute(fromNode, toNode);
-      router.push('/app-routes/map');
-    }
+    alert('Funcionalidade de mapa removida temporariamente.');
   };
 
   const handleChat = () => {

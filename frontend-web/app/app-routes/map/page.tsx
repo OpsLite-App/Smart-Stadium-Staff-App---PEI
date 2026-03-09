@@ -1,512 +1,286 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import 'leaflet.heat';
-import { useMapStore } from '@/lib/stores/useMapStore';
+import { MainLayout } from '@/components/layout/MainLayout';
+import { api, type HeatmapPoint, type StaffMember } from '@/lib/services/api';
 import { useAuthStore } from '@/lib/stores/useAuthStore';
-import { theme } from '@/lib/theme';
-import { 
-  Flame, 
-  FlameKindling, 
-  Trash2, 
-  AlertCircle,
-  Target,
-  X,
-  Bug
-} from 'lucide-react';
 
-// Fix para ícones do Leaflet no Next.js
-const fixLeafletIcons = () => {
-  delete (
-    (L.Icon.Default as unknown as { prototype: { _getIconUrl?: unknown } }).prototype
-  )._getIconUrl;
-  L.Icon.Default.mergeOptions({
-    iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
-    iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
-    shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
-  });
+type BinPoint = {
+  id: string;
+  name: string;
+  lat: number;
+  lng: number;
 };
 
-// Interface para pontos do heatmap com cor
-interface HeatmapPointWithColor {
-  latitude: number;
-  longitude: number;
-  weight: number;
-  occupancy_rate?: number;
-  heat_level?: 'green' | 'yellow' | 'red';
-  area_id?: string;
+const DRAGAO_CENTER: L.LatLngTuple = [41.1618, -8.5839];
+
+const DEFAULT_BINS: BinPoint[] = [
+  { id: 'BIN-A1', name: 'Lixeira A1', lat: 41.16205, lng: -8.58425 },
+  { id: 'BIN-B2', name: 'Lixeira B2', lat: 41.16155, lng: -8.58455 },
+  { id: 'BIN-C3', name: 'Lixeira C3', lat: 41.1612, lng: -8.5837 },
+  { id: 'BIN-D4', name: 'Lixeira D4', lat: 41.16145, lng: -8.5832 },
+  { id: 'BIN-E5', name: 'Lixeira E5', lat: 41.16215, lng: -8.58345 },
+];
+
+const DEFAULT_HEATMAP: HeatmapPoint[] = [
+  { latitude: 41.16195, longitude: -8.5842, weight: 0.9, heat_level: 'red' },
+  { latitude: 41.16165, longitude: -8.58435, weight: 0.75, heat_level: 'yellow' },
+  { latitude: 41.16135, longitude: -8.5841, weight: 0.6, heat_level: 'yellow' },
+  { latitude: 41.1612, longitude: -8.5837, weight: 0.85, heat_level: 'red' },
+  { latitude: 41.16145, longitude: -8.58335, weight: 0.65, heat_level: 'yellow' },
+  { latitude: 41.1618, longitude: -8.5832, weight: 0.5, heat_level: 'green' },
+  { latitude: 41.16205, longitude: -8.58355, weight: 0.45, heat_level: 'green' },
+];
+
+function roleColor(role: string): string {
+  const normalized = role.toLowerCase();
+  if (normalized.includes('security')) return '#2563EB';
+  if (normalized.includes('cleaning')) return '#10B981';
+  if (normalized.includes('supervisor')) return '#F59E0B';
+  return '#6B7280';
+}
+
+function roleIcon(role: string): string {
+  const normalized = role.toLowerCase();
+  if (normalized.includes('security')) return 'S';
+  if (normalized.includes('cleaning')) return 'L';
+  if (normalized.includes('supervisor')) return 'SV';
+  return 'U';
 }
 
 export default function MapPage() {
-  const router = useRouter();
   const mapRef = useRef<L.Map | null>(null);
-  const mapContainer = useRef<HTMLDivElement>(null);
-  const markersRef = useRef<L.Marker[]>([]);
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const staffLayerRef = useRef<L.LayerGroup | null>(null);
+  const binsLayerRef = useRef<L.LayerGroup | null>(null);
   const heatLayerRef = useRef<L.Layer | null>(null);
-  const circleLayersRef = useRef<L.Circle[]>([]);
-  const missingNodeWarningsRef = useRef<Set<string>>(new Set());
-  
-  const { user } = useAuthStore();
-  const { 
-    nodes, 
-    bins, 
-    staffMembers, 
-    heatmapData,
-    activeRoute,
-    loading,
-    heatmapLoading,
-    fetchMapData,
-    fetchStaff,
-    fetchHeatmapData,
-    clearRoute,
-  } = useMapStore();
-
-  // Estado Local
+  const [loading, setLoading] = useState(true);
+  const [staff, setStaff] = useState<StaffMember[]>([]);
+  const [heatmap, setHeatmap] = useState<HeatmapPoint[]>([]);
   const [showHeatmap, setShowHeatmap] = useState(true);
-  const [showBins, setShowBins] = useState(false);
-  const [heatmapType, setHeatmapType] = useState<'gradient' | 'circles'>('gradient');
+  const [usingFallbackHeatmap, setUsingFallbackHeatmap] = useState(false);
+  const bins = useMemo(() => DEFAULT_BINS, []);
+  const { user } = useAuthStore();
 
-  // Permissões de visualização
-  const canViewHeatmap = user?.role === 'Security' || user?.role === 'Supervisor';
-  const canViewBins = user?.role === 'Cleaning' || user?.role === 'Supervisor';
-  const canViewStaff = true;
-
-  // Inicializar mapa
   useEffect(() => {
-    if (!mapContainer.current || mapRef.current) return;
+    if (!containerRef.current || mapRef.current) return;
 
-    console.log("🗺️ Inicializando mapa...");
-    fixLeafletIcons();
+    delete (L.Icon.Default.prototype as unknown as { _getIconUrl?: unknown })._getIconUrl;
+    L.Icon.Default.mergeOptions({
+      iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
+      iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
+      shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
+    });
 
-    const stadiumCoords: L.LatLngExpression = [41.161758, -8.583933];
+    const map = L.map(containerRef.current, {
+      zoomControl: true,
+      attributionControl: true,
+    }).setView(DRAGAO_CENTER, 17);
 
-    mapRef.current = L.map(mapContainer.current).setView(stadiumCoords, 18);
+    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 20,
+      attribution: '&copy; OpenStreetMap contributors',
+    }).addTo(map);
 
-    // Adicionar tiles do OpenStreetMap
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-    }).addTo(mapRef.current);
-
-    // Carregar dados
-    fetchMapData();
-    fetchStaff();
-
-    // Polling para staff
-    const staffInterval = setInterval(fetchStaff, 10000);
+    mapRef.current = map;
 
     return () => {
-      clearInterval(staffInterval);
       if (mapRef.current) {
         mapRef.current.remove();
         mapRef.current = null;
       }
     };
-  }, [fetchMapData, fetchStaff]);
-// Atualizar heatmap (gradiente)
-useEffect(() => {
-  if (!mapRef.current || !canViewHeatmap || !showHeatmap || heatmapType !== 'gradient') {
-    if (heatLayerRef.current && mapRef.current) {
-      mapRef.current.removeLayer(heatLayerRef.current);
-      heatLayerRef.current = null;
-    }
-    return;
-  }
+  }, []);
 
-  if (heatLayerRef.current) {
-    mapRef.current.removeLayer(heatLayerRef.current);
-  }
-
-  if (heatmapData.length > 0) {
-    console.log(`🔥 Desenhando heatmap gradiente com ${heatmapData.length} pontos`);
-    
-    const points: [number, number, number][] = heatmapData.map((point): [number, number, number] => [
-      point.latitude,
-      point.longitude,
-      point.weight
-    ]);
-
-    heatLayerRef.current = L.heatLayer(points, {
-      radius: 30,
-      blur: 20,
-      maxZoom: 17,
-      gradient: {
-        0.2: '#10B981',
-        0.5: '#F59E0B',
-        0.8: '#EF4444'
-      }
-    }).addTo(mapRef.current);
-  }
-
-  return () => {
-    if (heatLayerRef.current && mapRef.current) {
-      mapRef.current.removeLayer(heatLayerRef.current);
-    }
-  };
-}, [heatmapData, showHeatmap, canViewHeatmap, heatmapType]);
-  // Atualizar marcadores de staff
   useEffect(() => {
-    if (!mapRef.current) return;
+    let mounted = true;
+    const load = async () => {
+      setLoading(true);
+      try {
+        const [staffData, heatData] = await Promise.all([
+          api.getStaff().catch(() => []),
+          api.getHeatmapPoints().catch(() => ({ points: [] as HeatmapPoint[] })),
+        ]);
+        if (!mounted) return;
+        setStaff(staffData);
+        const validPoints = (heatData.points || []).filter(
+          (p) =>
+            Number.isFinite(p.latitude) &&
+            Number.isFinite(p.longitude) &&
+            p.latitude !== 0 &&
+            p.longitude !== 0
+        );
 
-    markersRef.current.forEach(marker => marker.remove());
-    markersRef.current = [];
-
-    staffMembers.forEach(member => {
-      const node = nodes[member.location];
-      if (!node) {
-        const warningKey = `${member.location}:${member.id}`;
-        if (!missingNodeWarningsRef.current.has(warningKey)) {
-          missingNodeWarningsRef.current.add(warningKey);
-          console.warn(`⚠️ Node ${member.location} não encontrado para staff ${member.name}`);
+        if (validPoints.length >= 3) {
+          setHeatmap(validPoints);
+          setUsingFallbackHeatmap(false);
+        } else {
+          setHeatmap(DEFAULT_HEATMAP);
+          setUsingFallbackHeatmap(true);
         }
-        return;
-      }
-      if (member.id === user?.id) return;
-
-      const getMarkerColor = () => {
-        switch (member.role) {
-          case 'Security': return '#3B82F6';
-          case 'Cleaning': return '#10B981';
-          case 'Supervisor': return '#F59E0B';
-          case 'Medical': return '#EF4444';
-          default: return '#6B7280';
-        }
-      };
-
-      const getMarkerIcon = () => {
-        switch (member.role) {
-          case 'Security': return '🛡️';
-          case 'Cleaning': return '🧹';
-          case 'Medical': return '⚕️';
-          default: return '👤';
-        }
-      };
-
-      const icon = L.divIcon({
-        className: 'custom-marker',
-        html: `
-          <div style="
-            background-color: ${getMarkerColor()};
-            width: 40px;
-            height: 40px;
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            border: 3px solid white;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.3);
-            color: white;
-            font-size: 20px;
-            position: relative;
-          ">
-            ${getMarkerIcon()}
-            <div style="
-              position: absolute;
-              bottom: -8px;
-              left: 50%;
-              transform: translateX(-50%);
-              width: 0;
-              height: 0;
-              border-left: 6px solid transparent;
-              border-right: 6px solid transparent;
-              border-top: 8px solid ${getMarkerColor()};
-            "></div>
-          </div>
-        `,
-        iconSize: [40, 48],
-        iconAnchor: [20, 40]
-      });
-
-      const marker = L.marker([node.x, node.y], { icon })
-        .bindPopup(`
-          <b>${member.name}</b><br>
-          ${member.role}<br>
-          <small>${member.location}</small>
-        `)
-        .addTo(mapRef.current!);
-
-      markersRef.current.push(marker);
-    });
-  }, [staffMembers, nodes, user?.id]);
-
-  // Atualizar marcadores de lixeiras
-  useEffect(() => {
-    if (!mapRef.current || !canViewBins || !showBins) return;
-
-    // Remover marcadores antigos de lixeiras (assumindo que estão em markersRef)
-    // Como simplificação, vamos recriar todos os marcadores de staff depois
-    
-    bins.forEach(bin => {
-      const icon = L.divIcon({
-        className: 'bin-marker',
-        html: `
-          <div style="
-            background-color: #10B981;
-            width: 30px;
-            height: 30px;
-            border-radius: 8px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            border: 2px solid white;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.3);
-            color: white;
-            font-size: 16px;
-          ">
-            🗑️
-          </div>
-        `,
-        iconSize: [30, 30],
-        iconAnchor: [15, 15]
-      });
-
-      const marker = L.marker([bin.x, bin.y], { icon })
-        .bindPopup(`<b>${bin.name}</b><br>${bin.category}`)
-        .addTo(mapRef.current!);
-
-      markersRef.current.push(marker);
-    });
-  }, [bins, showBins, canViewBins]);
-
-  // Desenhar rota ativa
-  useEffect(() => {
-    if (!mapRef.current || !activeRoute || activeRoute.length === 0) return;
-
-    const routePoints = activeRoute.map(point => [point.latitude, point.longitude] as L.LatLngTuple);
-
-    const routeLine = L.polyline(routePoints, {
-      color: theme.colors.primary,
-      weight: 4,
-      opacity: 0.8,
-      lineJoin: 'round'
-    }).addTo(mapRef.current);
-
-    const lastPoint = activeRoute[activeRoute.length - 1];
-    const destIcon = L.divIcon({
-      className: 'dest-marker',
-      html: `
-        <div style="
-          background-color: ${theme.colors.error};
-          width: 40px;
-          height: 40px;
-          border-radius: 50%;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          border: 3px solid white;
-          box-shadow: 0 2px 5px rgba(0,0,0,0.3);
-          color: white;
-          font-size: 20px;
-        ">
-          🏁
-        </div>
-      `,
-      iconSize: [40, 40],
-      iconAnchor: [20, 20]
-    });
-
-    const destMarker = L.marker([lastPoint.latitude, lastPoint.longitude], { icon: destIcon })
-      .addTo(mapRef.current);
-
-    mapRef.current.fitBounds(L.latLngBounds(routePoints), {
-      padding: [50, 50]
-    });
-
-    return () => {
-      if (mapRef.current) {
-        mapRef.current.removeLayer(routeLine);
-        mapRef.current.removeLayer(destMarker);
+      } finally {
+        if (mounted) setLoading(false);
       }
     };
-  }, [activeRoute]);
 
-  // Atualizar heatmap periodicamente
+    load();
+    const timer = setInterval(load, 30000);
+    return () => {
+      mounted = false;
+      clearInterval(timer);
+    };
+  }, []);
+
   useEffect(() => {
-    if (!canViewHeatmap || !showHeatmap) return;
+    const map = mapRef.current;
+    if (!map) return;
 
-    fetchHeatmapData();
-    const heatmapInterval = setInterval(fetchHeatmapData, 30000);
+    if (binsLayerRef.current) map.removeLayer(binsLayerRef.current);
+    const binsLayer = L.layerGroup();
+    bins.forEach((bin) => {
+      const marker = L.circleMarker([bin.lat, bin.lng], {
+        radius: 7,
+        color: '#065F46',
+        fillColor: '#10B981',
+        fillOpacity: 0.9,
+        weight: 2,
+      });
+      marker.bindPopup(`<b>${bin.name}</b><br/>${bin.id}`);
+      marker.addTo(binsLayer);
+    });
+    binsLayer.addTo(map);
+    binsLayerRef.current = binsLayer;
+  }, [bins]);
 
-    return () => clearInterval(heatmapInterval);
-  }, [canViewHeatmap, showHeatmap, fetchHeatmapData]);
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
 
-  const getOverlayText = () => {
-    if (!user) return 'Operacional • Live';
-    if (user.role === 'Supervisor') return 'Supervisão • Modo Global';
-    return `${user.role === 'Security' ? 'Segurança' : 'Limpeza'} • Ativo`;
-  };
+    if (staffLayerRef.current) map.removeLayer(staffLayerRef.current);
+    const staffLayer = L.layerGroup();
 
-  const handleDebug = () => {
-    console.log("🔍 === DEBUG INFO ===");
-    console.log("👤 User:", user);
-    console.log("🔥 Heatmap data:", heatmapData.length, "pontos");
-    console.log("🗺️ Nodes:", Object.keys(nodes).length);
-    console.log("🗑️ Bins:", bins.length);
-    console.log("👥 Staff:", staffMembers.length);
-    console.log("🔄 Heatmap type:", heatmapType);
-    console.log("👁️ Show heatmap:", showHeatmap);
-    
-    alert(
-      `Debug Info:\n` +
-      `Role: ${user?.role}\n` +
-      `Heatmap: ${heatmapData.length} pontos\n` +
-      `Nodes: ${Object.keys(nodes).length}\n` +
-      `Staff: ${staffMembers.length}\n` +
-      `Tipo: ${heatmapType}`
-    );
-    
-    // Forçar atualização
-    fetchHeatmapData();
-  };
+    const fallbackPositions: L.LatLngTuple[] = [
+      [41.162, -8.5843],
+      [41.16135, -8.58435],
+      [41.1615, -8.5834],
+      [41.16215, -8.58365],
+      [41.16165, -8.58305],
+    ];
 
-  if (loading) {
-    return (
-      <div className="h-screen flex items-center justify-center bg-gray-50">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#4F46E5] mx-auto mb-4"></div>
-          <p className="text-gray-600">A carregar mapa...</p>
-        </div>
-      </div>
-    );
-  }
+    staff.forEach((member, idx) => {
+      if (member.id === user?.id) return;
+      const fallback = fallbackPositions[idx % fallbackPositions.length];
+      const icon = L.divIcon({
+        className: 'staff-marker',
+        html: `
+          <div style="
+            width:30px;height:30px;border-radius:9999px;
+            background:${roleColor(member.role)};
+            color:white;font-size:11px;font-weight:700;
+            display:flex;align-items:center;justify-content:center;
+            border:2px solid white;box-shadow:0 1px 6px rgba(0,0,0,.35);
+          ">${roleIcon(member.role)}</div>
+        `,
+        iconSize: [30, 30],
+        iconAnchor: [15, 15],
+      });
+
+      const marker = L.marker(fallback, { icon });
+      marker.bindPopup(`<b>${member.name}</b><br/>${member.role}`);
+      marker.addTo(staffLayer);
+    });
+
+    staffLayer.addTo(map);
+    staffLayerRef.current = staffLayer;
+  }, [staff, user?.id]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+
+    if (heatLayerRef.current) {
+      map.removeLayer(heatLayerRef.current);
+      heatLayerRef.current = null;
+    }
+
+    if (!showHeatmap || !heatmap.length) return;
+
+    const points: [number, number, number][] = heatmap
+      .filter((p) => Number.isFinite(p.latitude) && Number.isFinite(p.longitude))
+      .map((p) => [p.latitude, p.longitude, Math.max(0.2, Math.min(1, p.weight || 0.5))]);
+
+    if (!points.length) return;
+
+    const heatLayer = L.heatLayer(points, {
+      radius: 28,
+      blur: 22,
+      maxZoom: 18,
+      gradient: {
+        0.2: '#22C55E',
+        0.5: '#F59E0B',
+        0.8: '#EF4444',
+      },
+    });
+
+    heatLayer.addTo(map);
+    heatLayerRef.current = heatLayer;
+  }, [heatmap, showHeatmap]);
 
   return (
-    <div className="h-screen relative">
-      <div ref={mapContainer} className="h-full w-full" />
+    <MainLayout>
+      <div className="h-screen relative">
+        <div ref={containerRef} className="h-full w-full" />
 
-      {/* Overlay de Informação no Topo */}
-      <div className="absolute top-4 left-1/2 transform -translate-x-1/2 bg-white px-4 py-2 rounded-full shadow-lg border border-gray-200 z-[1000]">
-        <span className="font-semibold text-[#4F46E5] text-sm">{getOverlayText()}</span>
-        {user?.role === 'Supervisor' && (
-          <span className="ml-2 text-xs text-red-600 font-bold">Supervisor</span>
-        )}
-      </div>
-
-      {/* Botões de Controlo - Lado Direito */}
-      <div className="absolute top-20 right-4 space-y-2 z-[1000]">
-        {canViewHeatmap && (
-          <>
-            <button
-              onClick={() => setShowHeatmap(!showHeatmap)}
-              className={`
-                flex items-center gap-2 px-3 py-2 rounded-lg shadow-lg border transition-all w-full
-                ${showHeatmap 
-                  ? 'bg-[#EF4444] text-white border-[#EF4444]' 
-                  : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'
-                }
-              `}
-            >
-              {showHeatmap ? <Flame size={20} /> : <FlameKindling size={20} />}
-              <span className="text-sm font-medium">Heatmap</span>
-            </button>
-
-            <button
-              onClick={() => setHeatmapType(heatmapType === 'gradient' ? 'circles' : 'gradient')}
-              className="flex items-center gap-2 px-3 py-2 bg-white text-gray-700 rounded-lg shadow-lg border border-gray-200 hover:bg-gray-50 w-full"
-            >
-              <span className="text-sm font-medium">
-                {heatmapType === 'gradient' ? '🔴 Círculos' : '🔥 Gradiente'}
-              </span>
-            </button>
-          </>
+        {loading && (
+          <div className="absolute top-4 right-4 bg-white border border-gray-200 rounded-lg px-3 py-2 shadow text-sm text-gray-700">
+            A carregar mapa...
+          </div>
         )}
 
-        {canViewBins && (
+        <div className="absolute top-4 left-4 z-[1000]">
           <button
-            onClick={() => setShowBins(!showBins)}
-            className={`
-              flex items-center gap-2 px-3 py-2 rounded-lg shadow-lg border transition-all w-full
-              ${showBins 
-                ? 'bg-[#10B981] text-white border-[#10B981]' 
-                : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'
-              }
-            `}
+            onClick={() => setShowHeatmap((prev) => !prev)}
+            className={`px-3 py-2 rounded-lg shadow border text-sm font-medium ${
+              showHeatmap
+                ? 'bg-red-500 text-white border-red-600'
+                : 'bg-white text-gray-700 border-gray-200'
+            }`}
           >
-            <Trash2 size={20} />
-            <span className="text-sm font-medium">Lixeiras</span>
+            {showHeatmap ? 'Heatmap ON' : 'Heatmap OFF'}
           </button>
-        )}
-      </div>
+        </div>
 
-      {/* Legenda do Heatmap */}
-      {canViewHeatmap && showHeatmap && heatmapData.length > 0 && (
-        <div className="absolute bottom-24 left-4 bg-white p-3 rounded-lg shadow-lg border border-gray-200 z-[1000]">
-          <div className="text-xs font-medium text-gray-700 mb-2">Legenda</div>
-          <div className="space-y-1">
-            <div className="flex items-center gap-2">
-              <div className="w-4 h-4 bg-[#10B981] rounded"></div>
-              <span className="text-xs text-gray-600">Baixo (0-50%)</span>
+        {showHeatmap && (
+          <div className="absolute bottom-6 right-6 bg-white border border-gray-200 rounded-lg px-3 py-2 shadow text-xs text-gray-700 z-[1000]">
+            <div className="font-semibold mb-2">Legenda Heatmap</div>
+            <div className="flex items-center gap-2 mb-1">
+              <span className="w-3 h-3 rounded bg-green-500" />
+              <span>Baixo</span>
+            </div>
+            <div className="flex items-center gap-2 mb-1">
+              <span className="w-3 h-3 rounded bg-amber-500" />
+              <span>Médio</span>
             </div>
             <div className="flex items-center gap-2">
-              <div className="w-4 h-4 bg-[#F59E0B] rounded"></div>
-              <span className="text-xs text-gray-600">Médio (50-80%)</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="w-4 h-4 bg-[#EF4444] rounded"></div>
-              <span className="text-xs text-gray-600">Alto (80-100%)</span>
+              <span className="w-3 h-3 rounded bg-red-500" />
+              <span>Alto</span>
             </div>
           </div>
+        )}
+
+        {usingFallbackHeatmap && (
+          <div className="absolute top-16 left-4 bg-amber-50 border border-amber-300 text-amber-900 rounded-lg px-3 py-2 shadow text-xs z-[1000]">
+            Heatmap em modo fallback (sem dados em tempo real).
+          </div>
+        )}
+
+        <div className="absolute bottom-6 left-6 bg-white border border-gray-200 rounded-lg px-3 py-2 shadow text-xs text-gray-700">
+          Estádio do Dragão • Heatmap • Staff • Lixeiras
         </div>
-      )}
-
-      {/* Loading do Heatmap */}
-      {heatmapLoading && (
-        <div className="absolute top-20 left-1/2 transform -translate-x-1/2 bg-white px-4 py-2 rounded-full shadow-lg border border-gray-200 z-[1000] flex items-center gap-2">
-          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-[#EF4444]"></div>
-          <span className="text-sm text-gray-600">Atualizando heatmap...</span>
-        </div>
-      )}
-
-      {/* Botão de Debug (só em desenvolvimento) */}
-      {process.env.NODE_ENV === 'development' && (
-        <button
-          onClick={handleDebug}
-          className="absolute bottom-24 right-4 bg-purple-600 text-white p-3 rounded-full shadow-lg z-[1000] hover:bg-purple-700"
-        >
-          <Bug size={20} />
-        </button>
-      )}
-
-      {/* Botões de Ação - Fundo */}
-      <div className="absolute bottom-4 left-4 right-4 flex justify-center gap-4 z-[1000]">
-        {user?.role === 'Cleaning' && bins.length > 0 && (
-          <button
-            onClick={() => {
-              if (bins.length > 0) {
-                const firstBin = bins[0];
-                mapRef.current?.flyTo([firstBin.x, firstBin.y], 19);
-                setShowBins(true);
-              }
-            }}
-            className="flex items-center gap-2 px-4 py-3 bg-[#10B981] text-white rounded-full shadow-lg"
-          >
-            <Target size={20} />
-            <span className="font-medium">Zonas Prioritárias</span>
-          </button>
-        )}
-
-        {user?.role === 'Security' && (
-          <button
-            onClick={() => router.push('/emergency')}
-            className="flex items-center gap-2 px-4 py-3 bg-[#EF4444] text-white rounded-full shadow-lg"
-          >
-            <AlertCircle size={20} />
-            <span className="font-medium">Emergência</span>
-          </button>
-        )}
-
-        {activeRoute && activeRoute.length > 0 && (
-          <button
-            onClick={clearRoute}
-            className="flex items-center gap-2 px-4 py-3 bg-[#4F46E5] text-white rounded-full shadow-lg"
-          >
-            <X size={20} />
-            <span className="font-medium">Limpar Rota</span>
-          </button>
-        )}
       </div>
-    </div>
+    </MainLayout>
   );
 }

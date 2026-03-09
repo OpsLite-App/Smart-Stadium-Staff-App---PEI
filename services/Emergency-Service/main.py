@@ -305,7 +305,11 @@ async def create_sensor_alert(alert: SensorAlertCreate, db: Session = Depends(ge
     
     # Auto-dispatch for high severity
     if incident.severity in ["high", "critical"]:
-        await incident_manager.auto_dispatch_responders(db, incident.id)
+        try:
+            await incident_manager.auto_dispatch_responders(db, incident.id)
+        except Exception as e:
+            # Dispatch failures must not break sensor alert ingestion.
+            print(f"⚠️  Auto-dispatch failed for incident {incident.id}: {e}")
     
     return incident
 

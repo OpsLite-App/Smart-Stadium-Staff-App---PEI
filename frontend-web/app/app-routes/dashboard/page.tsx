@@ -1,494 +1,381 @@
-// app/app-routes/dashboard/page.tsx
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
-import { useAuthStore } from '@/lib/stores/useAuthStore';
-import { useMapStore } from '@/lib/stores/useMapStore';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import axios from 'axios';
 import { MainLayout } from '@/components/layout/MainLayout';
-import { 
-  Shield, 
-  Brush, 
-  UserCog, 
-  Users, 
-  Trash2, 
-  Flame,
+import { useAuthStore } from '@/lib/stores/useAuthStore';
+import {
+  AUTH_SERVICE,
+  CONGESTION_SERVICE,
+  EMERGENCY_SERVICE,
+  MAINTENANCE_SERVICE,
+  QUEUEING_SERVICE,
+  type StaffMember,
+  type HeatmapPoint,
+} from '@/lib/services/api';
+import {
   AlertTriangle,
   Clock,
-  CheckCircle2,
-  TrendingUp,
-  MapPin,
-  Calendar,
-  Bell,
-  Radio,
-  Megaphone,
-  DoorOpen,
-  Wifi,
-  Battery,
-  Gauge
+  Flame,
+  RefreshCw,
+  Shield,
+  Trash2,
+  Users,
+  Waves,
 } from 'lucide-react';
+
+type Severity = 'low' | 'medium' | 'high' | 'critical';
+
+interface EmergencyIncident {
+  id: string;
+  incident_type: string;
+  location_node: string;
+  severity: Severity;
+  status: string;
+  created_at?: string;
+}
+
+interface BinAlert {
+  id: string;
+  location_node: string;
+  fill_percentage: number;
+  priority: string;
+  status: string;
+  created_at?: string;
+}
+
+interface QueueAlert {
+  location_id: string;
+  wait_time_minutes: number;
+  status: string;
+}
+
+interface CongestionAlert {
+  area_id: string;
+  occupancy_rate: number;
+  severity?: Severity;
+}
+
+interface TimelineItem {
+  id: string;
+  title: string;
+  detail: string;
+  severity: Severity;
+  timestamp: string;
+}
+
+function getStoredToken(): string {
+  if (typeof window === 'undefined') return '';
+  try {
+    const raw = localStorage.getItem('auth-storage');
+    if (!raw) return '';
+    const parsed = JSON.parse(raw);
+    return parsed?.state?.user?.token ?? '';
+  } catch {
+    return '';
+  }
+}
+
+function severityColor(severity: Severity): string {
+  if (severity === 'critical') return 'bg-red-100 text-red-700 border-red-200';
+  if (severity === 'high') return 'bg-orange-100 text-orange-700 border-orange-200';
+  if (severity === 'medium') return 'bg-yellow-100 text-yellow-700 border-yellow-200';
+  return 'bg-blue-100 text-blue-700 border-blue-200';
+}
+
+function toSeverity(value: string | undefined | null): Severity {
+  const normalized = String(value ?? '').toLowerCase();
+  if (normalized === 'critical') return 'critical';
+  if (normalized === 'high') return 'high';
+  if (normalized === 'medium') return 'medium';
+  return 'low';
+}
+
+function normalizeRole(role: string | undefined | null): string {
+  const value = String(role ?? '').toLowerCase();
+  if (value.includes('security')) return 'Segurança';
+  if (value.includes('clean')) return 'Limpeza';
+  if (value.includes('supervisor')) return 'Supervisão';
+  if (value.includes('medical')) return 'Médica';
+  if (value.includes('maintenance')) return 'Manutenção';
+  return 'Staff';
+}
 
 export default function DashboardPage() {
   const { user } = useAuthStore();
-  const { 
-    nodes, 
-    bins, 
-    staffMembers, 
-    heatmapData,
-    loading 
-  } = useMapStore();
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState<string>('');
+  const [lastUpdated, setLastUpdated] = useState<string>('');
 
-  const [currentTime, setCurrentTime] = useState(new Date());
-  const stats = useMemo(() => ({
-    activeStaff: staffMembers.length,
-    fullBins: bins.length > 0 ? Math.floor(bins.length * 0.3) : 0,
-    highRiskAreas: heatmapData.filter((h) => h.weight > 0.7).length,
-    completedTasks: Math.max(5, Math.floor(staffMembers.length * 1.2))
-  }), [staffMembers, bins, heatmapData]);
+  const [staff, setStaff] = useState<StaffMember[]>([]);
+  const [incidents, setIncidents] = useState<EmergencyIncident[]>([]);
+  const [binAlerts, setBinAlerts] = useState<BinAlert[]>([]);
+  const [queueAlerts, setQueueAlerts] = useState<QueueAlert[]>([]);
+  const [congestionAlerts, setCongestionAlerts] = useState<CongestionAlert[]>([]);
+  const [heatmapPoints, setHeatmapPoints] = useState<HeatmapPoint[]>([]);
 
-  // Atualizar relógio
+  const fetchDashboardData = useCallback(async () => {
+    const token = user?.token || getStoredToken();
+    const headers = token ? { Authorization: `Bearer ${token}` } : undefined;
+
+    const requests = await Promise.allSettled([
+      axios.get<StaffMember[]>(`${AUTH_SERVICE}/staff`, { headers, timeout: 6000 }),
+      axios.get<{ incidents?: EmergencyIncident[] }>(`${EMERGENCY_SERVICE}/incidents`, { headers, timeout: 6000 }),
+      axios.get<BinAlert[]>(`${MAINTENANCE_SERVICE}/bins/alerts`, { headers, timeout: 6000 }),
+      axios.get<{ alerts?: QueueAlert[] }>(`${QUEUEING_SERVICE}/alerts`, {
+        params: { threshold_minutes: 8 },
+        headers,
+        timeout: 6000,
+      }),
+      axios.get<{ alerts?: CongestionAlert[] }>(`${CONGESTION_SERVICE}/alerts`, {
+        params: { threshold: 80 },
+        headers,
+        timeout: 6000,
+      }),
+      axios.get<{ points?: HeatmapPoint[] }>(`${CONGESTION_SERVICE}/heatmap/points`, { headers, timeout: 6000 }),
+    ]);
+
+    const [staffRes, incidentsRes, binsRes, queueRes, congestionRes, heatRes] = requests;
+
+    if (staffRes.status === 'fulfilled') setStaff(staffRes.value.data || []);
+    if (incidentsRes.status === 'fulfilled') setIncidents(incidentsRes.value.data?.incidents || []);
+    if (binsRes.status === 'fulfilled') setBinAlerts(binsRes.value.data || []);
+    if (queueRes.status === 'fulfilled') setQueueAlerts(queueRes.value.data?.alerts || []);
+    if (congestionRes.status === 'fulfilled') setCongestionAlerts(congestionRes.value.data?.alerts || []);
+    if (heatRes.status === 'fulfilled') setHeatmapPoints(heatRes.value.data?.points || []);
+
+    const allFailed = requests.every((r) => r.status === 'rejected');
+    setError(allFailed ? 'Não foi possível carregar dados dos serviços.' : '');
+    setLastUpdated(new Date().toISOString());
+  }, [user?.token]);
+
   useEffect(() => {
-    const timer = setInterval(() => setCurrentTime(new Date()), 1000);
-    return () => clearInterval(timer);
-  }, []);
+    let mounted = true;
 
-  // Formatar hora
-  const formattedTime = currentTime.toLocaleTimeString('pt-PT', {
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit'
-  });
+    const runInitial = async () => {
+      setLoading(true);
+      await fetchDashboardData();
+      if (mounted) setLoading(false);
+    };
 
-  const formattedDate = currentTime.toLocaleDateString('pt-PT', {
-    weekday: 'long',
-    day: '2-digit',
-    month: 'long',
-    year: 'numeric'
-  });
+    void runInitial();
 
-  // Dashboard para SECURITY
-  if (user?.role === 'Security') {
-    const recentAlerts = [
-      { id: 1, type: 'Movimento suspeito', location: 'Setor A4', time: '2 min', severity: 'high' },
-      { id: 2, type: 'Porta de emergência aberta', location: 'Corredor N2', time: '15 min', severity: 'medium' },
-      { id: 3, type: 'Concentração de pessoas', location: 'Entrada Norte', time: '25 min', severity: 'low' },
-    ];
+    const interval = setInterval(() => {
+      void fetchDashboardData();
+    }, 30000);
 
-    const securityStats = [
-      { label: 'Equipa Ativa', value: stats.activeStaff, icon: Users, color: 'text-blue-600', bg: 'bg-blue-100' },
-      { label: 'Zonas de Risco', value: stats.highRiskAreas, icon: Flame, color: 'text-red-600', bg: 'bg-red-100' },
-      { label: 'Câmaras Ativas', value: '24', icon: Radio, color: 'text-green-600', bg: 'bg-green-100' },
-      { label: 'Alertas Hoje', value: recentAlerts.length, icon: Bell, color: 'text-yellow-600', bg: 'bg-yellow-100' },
-    ];
+    return () => {
+      mounted = false;
+      clearInterval(interval);
+    };
+  }, [fetchDashboardData]);
 
-    return (
-      <MainLayout>
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-          {/* Header com Saudação */}
-          <div className="mb-8">
-            <h1 className="text-3xl font-bold text-gray-900">Dashboard de Segurança</h1>
-            <p className="text-gray-600 mt-1 capitalize">
-              {formattedDate} • {formattedTime}
-            </p>
-          </div>
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await fetchDashboardData();
+    setRefreshing(false);
+  };
 
-          {/* Stats Grid */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-            {securityStats.map((stat, index) => {
-              const Icon = stat.icon;
-              return (
-                <div key={index} className="bg-white rounded-xl shadow-sm p-6 border border-gray-100">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-sm text-gray-600">{stat.label}</p>
-                      <p className="text-2xl font-bold text-gray-900 mt-1">{stat.value}</p>
-                    </div>
-                    <div className={`p-3 rounded-lg ${stat.bg}`}>
-                      <Icon size={24} className={stat.color} />
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+  const derived = useMemo(() => {
+    const activeStaff = staff.filter((s) => {
+      const status = String(s.status || '').toLowerCase();
+      return ['active', 'online', 'available', 'patrol', 'responding'].includes(status);
+    }).length;
 
-          {/* Mapa de Calor e Alertas */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            {/* Alertas Recentes */}
-            <div className="lg:col-span-1 bg-white rounded-xl shadow-sm border border-gray-100">
-              <div className="p-6 border-b border-gray-100">
-                <h2 className="text-lg font-semibold text-gray-900">Alertas Ativos</h2>
-              </div>
-              <div className="p-4">
-                {recentAlerts.map((alert) => (
-                  <div key={alert.id} className="mb-4 last:mb-0">
-                    <div className="flex items-start gap-3 p-3 rounded-lg hover:bg-gray-50">
-                      <div className={`
-                        p-2 rounded-full flex-shrink-0
-                        ${alert.severity === 'high' ? 'bg-red-100' : 
-                          alert.severity === 'medium' ? 'bg-yellow-100' : 'bg-blue-100'}
-                      `}>
-                        <AlertTriangle size={16} className={
-                          alert.severity === 'high' ? 'text-red-600' : 
-                          alert.severity === 'medium' ? 'text-yellow-600' : 'text-blue-600'
-                        } />
-                      </div>
-                      <div className="flex-1">
-                        <p className="font-medium text-gray-900">{alert.type}</p>
-                        <p className="text-sm text-gray-500">{alert.location}</p>
-                        <div className="flex items-center gap-1 mt-1">
-                          <Clock size={12} className="text-gray-400" />
-                          <span className="text-xs text-gray-400">Há {alert.time}</span>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-              <div className="p-4 border-t border-gray-100">
-                <button className="w-full text-center text-sm text-[#4F46E5] font-medium hover:text-[#4338CA]">
-                  Ver todos os alertas →
-                </button>
-              </div>
-            </div>
+    const openIncidents = incidents.filter((i) => {
+      const status = String(i.status || '').toLowerCase();
+      return status !== 'resolved' && status !== 'false_alarm';
+    });
 
-            {/* Equipa no Terreno */}
-            <div className="lg:col-span-2 bg-white rounded-xl shadow-sm border border-gray-100">
-              <div className="p-6 border-b border-gray-100 flex justify-between items-center">
-                <h2 className="text-lg font-semibold text-gray-900">Equipa no Terreno</h2>
-                <span className="text-sm text-gray-500">{stats.activeStaff} ativos</span>
-              </div>
-              <div className="p-6">
-                <div className="space-y-4">
-                  {staffMembers.slice(0, 5).map((member) => (
-                    <div key={member.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-full bg-[#4F46E5] flex items-center justify-center text-white font-medium">
-                          {member.name?.charAt(0) || 'U'}
-                        </div>
-                        <div>
-                          <p className="font-medium text-gray-900">{member.name}</p>
-                          <div className="flex items-center gap-2">
-                            <span className="text-xs px-2 py-1 bg-blue-100 text-blue-700 rounded-full">
-                              {member.role}
-                            </span>
-                            <span className="text-xs text-gray-500">
-                              {member.location}
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <span className="w-2 h-2 bg-green-500 rounded-full"></span>
-                        <span className="text-sm text-gray-600">Online</span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </div>
+    const criticalIncidents = openIncidents.filter((i) => toSeverity(i.severity) === 'critical').length;
 
-          {/* Instruções Rápidas */}
-          <div className="mt-8 bg-gradient-to-r from-blue-600 to-blue-700 rounded-xl shadow-lg p-6">
-            <h3 className="text-lg font-semibold text-white mb-4">Protocolo de Segurança Ativo</h3>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div className="flex items-center gap-3 text-white">
-                <Radio size={24} />
-                <div>
-                  <p className="font-medium">Canal 1</p>
-                  <p className="text-sm text-blue-100">Coordenação</p>
-                </div>
-              </div>
-              <div className="flex items-center gap-3 text-white">
-                <DoorOpen size={24} />
-                <div>
-                  <p className="font-medium">Portas N1-N4</p>
-                  <p className="text-sm text-blue-100">Verificar status</p>
-                </div>
-              </div>
-              <div className="flex items-center gap-3 text-white">
-                <Megaphone size={24} />
-                <div>
-                  <p className="font-medium">Megafones</p>
-                  <p className="text-sm text-blue-100">Teste a cada 2h</p>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </MainLayout>
-    );
-  }
+    const openBinAlerts = binAlerts.filter((b) => {
+      const status = String(b.status || '').toLowerCase();
+      return status !== 'completed' && status !== 'resolved';
+    });
 
-  // Dashboard para CLEANING
-  if (user?.role === 'Cleaning') {
-    // Usar bins diretamente sem status/level
-    const urgentBins = bins.slice(0, 5); // Mostra as primeiras 5 lixeiras
-    
-    const pendingZones = [
-      { zone: 'Setor A', priority: 'Alta', time: '30 min', items: 5 },
-      { zone: 'Camarotes', priority: 'Média', time: '1h', items: 3 },
-      { zone: 'Corredor N2', priority: 'Baixa', time: '2h', items: 2 },
-    ];
+    const heatRiskAreas = heatmapPoints.filter((p) => {
+      const occupancy = Number(p.occupancy_rate ?? p.weight * 100 ?? 0);
+      return occupancy >= 80;
+    }).length;
 
-    const cleaningStats = [
-      { label: 'Lixeiras', value: bins.length, icon: Trash2, color: 'text-red-600', bg: 'bg-red-100' },
-      { label: 'Zonas Atribuídas', value: '4', icon: MapPin, color: 'text-green-600', bg: 'bg-green-100' },
-      { label: 'Tarefas Hoje', value: '12', icon: CheckCircle2, color: 'text-blue-600', bg: 'bg-blue-100' },
-      { label: 'Concluídas', value: '8', icon: TrendingUp, color: 'text-purple-600', bg: 'bg-purple-100' },
-    ];
+    const timeline: TimelineItem[] = [
+      ...openIncidents.slice(0, 6).map((i) => ({
+        id: `incident-${i.id}`,
+        title: `Incidente ${i.incident_type}`,
+        detail: `Local: ${i.location_node}`,
+        severity: toSeverity(i.severity),
+        timestamp: i.created_at || new Date().toISOString(),
+      })),
+      ...congestionAlerts.slice(0, 6).map((a, idx) => ({
+        id: `congestion-${a.area_id}-${idx}`,
+        title: 'Congestionamento elevado',
+        detail: `${a.area_id} com ${Math.round(a.occupancy_rate)}%`,
+        severity: toSeverity(a.severity || (a.occupancy_rate >= 95 ? 'critical' : 'high')),
+        timestamp: new Date().toISOString(),
+      })),
+      ...openBinAlerts.slice(0, 6).map((b) => ({
+        id: `bin-${b.id}`,
+        title: 'Lixeira por recolher',
+        detail: `${b.location_node} (${Math.round(b.fill_percentage)}%)`,
+        severity: toSeverity(b.priority),
+        timestamp: b.created_at || new Date().toISOString(),
+      })),
+      ...queueAlerts.slice(0, 6).map((q, idx) => ({
+        id: `queue-${q.location_id}-${idx}`,
+        title: 'Fila longa',
+        detail: `${q.location_id} (${q.wait_time_minutes.toFixed(1)} min)`,
+        severity: toSeverity(q.status),
+        timestamp: new Date().toISOString(),
+      })),
+    ]
+      .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+      .slice(0, 8);
 
-    return (
-      <MainLayout>
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-          <div className="mb-8">
-            <h1 className="text-3xl font-bold text-gray-900">Dashboard de Limpeza</h1>
-            <p className="text-gray-600 mt-1 capitalize">
-              {formattedDate} • {formattedTime}
-            </p>
-          </div>
+    return {
+      activeStaff,
+      openIncidents: openIncidents.length,
+      criticalIncidents,
+      openBinAlerts: openBinAlerts.length,
+      queueAlerts: queueAlerts.length,
+      congestionAlerts: congestionAlerts.length,
+      heatRiskAreas,
+      timeline,
+    };
+  }, [staff, incidents, binAlerts, heatmapPoints, congestionAlerts, queueAlerts]);
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-            {cleaningStats.map((stat, index) => {
-              const Icon = stat.icon;
-              return (
-                <div key={index} className="bg-white rounded-xl shadow-sm p-6 border border-gray-100">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-sm text-gray-600">{stat.label}</p>
-                      <p className="text-2xl font-bold text-gray-900 mt-1">{stat.value}</p>
-                    </div>
-                    <div className={`p-3 rounded-lg ${stat.bg}`}>
-                      <Icon size={24} className={stat.color} />
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+  const roleTitle = useMemo(() => {
+    const role = normalizeRole(user?.role);
+    if (role === 'Segurança') return 'Dashboard de Segurança';
+    if (role === 'Limpeza') return 'Dashboard de Limpeza';
+    if (role === 'Supervisão') return 'Dashboard de Supervisão';
+    return 'Dashboard Operacional';
+  }, [user?.role]);
 
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            {/* Lixeiras */}
-            <div className="lg:col-span-1 bg-white rounded-xl shadow-sm border border-gray-100">
-              <div className="p-6 border-b border-gray-100">
-                <h2 className="text-lg font-semibold text-gray-900">Lixeiras</h2>
-              </div>
-              <div className="p-4">
-                {urgentBins.map((bin) => (
-                  <div key={bin.id} className="mb-4 last:mb-0">
-                    <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                      <div>
-                        <p className="font-medium text-gray-900">{bin.name}</p>
-                        <p className="text-sm text-gray-500">{bin.category}</p>
-                      </div>
-                      <div className="text-right">
-                        <span className="text-xs px-2 py-1 bg-blue-100 text-blue-700 rounded-full">
-                          ID: {bin.id}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
+  const formattedUpdated = useMemo(() => {
+    if (!lastUpdated) return 'sem atualização';
+    return new Date(lastUpdated).toLocaleString('pt-PT');
+  }, [lastUpdated]);
 
-            {/* Zonas Pendentes */}
-            <div className="lg:col-span-2 bg-white rounded-xl shadow-sm border border-gray-100">
-              <div className="p-6 border-b border-gray-100">
-                <h2 className="text-lg font-semibold text-gray-900">Zonas Pendentes</h2>
-              </div>
-              <div className="p-6">
-                <div className="space-y-4">
-                  {pendingZones.map((zone, index) => (
-                    <div key={index} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
-                      <div>
-                        <p className="font-medium text-gray-900">{zone.zone}</p>
-                        <div className="flex items-center gap-3 mt-1">
-                          <span className={`
-                            text-xs px-2 py-1 rounded-full
-                            ${zone.priority === 'Alta' ? 'bg-red-100 text-red-700' : 
-                              zone.priority === 'Média' ? 'bg-yellow-100 text-yellow-700' : 
-                              'bg-green-100 text-green-700'}
-                          `}>
-                            {zone.priority}
-                          </span>
-                          <span className="text-xs text-gray-500">{zone.items} itens</span>
-                        </div>
-                      </div>
-                      <div className="text-right">
-                        <p className="text-sm font-medium text-gray-900">{zone.time}</p>
-                        <p className="text-xs text-gray-500">tempo estimado</p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Rota Otimizada */}
-          <div className="mt-8 bg-gradient-to-r from-green-600 to-green-700 rounded-xl shadow-lg p-6">
-            <h3 className="text-lg font-semibold text-white mb-4">Rota Otimizada</h3>
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 text-white">
-              <div>
-                <p className="text-sm text-green-100">Próximo ponto</p>
-                <p className="font-medium">{bins[0]?.name || 'Lixeira A1'}</p>
-              </div>
-              <div>
-                <p className="text-sm text-green-100">Distância</p>
-                <p className="font-medium">120 metros</p>
-              </div>
-              <div>
-                <p className="text-sm text-green-100">Tempo estimado</p>
-                <p className="font-medium">5 minutos</p>
-              </div>
-              <div>
-                <p className="text-sm text-green-100">Prioridade</p>
-                <p className="font-medium">Alta</p>
-              </div>
-            </div>
-          </div>
-        </div>
-      </MainLayout>
-    );
-  }
-
-  // Dashboard para SUPERVISOR
-  if (user?.role === 'Supervisor') {
-    const supervisorStats = [
-      { label: 'Equipa Total', value: stats.activeStaff, icon: Users, color: 'text-purple-600', bg: 'bg-purple-100' },
-      { label: 'Segurança', value: '8', icon: Shield, color: 'text-blue-600', bg: 'bg-blue-100' },
-      { label: 'Limpeza', value: '6', icon: Brush, color: 'text-green-600', bg: 'bg-green-100' },
-      { label: 'Performance', value: '94%', icon: Gauge, color: 'text-yellow-600', bg: 'bg-yellow-100' },
-    ];
-
-    const teamPerformance = [
-      { role: 'Segurança', active: 8, total: 8, tasks: 24, completed: 22 },
-      { role: 'Limpeza', active: 5, total: 6, tasks: 18, completed: 15 },
-      { role: 'Manutenção', active: 3, total: 4, tasks: 12, completed: 10 },
-    ];
-
-    return (
-      <MainLayout>
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-          <div className="mb-8">
-            <h1 className="text-3xl font-bold text-gray-900">Dashboard de Supervisão</h1>
-            <p className="text-gray-600 mt-1 capitalize">
-              {formattedDate} • {formattedTime}
-            </p>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-            {supervisorStats.map((stat, index) => {
-              const Icon = stat.icon;
-              return (
-                <div key={index} className="bg-white rounded-xl shadow-sm p-6 border border-gray-100">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-sm text-gray-600">{stat.label}</p>
-                      <p className="text-2xl font-bold text-gray-900 mt-1">{stat.value}</p>
-                    </div>
-                    <div className={`p-3 rounded-lg ${stat.bg}`}>
-                      <Icon size={24} className={stat.color} />
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-
-          {/* Performance da Equipa */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-            <div className="bg-white rounded-xl shadow-sm border border-gray-100">
-              <div className="p-6 border-b border-gray-100">
-                <h2 className="text-lg font-semibold text-gray-900">Performance por Equipa</h2>
-              </div>
-              <div className="p-6">
-                {teamPerformance.map((team, index) => (
-                  <div key={index} className="mb-6 last:mb-0">
-                    <div className="flex justify-between items-center mb-2">
-                      <span className="font-medium text-gray-900">{team.role}</span>
-                      <span className="text-sm text-gray-600">
-                        {team.active}/{team.total} ativos
-                      </span>
-                    </div>
-                    <div className="w-full bg-gray-200 rounded-full h-2">
-                      <div 
-                        className="bg-[#4F46E5] h-2 rounded-full" 
-                        style={{ width: `${(team.completed / team.tasks) * 100}%` }}
-                      ></div>
-                    </div>
-                    <div className="flex justify-between mt-1">
-                      <span className="text-xs text-gray-500">{team.completed} tarefas concluídas</span>
-                      <span className="text-xs text-gray-500">{team.tasks} total</span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Alertas do Sistema */}
-            <div className="bg-white rounded-xl shadow-sm border border-gray-100">
-              <div className="p-6 border-b border-gray-100">
-                <h2 className="text-lg font-semibold text-gray-900">Alertas do Sistema</h2>
-              </div>
-              <div className="p-6">
-                <div className="space-y-4">
-                  <div className="flex items-center gap-3 p-3 bg-yellow-50 rounded-lg">
-                    <div className="p-2 bg-yellow-100 rounded-full">
-                      <Battery size={16} className="text-yellow-600" />
-                    </div>
-                    <div>
-                      <p className="font-medium text-gray-900">Rádios com bateria fraca</p>
-                      <p className="text-sm text-gray-500">3 equipamentos precisam de carregamento</p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-3 p-3 bg-blue-50 rounded-lg">
-                    <div className="p-2 bg-blue-100 rounded-full">
-                      <Wifi size={16} className="text-blue-600" />
-                    </div>
-                    <div>
-                      <p className="font-medium text-gray-900">Rede estável</p>
-                      <p className="text-sm text-gray-500">Todos os sensores online</p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Mapa de Atividades */}
-          <div className="bg-gradient-to-r from-purple-600 to-purple-700 rounded-xl shadow-lg p-6">
-            <h3 className="text-lg font-semibold text-white mb-4">Resumo das Operações</h3>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              <div className="text-white">
-                <p className="text-sm text-purple-100">Incidentes hoje</p>
-                <p className="text-2xl font-bold">3</p>
-              </div>
-              <div className="text-white">
-                <p className="text-sm text-purple-100">Tempo médio resposta</p>
-                <p className="text-2xl font-bold">4.5min</p>
-              </div>
-              <div className="text-white">
-                <p className="text-sm text-purple-100">Staff em pausa</p>
-                <p className="text-2xl font-bold">2</p>
-              </div>
-              <div className="text-white">
-                <p className="text-sm text-purple-100">Satisfação</p>
-                <p className="text-2xl font-bold">4.8/5</p>
-              </div>
-            </div>
-          </div>
-        </div>
-      </MainLayout>
-    );
-  }
-
-  // Fallback
   return (
     <MainLayout>
-      <div className="p-6">
-        <p>Dashboard não disponível para esta role</p>
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h1 className="text-3xl font-bold text-gray-900">{roleTitle}</h1>
+            <p className="text-sm text-gray-500 mt-1">Dados reais dos serviços em tempo quase real</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-gray-500">Atualizado: {formattedUpdated}</span>
+            <button
+              onClick={onRefresh}
+              className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+              disabled={refreshing}
+            >
+              <RefreshCw size={16} className={refreshing ? 'animate-spin' : ''} />
+              Atualizar
+            </button>
+          </div>
+        </div>
+
+        {error && (
+          <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>
+        )}
+
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+          <div className="rounded-xl border border-gray-200 bg-white p-5">
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-gray-500">Staff ativo</span>
+              <Users className="text-blue-600" size={20} />
+            </div>
+            <p className="text-3xl font-bold text-gray-900 mt-2">{loading ? '...' : derived.activeStaff}</p>
+            <p className="text-xs text-gray-500 mt-1">Total registado: {staff.length}</p>
+          </div>
+
+          <div className="rounded-xl border border-gray-200 bg-white p-5">
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-gray-500">Incidentes abertos</span>
+              <Shield className="text-red-600" size={20} />
+            </div>
+            <p className="text-3xl font-bold text-gray-900 mt-2">{loading ? '...' : derived.openIncidents}</p>
+            <p className="text-xs text-gray-500 mt-1">Críticos: {derived.criticalIncidents}</p>
+          </div>
+
+          <div className="rounded-xl border border-gray-200 bg-white p-5">
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-gray-500">Congestionamento</span>
+              <Flame className="text-orange-600" size={20} />
+            </div>
+            <p className="text-3xl font-bold text-gray-900 mt-2">{loading ? '...' : derived.congestionAlerts}</p>
+            <p className="text-xs text-gray-500 mt-1">Zonas risco (heatmap): {derived.heatRiskAreas}</p>
+          </div>
+
+          <div className="rounded-xl border border-gray-200 bg-white p-5">
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-gray-500">Operações pendentes</span>
+              <Trash2 className="text-emerald-600" size={20} />
+            </div>
+            <p className="text-3xl font-bold text-gray-900 mt-2">{loading ? '...' : derived.openBinAlerts + derived.queueAlerts}</p>
+            <p className="text-xs text-gray-500 mt-1">Lixeiras: {derived.openBinAlerts} • Filas: {derived.queueAlerts}</p>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+          <div className="xl:col-span-2 rounded-xl border border-gray-200 bg-white">
+            <div className="border-b border-gray-100 px-5 py-4 flex items-center gap-2">
+              <AlertTriangle size={18} className="text-gray-700" />
+              <h2 className="text-lg font-semibold text-gray-900">Feed operacional</h2>
+            </div>
+            <div className="p-4 space-y-3">
+              {loading ? (
+                <p className="text-sm text-gray-500">A carregar eventos...</p>
+              ) : derived.timeline.length === 0 ? (
+                <p className="text-sm text-gray-500">Sem eventos ativos neste momento.</p>
+              ) : (
+                derived.timeline.map((item) => (
+                  <div key={item.id} className="rounded-lg border border-gray-100 p-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="font-medium text-gray-900">{item.title}</p>
+                      <span className={`rounded-full border px-2 py-0.5 text-xs font-medium ${severityColor(item.severity)}`}>
+                        {item.severity}
+                      </span>
+                    </div>
+                    <p className="text-sm text-gray-600 mt-1">{item.detail}</p>
+                    <div className="mt-2 flex items-center gap-1 text-xs text-gray-400">
+                      <Clock size={12} />
+                      {new Date(item.timestamp).toLocaleString('pt-PT')}
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+
+          <div className="rounded-xl border border-gray-200 bg-white">
+            <div className="border-b border-gray-100 px-5 py-4 flex items-center gap-2">
+              <Waves size={18} className="text-gray-700" />
+              <h2 className="text-lg font-semibold text-gray-900">Estado da equipa</h2>
+            </div>
+            <div className="p-4 space-y-3">
+              {loading ? (
+                <p className="text-sm text-gray-500">A carregar equipa...</p>
+              ) : staff.length === 0 ? (
+                <p className="text-sm text-gray-500">Sem staff disponível.</p>
+              ) : (
+                staff.slice(0, 8).map((member) => (
+                  <div key={member.id} className="flex items-center justify-between rounded-lg bg-gray-50 px-3 py-2">
+                    <div>
+                      <p className="text-sm font-medium text-gray-900">{member.name || `Staff ${member.id}`}</p>
+                      <p className="text-xs text-gray-500">{normalizeRole(member.role)} • {member.location || 'N/A'}</p>
+                    </div>
+                    <span className="text-xs text-gray-600">{member.status || 'unknown'}</span>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
       </div>
     </MainLayout>
   );

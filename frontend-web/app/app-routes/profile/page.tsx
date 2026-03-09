@@ -1,23 +1,17 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
+import axios from 'axios';
 import { useRouter } from 'next/navigation';
 import { useAuthStore } from '@/lib/stores/useAuthStore';
 import { useTranslation } from 'react-i18next';
-import { 
+import {
   User,
   Shield,
   Brush,
   UserCog,
   Clock,
   CheckCircle,
-  XCircle,
-  Bell,
-  Volume2,
-  Vibrate,
-  Globe,
-  LogOut,
-  TrendingUp,
   AlertTriangle,
   Download,
   Calendar,
@@ -27,17 +21,52 @@ import {
   MapPin,
   Phone,
   Mail,
-  Edit2,
-  Save,
-  X
+  LogOut,
+  Globe,
 } from 'lucide-react';
-import { theme } from '@/lib/theme';
-import { AppButton } from '@/components/ui/AppButton';
 import { Avatar } from '@/components/ui/Avatar';
 import { Switch } from '@/components/ui/Switch';
 import { Badge } from '@/components/ui/Badge';
+import { AUTH_SERVICE, EMERGENCY_SERVICE, MAINTENANCE_SERVICE } from '@/lib/services/api';
 
-// Interface para dados do perfil vindo da API
+type Role = 'Security' | 'Cleaning' | 'Supervisor' | string;
+
+interface StaffApiItem {
+  id: number;
+  name: string;
+  role: string;
+  location: string;
+}
+
+interface EmergencyStats {
+  total_incidents: number;
+  active_incidents: number;
+  by_type: Record<string, number>;
+  by_severity: Record<string, number>;
+  by_status: Record<string, number>;
+  avg_response_time_min: number | null;
+  avg_resolution_time_min: number | null;
+  false_alarms: number;
+  external_alerts_sent: number;
+}
+
+interface TimelineEntry {
+  incident_id: string;
+  incident_type: string;
+  severity: string;
+  status: string;
+  timestamp: string;
+  location: string;
+}
+
+interface MaintenanceStaffStats {
+  staff_id: string;
+  tasks_completed: number;
+  tasks_in_progress: number;
+  avg_completion_time_min: number | null;
+  total_distance_m: number;
+}
+
 interface ProfileStats {
   incidentsHandled: number;
   successRate: number;
@@ -55,131 +84,220 @@ interface RecentActivity {
   status: 'completed' | 'pending' | 'in-progress';
 }
 
+function getTokenFromStorage(): string {
+  if (typeof window === 'undefined') return '';
+  try {
+    const raw = localStorage.getItem('auth-storage');
+    if (!raw) return '';
+    const parsed = JSON.parse(raw);
+    return parsed?.state?.user?.token || '';
+  } catch {
+    return '';
+  }
+}
+
+function relativeTime(iso: string): string {
+  const diffMs = Date.now() - new Date(iso).getTime();
+  const min = Math.floor(diffMs / 60000);
+  if (min < 1) return 'agora';
+  if (min < 60) return `há ${min} min`;
+  const hours = Math.floor(min / 60);
+  if (hours < 24) return `há ${hours} h`;
+  const days = Math.floor(hours / 24);
+  return `há ${days} d`;
+}
+
+function roleIcon(role: Role) {
+  if (role === 'Security') return Shield;
+  if (role === 'Cleaning') return Brush;
+  if (role === 'Supervisor') return UserCog;
+  return User;
+}
+
+function roleBadgeVariant(role: Role): 'primary' | 'success' | 'warning' | 'default' {
+  if (role === 'Security') return 'primary';
+  if (role === 'Cleaning') return 'success';
+  if (role === 'Supervisor') return 'warning';
+  return 'default';
+}
+
 export default function ProfilePage() {
   const router = useRouter();
   const { user, logout } = useAuthStore();
-  const { t, i18n } = useTranslation();
-  
-  // Estados locais
+  const { i18n } = useTranslation();
+
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
   const [onDuty, setOnDuty] = useState(true);
   const [pushEnabled, setPushEnabled] = useState(true);
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [vibrationEnabled, setVibrationEnabled] = useState(false);
   const [language, setLanguage] = useState<'pt' | 'en'>('pt');
-  const [loading, setLoading] = useState(false);
-  const [isEditing, setIsEditing] = useState(false);
+
+  const [profileName, setProfileName] = useState('');
+  const [profileLocation, setProfileLocation] = useState('Sem localização');
+  const [profilePhone] = useState('Sem telefone');
+
   const [profileStats, setProfileStats] = useState<ProfileStats>({
     incidentsHandled: 0,
     successRate: 0,
-    avgResponseTime: '0:00',
+    avgResponseTime: '0 min',
     totalHours: 0,
     rating: 0,
-    badges: []
+    badges: [],
   });
   const [recentActivity, setRecentActivity] = useState<RecentActivity[]>([]);
-  
-  // Estado para o formulário de edição
-  const [editForm, setEditForm] = useState({
-    phone: '+351 123 456 789',
-    location: 'Estádio do Dragão, Porto',
-    memberSince: '2020',
-    name: user?.email?.split('@')[0] || 'Utilizador'
-  });
 
-  // Carregar dados do perfil da API
   useEffect(() => {
-    if (user) {
-      loadProfileData();
-    }
-  }, [user]);
+    const storedLang = localStorage.getItem('user-language');
+    if (storedLang === 'pt' || storedLang === 'en') setLanguage(storedLang);
+  }, []);
 
-  const loadProfileData = async () => {
-    setLoading(true);
-    try {
-      // Simular chamada API - substituir por chamada real
-      // const response = await api.getProfileStats(user.id);
-      
-      // Dados mock para exemplo
-      setTimeout(() => {
+  useEffect(() => {
+    if (!user) return;
+
+    const run = async () => {
+      setLoading(true);
+      setError('');
+
+      const token = user.token || getTokenFromStorage();
+      const headers = token ? { Authorization: `Bearer ${token}` } : undefined;
+
+      try {
+        const [staffRes, emergencyStatsRes, timelineRes, maintenanceStatsRes] = await Promise.allSettled([
+          axios.get<StaffApiItem[]>(`${AUTH_SERVICE}/staff`, { headers, timeout: 6000 }),
+          axios.get<EmergencyStats>(`${EMERGENCY_SERVICE}/stats`, { headers, timeout: 6000 }),
+          axios.get<TimelineEntry[]>(`${EMERGENCY_SERVICE}/stats/timeline`, {
+            headers,
+            params: { hours: 24 },
+            timeout: 6000,
+          }),
+          axios.get<MaintenanceStaffStats>(`${MAINTENANCE_SERVICE}/stats/staff/${user.id ?? ''}`, {
+            headers,
+            timeout: 6000,
+          }),
+        ]);
+
+        let staffItem: StaffApiItem | undefined;
+        if (staffRes.status === 'fulfilled') {
+          staffItem = staffRes.value.data.find((s) => s.id === user.id);
+          setProfileName(staffItem?.name || user.email.split('@')[0]);
+          setProfileLocation(staffItem?.location || 'Sem localização');
+        } else {
+          setProfileName(user.email.split('@')[0]);
+        }
+
+        const emergencyStats =
+          emergencyStatsRes.status === 'fulfilled'
+            ? emergencyStatsRes.value.data
+            : {
+                total_incidents: 0,
+                active_incidents: 0,
+                by_type: {},
+                by_severity: {},
+                by_status: {},
+                avg_response_time_min: null,
+                avg_resolution_time_min: null,
+                false_alarms: 0,
+                external_alerts_sent: 0,
+              };
+
+        const maintenanceStats =
+          maintenanceStatsRes.status === 'fulfilled'
+            ? maintenanceStatsRes.value.data
+            : {
+                staff_id: String(user.id ?? ''),
+                tasks_completed: 0,
+                tasks_in_progress: 0,
+                avg_completion_time_min: null,
+                total_distance_m: 0,
+              };
+
+        const incidentsHandled =
+          (emergencyStats.by_status?.resolved || 0) +
+          (emergencyStats.by_status?.contained || 0) +
+          maintenanceStats.tasks_completed;
+
+        const totalTracked = emergencyStats.total_incidents + maintenanceStats.tasks_completed;
+        const unresolved =
+          (emergencyStats.by_status?.active || 0) +
+          (emergencyStats.by_status?.investigating || 0) +
+          (emergencyStats.by_status?.responding || 0);
+        const successRate = totalTracked > 0 ? Math.max(0, Math.round(((totalTracked - unresolved) / totalTracked) * 100)) : 0;
+
+        const avgResponseParts = [
+          emergencyStats.avg_response_time_min,
+          maintenanceStats.avg_completion_time_min,
+        ].filter((v): v is number => typeof v === 'number' && Number.isFinite(v));
+        const avgResponseValue =
+          avgResponseParts.length > 0
+            ? Math.round((avgResponseParts.reduce((a, b) => a + b, 0) / avgResponseParts.length) * 10) / 10
+            : 0;
+
+        const roleWeight = user.role === 'Supervisor' ? 0.4 : user.role === 'Security' ? 0.5 : 0.3;
+        const ratingBase = 3.5 + Math.min(1.5, successRate / 100 + roleWeight * 0.2);
+        const rating = Math.round(ratingBase * 10) / 10;
+
+        const totalHours = Math.round((maintenanceStats.total_distance_m || 0) / 450) + maintenanceStats.tasks_completed;
+
+        const badges: Array<{ id: string; name: string; icon: string }> = [];
+        if (maintenanceStats.tasks_completed >= 10) badges.push({ id: 'tasks-10', name: '10 tarefas concluídas', icon: '✅' });
+        if ((emergencyStats.by_severity?.critical || 0) > 0) badges.push({ id: 'critical', name: 'Resposta crítica', icon: '🚨' });
+        if (successRate >= 90) badges.push({ id: 'consistency', name: 'Consistência 90%+', icon: '🏅' });
+
         setProfileStats({
-          incidentsHandled: 1247,
-          successRate: 98,
-          avgResponseTime: '3:42',
-          totalHours: 156,
-          rating: 4.8,
-          badges: [
-            { id: '1', name: '5 Anos de Serviço', icon: '🎖️' },
-            { id: '2', name: '1000 Incidentes', icon: '🏆' },
-            { id: '3', name: 'Equipa do Mês', icon: '⭐' },
-          ]
+          incidentsHandled,
+          successRate,
+          avgResponseTime: `${avgResponseValue} min`,
+          totalHours,
+          rating,
+          badges,
         });
 
-        setRecentActivity([
-          {
-            id: '1',
-            type: 'incident',
-            title: 'Incidente resolvido - Bancada Sul',
-            time: 'há 10 minutos',
-            status: 'completed'
-          },
-          {
-            id: '2',
+        const timeline = timelineRes.status === 'fulfilled' ? timelineRes.value.data : [];
+        const activities: RecentActivity[] = timeline.slice(0, 8).map((item) => ({
+          id: item.incident_id,
+          type: 'incident',
+          title: `${item.incident_type.toUpperCase()} - ${item.location}`,
+          time: relativeTime(item.timestamp),
+          status:
+            item.status === 'resolved' || item.status === 'contained'
+              ? 'completed'
+              : item.status === 'active' || item.status === 'responding'
+              ? 'in-progress'
+              : 'pending',
+        }));
+
+        if (maintenanceStats.tasks_in_progress > 0) {
+          activities.unshift({
+            id: 'maintenance-progress',
             type: 'task',
-            title: 'Task de limpeza - Área Comercial',
-            time: 'há 25 minutos',
-            status: 'completed'
-          },
-          {
-            id: '3',
-            type: 'achievement',
-            title: 'Badge desbloqueada: 1000 Incidentes',
-            time: 'há 2 horas',
-            status: 'completed'
-          },
-          {
-            id: '4',
-            type: 'incident',
-            title: 'SOS - Portão 3 (em andamento)',
-            time: 'há 15 minutos',
-            status: 'in-progress'
-          }
-        ]);
+            title: `${maintenanceStats.tasks_in_progress} tarefa(s) de manutenção em progresso`,
+            time: 'agora',
+            status: 'in-progress',
+          });
+        }
+
+        setRecentActivity(activities);
+
+        if (
+          staffRes.status === 'rejected' &&
+          emergencyStatsRes.status === 'rejected' &&
+          timelineRes.status === 'rejected' &&
+          maintenanceStatsRes.status === 'rejected'
+        ) {
+          setError('Não foi possível carregar dados do perfil a partir dos serviços.');
+        }
+      } catch {
+        setError('Erro ao carregar dados do perfil.');
+      } finally {
         setLoading(false);
-      }, 1000);
-    } catch (error) {
-      console.error('Erro ao carregar perfil:', error);
-      setLoading(false);
-    }
-  };
+      }
+    };
 
-  // Funções de edição
-  const handleEditToggle = () => {
-    setIsEditing(!isEditing);
-  };
-
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const { name, value } = e.target;
-    setEditForm(prev => ({ ...prev, [name]: value }));
-  };
-
-  const handleSaveProfile = async () => {
-    try {
-      setLoading(true);
-      // Aqui podes chamar a API para salvar
-      console.log('Perfil atualizado:', editForm);
-      
-      // Simular salvamento
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      setIsEditing(false);
-      alert('Perfil atualizado com sucesso!');
-    } catch (error) {
-      console.error('Erro ao salvar perfil:', error);
-      alert('Erro ao salvar perfil. Tente novamente.');
-    } finally {
-      setLoading(false);
-    }
-  };
+    void run();
+  }, [user]);
 
   const handleLanguageChange = (lang: 'pt' | 'en') => {
     setLanguage(lang);
@@ -192,32 +310,38 @@ export default function ProfilePage() {
     router.push('/auth-routes/login');
   };
 
-  const getRoleIcon = () => {
-    switch(user?.role) {
-      case 'Security': return Shield;
-      case 'Cleaning': return Brush;
-      case 'Supervisor': return UserCog;
-      default: return User;
-    }
+  const handleExport = () => {
+    const payload = {
+      user: {
+        id: user?.id,
+        email: user?.email,
+        role: user?.role,
+        name: profileName,
+        location: profileLocation,
+      },
+      stats: profileStats,
+      recentActivity,
+      exportedAt: new Date().toISOString(),
+    };
+
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `perfil-${user?.id ?? 'user'}-${Date.now()}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
   };
 
-  const getRoleColor = () => {
-    switch(user?.role) {
-      case 'Security': return '#3B82F6';
-      case 'Cleaning': return '#10B981';
-      case 'Supervisor': return '#F59E0B';
-      default: return '#6B7280';
-    }
-  };
+  const RoleIcon = roleIcon(user?.role || '');
 
-  const RoleIcon = getRoleIcon();
-  const roleColor = getRoleColor();
+  const statusBadge = useMemo(() => (onDuty ? 'Em Serviço' : 'Fora de Serviço'), [onDuty]);
 
   if (!user) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#4F46E5] mx-auto mb-4"></div>
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#4F46E5] mx-auto mb-4" />
           <p className="text-gray-600">A carregar perfil...</p>
         </div>
       </div>
@@ -226,11 +350,10 @@ export default function ProfilePage() {
 
   return (
     <div className="min-h-screen bg-[#F3F4F6] pb-20">
-      {/* Header/Capa */}
       <div className="bg-gradient-to-r from-[#4F46E5] to-[#7C3AED] h-32 relative">
         <div className="absolute -bottom-12 left-6">
           <Avatar
-            name={user.email.split('@')[0]}
+            name={profileName || user.email.split('@')[0]}
             role={user.role}
             size="xl"
             status={onDuty ? 'online' : 'offline'}
@@ -239,41 +362,24 @@ export default function ProfilePage() {
         </div>
       </div>
 
-      {/* Conteúdo Principal */}
       <div className="px-6 pt-16">
-        {/* Informações Básicas */}
+        {error ? <div className="mb-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</div> : null}
+
         <div className="bg-white rounded-xl shadow-sm p-6 mb-4">
           <div className="flex items-start justify-between mb-4">
             <div>
-              {isEditing ? (
-                <input
-                  type="text"
-                  name="name"
-                  value={editForm.name}
-                  onChange={handleInputChange}
-                  className="text-2xl font-bold text-[#1F2937] border-b-2 border-[#4F46E5] focus:outline-none mb-2"
-                />
-              ) : (
-                <h1 className="text-2xl font-bold text-[#1F2937]">
-                  {user.email.split('@')[0]}
-                </h1>
-              )}
+              <h1 className="text-2xl font-bold text-[#1F2937]">{profileName || user.email.split('@')[0]}</h1>
               <div className="flex items-center gap-2 mt-1">
-                <Badge variant={user.role === 'Security' ? 'primary' : user.role === 'Cleaning' ? 'success' : 'warning'}>
+                <Badge variant={roleBadgeVariant(user.role)}>
                   <RoleIcon size={12} className="mr-1" />
                   {user.role}
                 </Badge>
                 <Badge variant={onDuty ? 'success' : 'default'} size="sm">
-                  {onDuty ? 'Em Serviço' : 'Fora de Serviço'}
+                  {statusBadge}
                 </Badge>
               </div>
             </div>
-            <button 
-              onClick={handleEditToggle}
-              className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-            >
-              {isEditing ? <X size={20} className="text-[#6B7280]" /> : <Edit2 size={20} className="text-[#6B7280]" />}
-            </button>
+            {loading ? <span className="text-xs text-gray-500">A atualizar...</span> : null}
           </div>
 
           <div className="grid grid-cols-2 gap-4 mt-4">
@@ -283,80 +389,28 @@ export default function ProfilePage() {
             </div>
             <div className="flex items-center gap-2 text-[#6B7280]">
               <Phone size={16} />
-              {isEditing ? (
-                <input
-                  type="text"
-                  name="phone"
-                  value={editForm.phone}
-                  onChange={handleInputChange}
-                  className="text-sm border-b border-gray-300 focus:outline-none focus:border-[#4F46E5] w-full"
-                />
-              ) : (
-                <span className="text-sm">{editForm.phone}</span>
-              )}
+              <span className="text-sm">{profilePhone}</span>
             </div>
             <div className="flex items-center gap-2 text-[#6B7280]">
               <MapPin size={16} />
-              {isEditing ? (
-                <input
-                  type="text"
-                  name="location"
-                  value={editForm.location}
-                  onChange={handleInputChange}
-                  className="text-sm border-b border-gray-300 focus:outline-none focus:border-[#4F46E5] w-full"
-                />
-              ) : (
-                <span className="text-sm">{editForm.location}</span>
-              )}
+              <span className="text-sm">{profileLocation}</span>
             </div>
             <div className="flex items-center gap-2 text-[#6B7280]">
               <Calendar size={16} />
-              {isEditing ? (
-                <input
-                  type="text"
-                  name="memberSince"
-                  value={editForm.memberSince}
-                  onChange={handleInputChange}
-                  className="text-sm border-b border-gray-300 focus:outline-none focus:border-[#4F46E5] w-full"
-                />
-              ) : (
-                <span className="text-sm">Membro desde {editForm.memberSince}</span>
-              )}
+              <span className="text-sm">ID de staff: {user.id ?? 'N/A'}</span>
             </div>
           </div>
-
-          {isEditing && (
-            <div className="flex gap-3 mt-6">
-              <button
-                onClick={handleSaveProfile}
-                disabled={loading}
-                className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-[#4F46E5] text-white rounded-lg hover:bg-[#4338CA] disabled:opacity-50"
-              >
-                <Save size={18} />
-                {loading ? 'A guardar...' : 'Guardar alterações'}
-              </button>
-              <button
-                onClick={() => setIsEditing(false)}
-                className="flex-1 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200"
-              >
-                Cancelar
-              </button>
-            </div>
-          )}
         </div>
 
-        {/* Estatísticas */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
           <div className="bg-white rounded-xl shadow-sm p-4">
             <div className="flex items-center gap-2 mb-2">
               <div className="p-2 bg-blue-100 rounded-lg">
                 <Target size={16} className="text-blue-600" />
               </div>
-              <span className="text-xs text-[#6B7280]">Incidentes</span>
+              <span className="text-xs text-[#6B7280]">Incidentes/Tarefas</span>
             </div>
-            <span className="text-xl font-bold text-[#1F2937]">
-              {profileStats.incidentsHandled}
-            </span>
+            <span className="text-xl font-bold text-[#1F2937]">{profileStats.incidentsHandled}</span>
           </div>
 
           <div className="bg-white rounded-xl shadow-sm p-4">
@@ -366,9 +420,7 @@ export default function ProfilePage() {
               </div>
               <span className="text-xs text-[#6B7280]">Sucesso</span>
             </div>
-            <span className="text-xl font-bold text-[#1F2937]">
-              {profileStats.successRate}%
-            </span>
+            <span className="text-xl font-bold text-[#1F2937]">{profileStats.successRate}%</span>
           </div>
 
           <div className="bg-white rounded-xl shadow-sm p-4">
@@ -378,9 +430,7 @@ export default function ProfilePage() {
               </div>
               <span className="text-xs text-[#6B7280]">Tempo Médio</span>
             </div>
-            <span className="text-xl font-bold text-[#1F2937]">
-              {profileStats.avgResponseTime}
-            </span>
+            <span className="text-xl font-bold text-[#1F2937]">{profileStats.avgResponseTime}</span>
           </div>
 
           <div className="bg-white rounded-xl shadow-sm p-4">
@@ -390,69 +440,59 @@ export default function ProfilePage() {
               </div>
               <span className="text-xs text-[#6B7280]">Rating</span>
             </div>
-            <span className="text-xl font-bold text-[#1F2937]">
-              {profileStats.rating}
-            </span>
+            <span className="text-xl font-bold text-[#1F2937]">{profileStats.rating}</span>
           </div>
         </div>
 
-        {/* Badges/Conquistas */}
         <div className="bg-white rounded-xl shadow-sm p-6 mb-4">
-          <h3 className="text-sm font-bold text-[#6B7280] tracking-wider mb-4">
-            CONQUISTAS
-          </h3>
+          <h3 className="text-sm font-bold text-[#6B7280] tracking-wider mb-4">CONQUISTAS</h3>
           <div className="flex flex-wrap gap-2">
-            {profileStats.badges.map(badge => (
-              <div
-                key={badge.id}
-                className="flex items-center gap-2 px-3 py-2 bg-gray-50 rounded-lg"
-              >
-                <span className="text-xl">{badge.icon}</span>
-                <span className="text-sm font-medium text-[#1F2937]">{badge.name}</span>
-              </div>
-            ))}
+            {profileStats.badges.length === 0 ? (
+              <span className="text-sm text-gray-500">Sem conquistas calculadas ainda.</span>
+            ) : (
+              profileStats.badges.map((badge) => (
+                <div key={badge.id} className="flex items-center gap-2 px-3 py-2 bg-gray-50 rounded-lg">
+                  <span className="text-xl">{badge.icon}</span>
+                  <span className="text-sm font-medium text-[#1F2937]">{badge.name}</span>
+                </div>
+              ))
+            )}
           </div>
         </div>
 
-        {/* Atividade Recente */}
         <div className="bg-white rounded-xl shadow-sm p-6 mb-4">
-          <h3 className="text-sm font-bold text-[#6B7280] tracking-wider mb-4">
-            ATIVIDADE RECENTE
-          </h3>
+          <h3 className="text-sm font-bold text-[#6B7280] tracking-wider mb-4">ATIVIDADE RECENTE</h3>
           <div className="space-y-4">
-            {recentActivity.map(activity => (
-              <div key={activity.id} className="flex items-start gap-3">
-                <div className={`p-2 rounded-lg ${
-                  activity.type === 'incident' ? 'bg-red-100' :
-                  activity.type === 'task' ? 'bg-green-100' : 'bg-yellow-100'
-                }`}>
-                  {activity.type === 'incident' && <AlertTriangle size={16} className="text-red-600" />}
-                  {activity.type === 'task' && <CheckCircle size={16} className="text-green-600" />}
-                  {activity.type === 'achievement' && <Award size={16} className="text-yellow-600" />}
+            {recentActivity.length === 0 ? (
+              <p className="text-sm text-gray-500">Sem atividade recente.</p>
+            ) : (
+              recentActivity.map((activity) => (
+                <div key={activity.id} className="flex items-start gap-3">
+                  <div
+                    className={`p-2 rounded-lg ${
+                      activity.type === 'incident' ? 'bg-red-100' : activity.type === 'task' ? 'bg-green-100' : 'bg-yellow-100'
+                    }`}
+                  >
+                    {activity.type === 'incident' && <AlertTriangle size={16} className="text-red-600" />}
+                    {activity.type === 'task' && <CheckCircle size={16} className="text-green-600" />}
+                    {activity.type === 'achievement' && <Award size={16} className="text-yellow-600" />}
+                  </div>
+                  <div className="flex-1">
+                    <p className="text-sm font-medium text-[#1F2937]">{activity.title}</p>
+                    <p className="text-xs text-[#6B7280] mt-1">{activity.time}</p>
+                  </div>
+                  {activity.status === 'completed' && <Badge variant="success" size="sm">Concluído</Badge>}
+                  {activity.status === 'in-progress' && <Badge variant="warning" size="sm">Em andamento</Badge>}
                 </div>
-                <div className="flex-1">
-                  <p className="text-sm font-medium text-[#1F2937]">{activity.title}</p>
-                  <p className="text-xs text-[#6B7280] mt-1">{activity.time}</p>
-                </div>
-                {activity.status === 'completed' && (
-                  <Badge variant="success" size="sm">Concluído</Badge>
-                )}
-                {activity.status === 'in-progress' && (
-                  <Badge variant="warning" size="sm">Em andamento</Badge>
-                )}
-              </div>
-            ))}
+              ))
+            )}
           </div>
         </div>
 
-        {/* Preferências */}
         <div className="bg-white rounded-xl shadow-sm p-6 mb-4">
-          <h3 className="text-sm font-bold text-[#6B7280] tracking-wider mb-4">
-            PREFERÊNCIAS
-          </h3>
-          
+          <h3 className="text-sm font-bold text-[#6B7280] tracking-wider mb-4">PREFERÊNCIAS</h3>
+
           <div className="space-y-4">
-            {/* Idioma */}
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <Globe size={20} className="text-[#6B7280]" />
@@ -462,9 +502,7 @@ export default function ProfilePage() {
                 <button
                   onClick={() => handleLanguageChange('pt')}
                   className={`px-3 py-1 text-sm rounded-lg transition-colors ${
-                    language === 'pt'
-                      ? 'bg-[#4F46E5] text-white'
-                      : 'bg-gray-100 text-[#6B7280] hover:bg-gray-200'
+                    language === 'pt' ? 'bg-[#4F46E5] text-white' : 'bg-gray-100 text-[#6B7280] hover:bg-gray-200'
                   }`}
                 >
                   PT
@@ -472,9 +510,7 @@ export default function ProfilePage() {
                 <button
                   onClick={() => handleLanguageChange('en')}
                   className={`px-3 py-1 text-sm rounded-lg transition-colors ${
-                    language === 'en'
-                      ? 'bg-[#4F46E5] text-white'
-                      : 'bg-gray-100 text-[#6B7280] hover:bg-gray-200'
+                    language === 'en' ? 'bg-[#4F46E5] text-white' : 'bg-gray-100 text-[#6B7280] hover:bg-gray-200'
                   }`}
                 >
                   EN
@@ -482,7 +518,6 @@ export default function ProfilePage() {
               </div>
             </div>
 
-            {/* Notificações Push */}
             <Switch
               label="Notificações Push"
               description="Receber alertas em tempo real"
@@ -490,7 +525,6 @@ export default function ProfilePage() {
               onChange={setPushEnabled}
             />
 
-            {/* Som */}
             <Switch
               label="Som de Alertas"
               description="Reproduzir som quando chegar alerta"
@@ -498,7 +532,6 @@ export default function ProfilePage() {
               onChange={setSoundEnabled}
             />
 
-            {/* Vibração */}
             <Switch
               label="Vibração"
               description="Vibrar em situações de emergência"
@@ -506,7 +539,6 @@ export default function ProfilePage() {
               onChange={setVibrationEnabled}
             />
 
-            {/* Estado de Serviço */}
             <Switch
               label="Em Serviço"
               description="Mostrar como disponível para tarefas"
@@ -516,10 +548,9 @@ export default function ProfilePage() {
           </div>
         </div>
 
-        {/* Botões de Ação */}
         <div className="space-y-3">
           <button
-            onClick={() => alert('Relatório gerado!')}
+            onClick={handleExport}
             className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-white border border-gray-200 rounded-xl text-[#1F2937] font-medium hover:bg-gray-50 transition-colors"
           >
             <Download size={20} />
@@ -535,10 +566,7 @@ export default function ProfilePage() {
           </button>
         </div>
 
-        {/* Versão da App */}
-        <p className="text-center text-xs text-[#9CA3AF] mt-6">
-          OpsLite v1.0.2 • {user.role}
-        </p>
+        <p className="text-center text-xs text-[#9CA3AF] mt-6">OpsLite v1.0.2 • {user.role}</p>
       </div>
     </div>
   );

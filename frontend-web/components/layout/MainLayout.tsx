@@ -41,6 +41,7 @@ export function MainLayout({ children }: MainLayoutProps) {
   const getNavigation = () => {
     const baseNav = [
       { name: 'Mapa', href: '/app-routes/map', icon: Map, current: pathname === '/app-routes/map' },
+      { name: 'Dashboard', href: '/app-routes/dashboard', icon: BarChart3, current: pathname === '/app-routes/dashboard' },
     ];
 
     switch (user.role) {

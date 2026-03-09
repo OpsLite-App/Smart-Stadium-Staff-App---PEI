@@ -11,14 +11,6 @@ const nextConfig: NextConfig = {
         destination: "http://localhost:8081/auth/:path*",
       },
       {
-        source: "/api/map/:path*",
-        destination: "http://localhost:8000/api/:path*",
-      },
-      {
-        source: "/api/routing/:path*",
-        destination: "http://localhost:8002/api/:path*",
-      },
-      {
         source: "/api/congestion/alerts/:path*",
         destination: "http://localhost:8005/api/congestion/alerts/:path*",
       },
@@ -36,15 +28,15 @@ const nextConfig: NextConfig = {
       },
       {
         source: "/api/emergency/:path*",
-        destination: "http://localhost:8006/api/:path*",
+        destination: "http://localhost:8006/api/emergency/:path*",
       },
       {
         source: "/api/maintenance/:path*",
-        destination: "http://localhost:8007/api/:path*",
+        destination: "http://localhost:8007/api/maintenance/:path*",
       },
       {
         source: "/api/queueing/:path*",
-        destination: "http://localhost:8003/api/:path*",
+        destination: "http://localhost:8003/api/queue/:path*",
       },
       {
         source: "/api/chat/:path*",

@@ -5,7 +5,7 @@ import { WS_GATEWAY } from '@/lib/services/api';
 import { useState, useEffect, useRef } from 'react';
 import { MainLayout } from '@/components/layout/MainLayout';
 import { useAuthStore } from '@/lib/stores/useAuthStore';
-import { api, CONGESTION_SERVICE, EMERGENCY_SERVICE, AUTH_SERVICE } from '@/lib/services/api';
+import { CONGESTION_SERVICE, EMERGENCY_SERVICE } from '@/lib/services/api';
 import axios from 'axios';
 import {
   AlertTriangle,
@@ -156,7 +156,7 @@ function normalizeCongestionAlert(raw: Record<string, unknown>): Alert {
   const severity = normalizeSeverity(raw.severity ?? (occupancy >= 95 ? 'critical' : occupancy >= 80 ? 'high' : 'medium'));
 
   return {
-    id: String(raw.id ?? `congestion-${areaId}-${Date.now()}`),
+    id: String(raw.id ?? `congestion-${areaId}`),
     type: 'crowd',
     severity,
     title: 'Alta concentração de pessoas',
@@ -197,6 +197,54 @@ function normalizeAlertsFromSource(sourceName: string, payload: unknown): Alert[
         ? normalizeEmergencyAlert(item)
         : normalizeCongestionAlert(item)
     );
+}
+
+function normalizeRealtimeAlert(topic: string, raw: unknown): Alert | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const payload = raw as Record<string, unknown>;
+  const eventType = typeof payload.event_type === 'string' ? payload.event_type : '';
+
+  if (topic.includes('/crowd')) {
+    if (eventType !== 'crowd_density') return null;
+    return normalizeCongestionAlert({
+      ...payload,
+      area_type: payload.area_type ?? 'gate',
+      current_count: payload.current_count ?? 0,
+      capacity: payload.capacity ?? 100,
+      last_update: payload.timestamp ?? new Date().toISOString(),
+      latitude:
+        payload.location &&
+        typeof payload.location === 'object' &&
+        typeof (payload.location as Record<string, unknown>).x === 'number'
+          ? (payload.location as Record<string, number>).x
+          : undefined,
+      longitude:
+        payload.location &&
+        typeof payload.location === 'object' &&
+        typeof (payload.location as Record<string, unknown>).y === 'number'
+          ? (payload.location as Record<string, number>).y
+          : undefined,
+    });
+  }
+
+  if (topic.includes('/emergency')) {
+    if (eventType !== 'sos_event' && eventType !== 'sensor_alert') return null;
+    return normalizeEmergencyAlert({
+      id: payload.event_id ?? payload.id,
+      incident_id: payload.incident_id,
+      sensor_type: payload.sensor_type ?? payload.details ?? 'emergência',
+      reading_value: payload.reading_value,
+      threshold: payload.threshold,
+      unit: payload.unit,
+      status: payload.status ?? 'active',
+      location_node: payload.location_node,
+      detected_at: payload.timestamp ?? new Date().toISOString(),
+      severity: payload.priority ?? payload.severity ?? 'high',
+      incident_metadata: payload.metadata ?? {},
+    });
+  }
+
+  return null;
 }
 
 export default function AlertsPage() {
@@ -275,8 +323,6 @@ export default function AlertsPage() {
       ];
 
       let allAlerts: Alert[] = [];
-      let hasData = false;
-
       for (const source of sources) {
         let sourceSuccess = false;
 
@@ -289,7 +335,6 @@ export default function AlertsPage() {
               const normalized = normalizeAlertsFromSource(source.name, response.data);
               console.log(`✅ ${source.name}: ${normalized.length} alerts`);
               allAlerts = [...allAlerts, ...normalized];
-              hasData = true;
               sourceSuccess = true;
               break;
             }
@@ -299,7 +344,6 @@ export default function AlertsPage() {
               const normalized = normalizeAlertsFromSource(source.name, rawAlerts);
               console.log(`✅ ${source.name}: ${normalized.length} alerts`);
               allAlerts = [...allAlerts, ...normalized];
-              hasData = true;
               sourceSuccess = true;
               break;
             }
@@ -313,12 +357,7 @@ export default function AlertsPage() {
         }
       }
 
-      // Use mock data only when no service returns a valid response format.
-      // If services return an empty list, show real "0 alerts".
-      if (!hasData) {
-        console.log('📊 Using mock alert data');
-        allAlerts = generateMockAlerts();
-      } else if (allAlerts.length === 0) {
+      if (allAlerts.length === 0) {
         console.log('ℹ️ No active alerts from services');
       }
 
@@ -343,186 +382,12 @@ export default function AlertsPage() {
       
     } catch (error) {
       console.error('❌ Error while fetching alerts:', error);
-      // Fallback to mock data
-      const mockAlerts = generateMockAlerts();
-      setAlerts(mockAlerts);
-      calculateStats(mockAlerts);
+      setAlerts([]);
+      calculateStats([]);
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  };
-
-  // Generate mock data for development
-  const generateMockAlerts = (): Alert[] => {
-    const now = new Date();
-    const alerts: Alert[] = [
-      {
-        id: '1',
-        type: 'security',
-        severity: 'critical',
-        title: 'Movimento suspeito detectado',
-        description: 'Câmeras detectaram movimento não autorizado na área VIP. Equipa de segurança dirigiu-se ao local.',
-        location: 'Setor VIP - Camarotes',
-        location_details: {
-          node_id: 'VIP-01',
-          coordinates: { lat: 41.161758, lng: -8.583933 },
-          area: 'VIP'
-        },
-        timestamp: new Date(now.getTime() - 2 * 60000).toISOString(),
-        read: false,
-        acknowledged: true,
-        acknowledged_by: {
-          id: 101,
-          name: 'Carlos Segurança',
-          role: 'Security'
-        },
-        resolved: false,
-        source: 'api',
-        metadata: { camera_id: 'CAM-12', confidence: 0.92 }
-      },
-      {
-        id: '2',
-        type: 'emergency',
-        severity: 'critical',
-        title: 'ALERTA DE EMERGÊNCIA - PORTA ABERTA',
-        description: 'Porta de emergência N2 foi aberta. Protocolo de evacuação iniciado automaticamente.',
-        location: 'Corredor N2 - Saída Este',
-        location_details: {
-          node_id: 'N2',
-          coordinates: { lat: 41.161850, lng: -8.584200 },
-          gate: 'N2'
-        },
-        timestamp: new Date(now.getTime() - 15 * 60000).toISOString(),
-        read: true,
-        acknowledged: true,
-        acknowledged_by: {
-          id: 102,
-          name: 'Maria Supervisor',
-          role: 'Supervisor'
-        },
-        resolved: true,
-        resolved_at: new Date(now.getTime() - 10 * 60000).toISOString(),
-        source: 'websocket'
-      },
-      {
-        id: '3',
-        type: 'cleaning',
-        severity: 'high',
-        title: 'Lixeira cheia - Ação necessária',
-        description: 'Lixeira no Setor A4 está com 95% de capacidade. Necessário esvaziamento urgente.',
-        location: 'Setor A4 - Corredor Principal',
-        location_details: {
-          node_id: 'A4-BIN',
-          coordinates: { lat: 41.161450, lng: -8.584500 },
-          area: 'Setor A'
-        },
-        timestamp: new Date(now.getTime() - 45 * 60000).toISOString(),
-        read: false,
-        acknowledged: false,
-        resolved: false,
-        assigned_to: {
-          id: 201,
-          name: 'Ana Limpeza',
-          role: 'Cleaning'
-        },
-        source: 'api',
-        metadata: { fill_level: 95, bin_type: 'general' }
-      },
-      {
-        id: '4',
-        type: 'crowd',
-        severity: 'high',
-        title: 'Alta concentração de pessoas',
-        description: 'Densidade de multidão acima do normal na Entrada Norte. Risco de congestionamento.',
-        location: 'Entrada Norte - Bilheteira',
-        location_details: {
-          node_id: 'ENT-N',
-          coordinates: { lat: 41.162000, lng: -8.584000 },
-          area: 'Entradas'
-        },
-        timestamp: new Date(now.getTime() - 75 * 60000).toISOString(),
-        read: true,
-        acknowledged: true,
-        acknowledged_by: {
-          id: 103,
-          name: 'João Segurança',
-          role: 'Security'
-        },
-        resolved: false,
-        source: 'api',
-        metadata: { density: 0.85, capacity: 500, current: 425 }
-      },
-      {
-        id: '5',
-        type: 'system',
-        severity: 'medium',
-        title: 'Câmara offline',
-        description: 'Câmara de segurança CAM-08 no Setor B está offline. Equipa técnica notificada.',
-        location: 'Setor B - Zona Sul',
-        location_details: {
-          node_id: 'B-CAM',
-          coordinates: { lat: 41.161200, lng: -8.583500 }
-        },
-        timestamp: new Date(now.getTime() - 2 * 60 * 60000).toISOString(),
-        read: true,
-        acknowledged: true,
-        acknowledged_by: {
-          id: 104,
-          name: 'Pedro TI',
-          role: 'Supervisor'
-        },
-        resolved: false,
-        source: 'system',
-        metadata: { camera_id: 'CAM-08', last_seen: new Date(now.getTime() - 3 * 60 * 60000).toISOString() }
-      },
-      {
-        id: '6',
-        type: 'security',
-        severity: 'low',
-        title: 'Acesso não autorizado (teste)',
-        description: 'Tentativa de acesso não autorizado à área restrita. Controlo de acessos registou a ocorrência.',
-        location: 'Área Restrita - Piso 1',
-        location_details: {
-          node_id: 'REST-1'
-        },
-        timestamp: new Date(now.getTime() - 3 * 60 * 60000).toISOString(),
-        read: true,
-        acknowledged: true,
-        resolved: true,
-        resolved_at: new Date(now.getTime() - 2.5 * 60 * 60000).toISOString(),
-        source: 'api'
-      },
-      {
-        id: '7',
-        type: 'maintenance',
-        severity: 'medium',
-        title: 'Manutenção preventiva necessária',
-        description: 'Sistema de ar condicionado no Setor VIP necessita de manutenção preventiva.',
-        location: 'Setor VIP - Zona Climatizada',
-        timestamp: new Date(now.getTime() - 4 * 60 * 60000).toISOString(),
-        read: false,
-        acknowledged: false,
-        resolved: false,
-        source: 'system',
-        metadata: { system: 'HVAC', last_maintenance: new Date(now.getTime() - 30 * 24 * 60 * 60000).toISOString() }
-      },
-      {
-        id: '8',
-        type: 'cleaning',
-        severity: 'info',
-        title: 'Kit de limpeza necessário',
-        description: 'Equipa de limpeza no Setor C necessita de reposição de materiais.',
-        location: 'Setor C - Depósito',
-        timestamp: new Date(now.getTime() - 5 * 60 * 60000).toISOString(),
-        read: false,
-        acknowledged: false,
-        resolved: false,
-        source: 'api'
-      }
-    ];
-
-    return alerts;
   };
 
   // Calculate statistics
@@ -639,9 +504,11 @@ export default function AlertsPage() {
       onConnect: () => {
         console.log('✅ STOMP connected (alerts)');
 
-        client.subscribe('/topic/alerts', (msg) => {
+        client.subscribe('/topic/crowd', (msg) => {
           try {
-            const newAlert = JSON.parse(msg.body) as Alert;
+            const payload = JSON.parse(msg.body) as unknown;
+            const newAlert = normalizeRealtimeAlert('/topic/crowd', payload);
+            if (!newAlert) return;
 
             setAlerts(prev => {
               const exists = prev.some(a => a.id === newAlert.id);
@@ -653,7 +520,27 @@ export default function AlertsPage() {
             });
 
           } catch (e) {
-            console.error('Error processing alert:', e);
+            console.error('Error processing crowd alert:', e);
+          }
+        });
+
+        client.subscribe('/topic/emergency', (msg) => {
+          try {
+            const payload = JSON.parse(msg.body) as unknown;
+            const newAlert = normalizeRealtimeAlert('/topic/emergency', payload);
+            if (!newAlert) return;
+
+            setAlerts(prev => {
+              const exists = prev.some(a => a.id === newAlert.id);
+              if (exists) return prev;
+
+              const updated = [newAlert, ...prev];
+              calculateStats(updated);
+              return updated;
+            });
+
+          } catch (e) {
+            console.error('Error processing emergency alert:', e);
           }
         });
       },
@@ -1256,18 +1143,6 @@ export default function AlertsPage() {
                             </button>
                           )}
                           
-                          {alert.location_details?.coordinates && (
-                            <button
-                              onClick={() => {
-                                // Open in map
-                                window.location.href = `/app-routes/map?lat=${alert.location_details?.coordinates?.lat}&lng=${alert.location_details?.coordinates?.lng}`;
-                              }}
-                              className="flex items-center gap-1 px-3 py-1.5 text-sm bg-purple-100 text-purple-700 rounded-lg hover:bg-purple-200"
-                            >
-                              <MapPin size={14} />
-                              Ver no mapa
-                            </button>
-                          )}
                         </div>
                       </div>
                     )}

@@ -175,7 +175,7 @@ async def find_nearest_responder(
                     print(f"⚠️  Failed to get route for {staff.id}")
                     continue
                 
-                route_data = await response.json()
+                route_data = response.json()
                 
                 path = route_data["path"]
                 distance = route_data["distance"]
@@ -247,7 +247,7 @@ async def find_multiple_responders(
                 if response.status_code != 200:
                     continue
                 
-                route_data = await response.json()
+                route_data = response.json()
                 
                 assignments.append(ResponderAssignment(
                     staff_id=staff.id,
@@ -334,7 +334,7 @@ async def calculate_response_coverage(
                     )
                     
                     if response.status_code == 200:
-                        route_data = await response.json()
+                        route_data = response.json()
                         etas.append(route_data["eta_seconds"])
                         
                 except httpx.RequestError:
