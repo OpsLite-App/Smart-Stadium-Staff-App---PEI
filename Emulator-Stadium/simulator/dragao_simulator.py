@@ -19,8 +19,38 @@ except ImportError:
     MQTT_AVAILABLE = False
     print("⚠️  paho-mqtt not installed. Install: pip install paho-mqtt")
 
-# ========== CONFIGURATION ==========
 
+# ===== INTEGRAÇÃO ZIP =====
+# ===== INTEGRAÇÃO ZIP =====
+print("🔍 A tentar carregar modelo ZIP...")
+try:
+    import sys
+    print(f"📂 Diretório atual: {__file__}")
+    print(f"📂 Python path: {sys.path}")
+    
+    from zip_counter import get_counter
+    print("✅ zip_counter importado com sucesso")
+    
+    model_path = "simulator/model/zip_n_model_quant.onnx"
+    print(f"📁 A procurar modelo em: {model_path}")
+    
+    zip_counter = get_counter(model_path)
+    ZIP_AVAILABLE = True
+    print("✅ ZIP crowd model loaded com sucesso!")
+except ImportError as e:
+    ZIP_AVAILABLE = False
+    print(f"❌ Erro de import: {e}")
+    print("⚠️  zip_counter.py não encontrado ou erro no módulo")
+except FileNotFoundError as e:
+    ZIP_AVAILABLE = False
+    print(f"❌ Ficheiro não encontrado: {e}")
+    print("⚠️  Modelo ONNX não encontrado")
+except Exception as e:
+    ZIP_AVAILABLE = False
+    print(f"❌ Erro inesperado: {type(e).__name__}: {e}")
+    print("⚠️  Usando contagens aleatórias")
+# ========== CONFIGURATION ==========
+   
 MAP_SERVICE_URL = os.getenv("MAP_SERVICE_URL", "http://localhost:8000")
 ROUTING_SERVICE_URL = os.getenv("ROUTING_SERVICE_URL", "http://localhost:8002")
 MQTT_BROKER = os.getenv("MQTT_BROKER", "localhost")
@@ -333,7 +363,13 @@ class IntegratedEventGenerator:
         if not node:
             return None
         
-        count = random.randint(10, 200)
+        # ===== ZIP MODEL INTEGRATION =====
+        if ZIP_AVAILABLE:
+            count = zip_counter.get_count(area_node_id)
+        else:
+            count = random.randint(10, 200)
+        # ==================================
+
         capacity = 150
         occupancy = (count / capacity) * 100
         
