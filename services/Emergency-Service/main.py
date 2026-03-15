@@ -16,7 +16,7 @@ from models import IncidentStatus, IncidentSeverity, IncidentType
 from schemas import (
     IncidentCreate, IncidentUpdate, IncidentResponse,
     EvacuationRequest, EvacuationResponse,
-    DispatchRequest, DispatchResponse,
+    DispatchRequest, DispatchResponse, ManualDispatchRequest,
     SensorAlertCreate, SensorAlertResponse,
     IncidentStatistics, ActiveIncidentsResponse
 )
@@ -342,6 +342,18 @@ async def dispatch_responders(request: DispatchRequest, db: Session = Depends(ge
         raise HTTPException(status_code=400, detail="No available responders or dispatch failed")
     
     return dispatches
+
+
+@app.post("/api/emergency/dispatch/manual", response_model=DispatchResponse)
+async def dispatch_specific_responder(request: ManualDispatchRequest, db: Session = Depends(get_db)):
+    """Dispatch a specific responder selected manually by a supervisor"""
+
+    dispatch = await incident_manager.dispatch_specific_responder(db, request)
+
+    if not dispatch:
+        raise HTTPException(status_code=400, detail="Manual dispatch failed")
+
+    return dispatch
 
 
 @app.get("/api/emergency/dispatch/active")

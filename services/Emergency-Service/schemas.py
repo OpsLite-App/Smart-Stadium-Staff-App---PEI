@@ -114,6 +114,15 @@ class DispatchRequest(BaseModel):
     num_responders: int = Field(default=1, ge=1, le=10, description="Number of responders to dispatch")
 
 
+class ManualDispatchRequest(BaseModel):
+    """Request dispatch to a specific responder chosen by a supervisor"""
+    incident_id: str = Field(..., description="Incident ID")
+    responder_id: str = Field(..., description="Selected responder ID")
+    responder_role: str = Field(..., description="Responder role: security, supervisor, maintenance, medical")
+    current_position: str = Field(..., description="Current responder node/location")
+    responder_name: Optional[str] = Field(None, description="Optional responder display name")
+
+
 class DispatchResponse(BaseModel):
     """Responder dispatch response"""
     id: str

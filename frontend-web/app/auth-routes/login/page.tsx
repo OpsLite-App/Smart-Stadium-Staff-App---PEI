@@ -15,10 +15,18 @@ export default function LoginPage() {
   const { login, isLoading, user, hydrated } = useAuthStore();
   const router = useRouter();
 
+  const getDefaultRoute = (userRole?: 'Security' | 'Cleaning' | 'Supervisor') => {
+    if (userRole === 'Supervisor') {
+      return '/app-routes/dashboard';
+    }
+
+    return '/app-routes/map';
+  };
+
   // Se já estiver logado, redireciona para o mapa
   useEffect(() => {
     if (hydrated && user) {
-      router.replace('/app-routes/map');
+      router.replace(getDefaultRoute(user.role));
     }
   }, [user, hydrated, router]);
 
@@ -39,7 +47,10 @@ export default function LoginPage() {
   }
 
   const handleLogin = async () => {
-    await login(email, password, role);
+    const success = await login(email, password, role);
+    if (success) {
+      router.replace(getDefaultRoute(role));
+    }
   };
 
   return (

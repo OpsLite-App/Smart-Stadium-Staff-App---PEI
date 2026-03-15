@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import axios from 'axios';
-import { MainLayout } from '@/components/layout/MainLayout';
 import { useAuthStore } from '@/lib/stores/useAuthStore';
 import {
   AUTH_SERVICE,
@@ -259,8 +258,7 @@ export default function DashboardPage() {
   }, [lastUpdated]);
 
   return (
-    <MainLayout>
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h1 className="text-3xl font-bold text-gray-900">{roleTitle}</h1>
@@ -377,6 +375,5 @@ export default function DashboardPage() {
           </div>
         </div>
       </div>
-    </MainLayout>
   );
 }

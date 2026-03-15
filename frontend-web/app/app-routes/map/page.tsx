@@ -4,7 +4,6 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import 'leaflet.heat';
-import { MainLayout } from '@/components/layout/MainLayout';
 import { api, type HeatmapPoint, type StaffMember } from '@/lib/services/api';
 import { useAuthStore } from '@/lib/stores/useAuthStore';
 
@@ -230,8 +229,7 @@ export default function MapPage() {
   }, [heatmap, showHeatmap]);
 
   return (
-    <MainLayout>
-      <div className="h-screen relative">
+    <div className="h-screen relative">
         <div ref={containerRef} className="h-full w-full" />
 
         {loading && (
@@ -281,6 +279,5 @@ export default function MapPage() {
           Estádio do Dragão • Heatmap • Staff • Lixeiras
         </div>
       </div>
-    </MainLayout>
   );
 }

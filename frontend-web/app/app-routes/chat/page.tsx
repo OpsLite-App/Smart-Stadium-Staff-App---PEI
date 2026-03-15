@@ -2,7 +2,6 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { MainLayout } from '@/components/layout/MainLayout';
 import { useAuthStore } from '@/lib/stores/useAuthStore';
 import { AUTH_SERVICE, CHAT_SERVICE } from '@/lib/services/api';
 import axios from 'axios';
@@ -944,20 +943,17 @@ export default function ChatPage() {
 
   if (loading && !selectedChat) {
     return (
-      <MainLayout>
-        <div className="min-h-screen flex items-center justify-center">
+      <div className="min-h-screen flex items-center justify-center">
           <div className="text-center">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#4F46E5] mx-auto mb-4"></div>
             <p className="text-gray-600">A carregar chat...</p>
           </div>
         </div>
-      </MainLayout>
     );
   }
 
   return (
-    <MainLayout>
-      <div className="h-[calc(100vh-4rem)] flex">
+    <div className="h-[calc(100vh-4rem)] flex">
         {/* Chats sidebar */}
         <div className={`${selectedChat ? 'hidden md:flex' : 'flex'} md:w-80 flex-col border-r border-gray-200 bg-white`}>
           {/* Sidebar header */}
@@ -1510,6 +1506,5 @@ export default function ChatPage() {
           </div>
         )}
       </div>
-    </MainLayout>
   );
 }

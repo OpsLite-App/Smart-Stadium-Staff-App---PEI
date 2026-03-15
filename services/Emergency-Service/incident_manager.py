@@ -17,7 +17,7 @@ from models import (
 from schemas import (
     IncidentCreate, IncidentUpdate, IncidentResponse,
     SensorAlertCreate, SensorAlertResponse,
-    DispatchResponse
+    DispatchResponse, ManualDispatchRequest
 )
 from nearest_responder import (
     StaffTracker, IncidentRequest, StaffRole,
@@ -374,6 +374,71 @@ class IncidentManager:
         
         # Dispatch security (primary responders)
         return await self.dispatch_responders(db, incident_id, "security", num_responders)
+
+    async def dispatch_specific_responder(
+        self,
+        db: Session,
+        request: ManualDispatchRequest
+    ) -> Optional[DispatchResponse]:
+        """Dispatch a responder explicitly selected by a supervisor"""
+
+        incident_db = db.query(EmergencyIncident).filter(
+            EmergencyIncident.id == request.incident_id
+        ).first()
+
+        if not incident_db:
+            print(f"❌ Incident {request.incident_id} not found")
+            return None
+
+        try:
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                response = await client.get(
+                    f"{self.routing_service_url}/api/route",
+                    params={
+                        "from_node": request.current_position,
+                        "to_node": incident_db.location_node,
+                        "avoid_crowds": True
+                    }
+                )
+        except httpx.RequestError as e:
+            print(f"❌ Routing Service error for {request.responder_id}: {e}")
+            return None
+
+        if response.status_code != 200:
+            print(f"❌ Failed to calculate route for responder {request.responder_id}")
+            return None
+
+        route_data = response.json()
+
+        dispatch = ResponderDispatch(
+            id=f"dispatch-{uuid.uuid4().hex[:8]}",
+            incident_id=request.incident_id,
+            responder_id=request.responder_id,
+            responder_role=request.responder_role,
+            route_nodes=route_data.get("path", []),
+            route_distance=route_data.get("distance", 0),
+            eta_seconds=route_data.get("eta_seconds", 0)
+        )
+
+        db.add(dispatch)
+
+        incident_db.responders_dispatched += 1
+        if incident_db.status == IncidentStatus.ACTIVE:
+            incident_db.status = IncidentStatus.RESPONDING
+            incident_db.responded_at = datetime.now()
+
+        db.commit()
+        db.refresh(dispatch)
+
+        self._log_event(
+            db,
+            request.incident_id,
+            "dispatched_manual",
+            f"Supervisor dispatched {request.responder_id} ({request.responder_role})"
+        )
+
+        print(f"✅ Manually dispatched {request.responder_id} to incident {request.incident_id}")
+        return self._dispatch_to_response(dispatch)
     
     def get_active_dispatches(self, db: Session) -> List[DispatchResponse]:
         """Get all active responder dispatches"""

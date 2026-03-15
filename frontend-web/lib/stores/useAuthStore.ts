@@ -16,6 +16,10 @@ interface User {
     canViewHeatmap: boolean;
     canViewBins: boolean;
     canViewAlerts: boolean;
+    canCreateIncidents: boolean;
+    canManageIncidents: boolean;
+    canDispatchIncidents: boolean;
+    canResolveIncidents: boolean;
   };
 }
 
@@ -63,6 +67,10 @@ export const useAuthStore = create<AuthState>()(
               canViewHeatmap: role === 'Security' || role === 'Supervisor',
               canViewBins: role === 'Cleaning' || role === 'Supervisor',
               canViewAlerts: true,
+              canCreateIncidents: role === 'Supervisor',
+              canManageIncidents: role === 'Supervisor',
+              canDispatchIncidents: role === 'Supervisor',
+              canResolveIncidents: role === 'Supervisor',
             },
           };
 

@@ -2,7 +2,6 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { MainLayout } from '@/components/layout/MainLayout';
 import { useAuthStore } from '@/lib/stores/useAuthStore';
 import { api, AUTH_SERVICE } from '@/lib/services/api';
 import axios from 'axios';
@@ -602,20 +601,17 @@ export default function TeamPage() {
 
   if (loading) {
     return (
-      <MainLayout>
-        <div className="min-h-screen flex items-center justify-center">
+      <div className="min-h-screen flex items-center justify-center">
           <div className="text-center">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#4F46E5] mx-auto mb-4"></div>
             <p className="text-gray-600">A carregar equipa...</p>
           </div>
         </div>
-      </MainLayout>
     );
   }
 
   return (
-    <MainLayout>
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Header */}
         <div className="flex flex-col md:flex-row md:items-center md:justify-between mb-6">
           <div>
@@ -1259,6 +1255,5 @@ export default function TeamPage() {
           </div>
         )}
       </div>
-    </MainLayout>
   );
 }

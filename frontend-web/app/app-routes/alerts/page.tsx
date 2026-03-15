@@ -3,7 +3,6 @@
 import { Client } from '@stomp/stompjs';
 import { WS_GATEWAY } from '@/lib/services/api';
 import { useState, useEffect, useRef } from 'react';
-import { MainLayout } from '@/components/layout/MainLayout';
 import { useAuthStore } from '@/lib/stores/useAuthStore';
 import { CONGESTION_SERVICE, EMERGENCY_SERVICE } from '@/lib/services/api';
 import axios from 'axios';
@@ -95,6 +94,41 @@ interface AlertStats {
     crowd: number;
     maintenance: number;
   };
+}
+
+interface EmergencyIncidentAdmin {
+  id: string;
+  incident_type: string;
+  status: string;
+  severity: 'critical' | 'high' | 'medium' | 'low';
+  location_node: string;
+  description?: string;
+  responders_dispatched: number;
+  created_at: string;
+}
+
+interface StaffCandidate {
+  id: string;
+  name: string;
+  role: string;
+  location: string;
+  availability: 'available' | 'busy';
+  etaSeconds: number | null;
+  distance: number | null;
+}
+
+interface StaffApiEntry {
+  id: number | string;
+  name: string;
+  role: string;
+  location?: string;
+}
+
+interface ActiveDispatchEntry {
+  responder_id: string;
+  responder_role: string;
+  eta_seconds: number;
+  status: string;
 }
 
 const ALERT_SEVERITIES = ['critical', 'high', 'medium', 'low', 'info'] as const;
@@ -249,10 +283,24 @@ function normalizeRealtimeAlert(topic: string, raw: unknown): Alert | null {
 
 export default function AlertsPage() {
   const { user } = useAuthStore();
+  const isSupervisor = user?.role === 'Supervisor';
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [filteredAlerts, setFilteredAlerts] = useState<Alert[]>([]);
+  const [incidents, setIncidents] = useState<EmergencyIncidentAdmin[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [incidentActionLoading, setIncidentActionLoading] = useState<string | null>(null);
+  const [incidentForm, setIncidentForm] = useState({
+    incident_type: 'medical',
+    location_node: 'N1',
+    severity: 'medium',
+    description: '',
+  });
+  const [assigningIncident, setAssigningIncident] = useState<EmergencyIncidentAdmin | null>(null);
+  const [selectedDepartment, setSelectedDepartment] = useState<'security' | 'cleaning' | 'supervisor' | 'medical'>('security');
+  const [staffCandidates, setStaffCandidates] = useState<StaffCandidate[]>([]);
+  const [candidateLoading, setCandidateLoading] = useState(false);
+  const [candidateError, setCandidateError] = useState('');
   const [stats, setStats] = useState<AlertStats>({
     total: 0,
     critical: 0,
@@ -359,6 +407,18 @@ export default function AlertsPage() {
 
       if (allAlerts.length === 0) {
         console.log('ℹ️ No active alerts from services');
+      }
+
+      if (isSupervisor) {
+        try {
+          const incidentResponse = await axios.get<{ incidents?: EmergencyIncidentAdmin[] }>(
+            `${EMERGENCY_SERVICE}/incidents`,
+            { timeout: 3000 }
+          );
+          setIncidents(incidentResponse.data?.incidents || []);
+        } catch {
+          setIncidents([]);
+        }
       }
 
       // Reapply local resolved overrides after polling to avoid reappearing alerts
@@ -569,6 +629,11 @@ export default function AlertsPage() {
     };
   }, []);
 
+  useEffect(() => {
+    if (!assigningIncident) return;
+    void loadCandidatesForIncident(assigningIncident, selectedDepartment);
+  }, [assigningIncident, selectedDepartment]);
+
   // Mark alert as read
   const markAsRead = (alertId: string) => {
     setAlerts(prev => {
@@ -683,6 +748,168 @@ export default function AlertsPage() {
     }
   };
 
+  const createIncident = async () => {
+    if (!user?.permissions.canCreateIncidents) return;
+
+    try {
+      setIncidentActionLoading('create');
+      await axios.post(`${EMERGENCY_SERVICE}/incidents`, {
+        incident_type: incidentForm.incident_type,
+        location_node: incidentForm.location_node,
+        severity: incidentForm.severity,
+        description: incidentForm.description || undefined,
+        detected_by: 'staff',
+        reported_by: String(user.id || user.email),
+        incident_metadata: {
+          created_from: 'supervisor_alerts_page',
+        },
+      });
+
+      setIncidentForm({
+        incident_type: 'medical',
+        location_node: 'N1',
+        severity: 'medium',
+        description: '',
+      });
+
+      await fetchAlerts();
+    } catch (error) {
+      console.error('Error creating incident:', error);
+    } finally {
+      setIncidentActionLoading(null);
+    }
+  };
+
+  const loadCandidatesForIncident = async (
+    incident: EmergencyIncidentAdmin,
+    department: 'security' | 'cleaning' | 'supervisor' | 'medical'
+  ) => {
+    try {
+      setCandidateLoading(true);
+      setCandidateError('');
+
+      const [staffResponse, activeDispatchesResponse] = await Promise.all([
+        axios.get<StaffApiEntry[]>(`/api/auth/staff`, { timeout: 4000 }),
+        axios.get<ActiveDispatchEntry[]>(`${EMERGENCY_SERVICE}/dispatch/active`, { timeout: 4000 }).catch(() => ({ data: [] })),
+      ]);
+
+      const roleMatchers: Record<typeof department, string[]> = {
+        security: ['security'],
+        cleaning: ['cleaning', 'maintenance'],
+        supervisor: ['supervisor'],
+        medical: ['medical', 'medic'],
+      };
+
+      const busyIds = new Set((activeDispatchesResponse.data || []).map((item) => String(item.responder_id)));
+
+      const filteredStaff = (staffResponse.data || []).filter((member) =>
+        roleMatchers[department].some((role) => String(member.role || '').toLowerCase().includes(role))
+      );
+
+      const candidatesWithEta = await Promise.all(
+        filteredStaff.map(async (member) => {
+          const location = member.location || 'N1';
+          try {
+            const routeResponse = await axios.get<{ distance?: number; eta_seconds?: number }>(`/api/routing/route`, {
+              params: {
+                from_node: location,
+                to_node: incident.location_node,
+                avoid_crowds: true,
+              },
+              timeout: 4000,
+            });
+
+            return {
+              id: String(member.id),
+              name: member.name || `Staff ${member.id}`,
+              role: member.role || department,
+              location,
+              availability: busyIds.has(String(member.id)) ? 'busy' : 'available',
+              etaSeconds: routeResponse.data?.eta_seconds ?? null,
+              distance: routeResponse.data?.distance ?? null,
+            } satisfies StaffCandidate;
+          } catch {
+            return {
+              id: String(member.id),
+              name: member.name || `Staff ${member.id}`,
+              role: member.role || department,
+              location,
+              availability: busyIds.has(String(member.id)) ? 'busy' : 'available',
+              etaSeconds: null,
+              distance: null,
+            } satisfies StaffCandidate;
+          }
+        })
+      );
+
+      candidatesWithEta.sort((a, b) => {
+        const etaA = a.etaSeconds ?? Number.MAX_SAFE_INTEGER;
+        const etaB = b.etaSeconds ?? Number.MAX_SAFE_INTEGER;
+        return etaA - etaB;
+      });
+
+      setStaffCandidates(candidatesWithEta);
+    } catch (error) {
+      console.error('Error loading staff candidates:', error);
+      setCandidateError('Não foi possível carregar candidatos para atribuição.');
+      setStaffCandidates([]);
+    } finally {
+      setCandidateLoading(false);
+    }
+  };
+
+  const openAssignModal = async (incident: EmergencyIncidentAdmin) => {
+    const defaultDepartment =
+      incident.incident_type === 'medical'
+        ? 'medical'
+        : incident.incident_type === 'fire' || incident.incident_type === 'smoke' || incident.incident_type === 'security'
+        ? 'security'
+        : 'cleaning';
+
+    setAssigningIncident(incident);
+    setSelectedDepartment(defaultDepartment);
+    await loadCandidatesForIncident(incident, defaultDepartment);
+  };
+
+  const dispatchSpecificCandidate = async (incident: EmergencyIncidentAdmin, candidate: StaffCandidate) => {
+    if (!user?.permissions.canDispatchIncidents) return;
+
+    try {
+      setIncidentActionLoading(`dispatch-${incident.id}-${candidate.id}`);
+      await axios.post(`${EMERGENCY_SERVICE}/dispatch/manual`, {
+        incident_id: incident.id,
+        responder_id: candidate.id,
+        responder_role: selectedDepartment,
+        current_position: candidate.location,
+        responder_name: candidate.name,
+      });
+      setAssigningIncident(null);
+      setStaffCandidates([]);
+      await fetchAlerts();
+    } catch (error) {
+      console.error('Error dispatching specific candidate:', error);
+    } finally {
+      setIncidentActionLoading(null);
+    }
+  };
+
+  const updateIncidentStatus = async (incidentId: string, status: string) => {
+    if (!user?.permissions.canManageIncidents) return;
+
+    try {
+      setIncidentActionLoading(`${status}-${incidentId}`);
+      await axios.patch(`${EMERGENCY_SERVICE}/incidents/${incidentId}`, {
+        status,
+        notes: `Atualizado por supervisor ${user.email}`,
+      });
+      await fetchAlerts();
+    } catch (error) {
+      console.error('Error updating incident:', error);
+    } finally {
+      setIncidentActionLoading(null);
+    }
+  };
+
   // Toggle severity filter
   const toggleSeverityFilter = (severity: string) => {
     setFilters(prev => ({
@@ -781,22 +1008,146 @@ export default function AlertsPage() {
 
   if (loading) {
     return (
-      <MainLayout>
-        <div className="min-h-screen flex items-center justify-center">
+      <div className="min-h-screen flex items-center justify-center">
           <div className="text-center">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#4F46E5] mx-auto mb-4"></div>
             <p className="text-gray-600">A carregar alertas...</p>
           </div>
         </div>
-      </MainLayout>
     );
   }
 
   const completedCount = Math.max(0, stats.total - stats.unresolved);
 
   return (
-    <MainLayout>
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {isSupervisor && (
+          <div className="mb-6 grid gap-6 xl:grid-cols-[1.05fr_1.45fr]">
+            <div className="rounded-2xl border border-amber-200 bg-[linear-gradient(180deg,#fffdf7,#fff7ea)] p-5">
+              <div className="flex items-center gap-2">
+                <Shield size={18} className="text-amber-700" />
+                <h2 className="text-lg font-semibold text-gray-900">Controlo do supervisor</h2>
+              </div>
+              <p className="mt-1 text-sm text-gray-600">
+                Aqui a supervisão cria incidentes, faz dispatch manual e fecha ocorrências sem apagar histórico.
+              </p>
+
+              <div className="mt-4 grid gap-3">
+                <select
+                  value={incidentForm.incident_type}
+                  onChange={(e) => setIncidentForm((prev) => ({ ...prev, incident_type: e.target.value }))}
+                  className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900"
+                >
+                  <option value="medical">medical</option>
+                  <option value="fire">fire</option>
+                  <option value="smoke">smoke</option>
+                  <option value="security">security</option>
+                  <option value="structural">structural</option>
+                  <option value="other">other</option>
+                </select>
+
+                <input
+                  value={incidentForm.location_node}
+                  onChange={(e) => setIncidentForm((prev) => ({ ...prev, location_node: e.target.value }))}
+                  placeholder="Nó da ocorrência"
+                  className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900"
+                />
+
+                <select
+                  value={incidentForm.severity}
+                  onChange={(e) => setIncidentForm((prev) => ({ ...prev, severity: e.target.value }))}
+                  className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900"
+                >
+                  <option value="low">low</option>
+                  <option value="medium">medium</option>
+                  <option value="high">high</option>
+                  <option value="critical">critical</option>
+                </select>
+
+                <textarea
+                  value={incidentForm.description}
+                  onChange={(e) => setIncidentForm((prev) => ({ ...prev, description: e.target.value }))}
+                  rows={3}
+                  placeholder="Descrição operacional"
+                  className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900"
+                />
+
+                <button
+                  onClick={createIncident}
+                  disabled={incidentActionLoading === 'create'}
+                  className="rounded-xl bg-amber-500 px-4 py-2.5 text-sm font-medium text-white hover:bg-amber-600 disabled:opacity-50"
+                >
+                  Criar incidente
+                </button>
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-gray-200 bg-white p-5">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <h2 className="text-lg font-semibold text-gray-900">Gestão manual de incidentes</h2>
+                  <p className="text-sm text-gray-500">Dispatch, resolução e falso alarme</p>
+                </div>
+                <span className="rounded-full bg-gray-100 px-3 py-1 text-xs font-medium text-gray-700">
+                  {incidents.filter((incident) => incident.status !== 'resolved' && incident.status !== 'false_alarm').length} ativos
+                </span>
+              </div>
+
+              <div className="mt-4 space-y-3">
+                {incidents.length === 0 ? (
+                  <p className="text-sm text-gray-500">Sem incidentes carregados.</p>
+                ) : (
+                  incidents.map((incident) => (
+                    <div key={incident.id} className="rounded-2xl border border-gray-100 bg-gray-50 p-4">
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div>
+                          <p className="font-medium text-gray-900">
+                            {incident.incident_type} • {incident.location_node}
+                          </p>
+                          <p className="mt-1 text-sm text-gray-600">{incident.description || 'Sem descrição adicional.'}</p>
+                          <div className="mt-2 flex flex-wrap gap-2 text-xs">
+                            <span className="rounded-full border border-gray-200 bg-white px-2 py-1 text-gray-700">{incident.status}</span>
+                            <span className="rounded-full border border-gray-200 bg-white px-2 py-1 text-gray-700">{incident.severity}</span>
+                            <span className="rounded-full border border-gray-200 bg-white px-2 py-1 text-gray-700">
+                              Dispatches: {incident.responders_dispatched}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="flex flex-wrap items-center gap-2">
+                          <button
+                            onClick={() => openAssignModal(incident)}
+                            disabled={incidentActionLoading?.startsWith(`dispatch-${incident.id}`)}
+                            className="rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+                          >
+                            Atribuir
+                          </button>
+
+                          <button
+                            onClick={() => updateIncidentStatus(incident.id, 'resolved')}
+                            disabled={incidentActionLoading === `resolved-${incident.id}`}
+                            className="rounded-lg bg-green-600 px-3 py-2 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-50"
+                          >
+                            Resolver
+                          </button>
+
+                          <button
+                            onClick={() => updateIncidentStatus(incident.id, 'false_alarm')}
+                            disabled={incidentActionLoading === `false_alarm-${incident.id}`}
+                            className="rounded-lg bg-gray-900 px-3 py-2 text-sm font-medium text-white hover:bg-gray-800 disabled:opacity-50"
+                          >
+                            False alarm
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Header */}
         <div className="flex flex-col md:flex-row md:items-center md:justify-between mb-6">
           <div>
@@ -1123,7 +1474,7 @@ export default function AlertsPage() {
                             </button>
                           )}
                           
-                          {!alert.acknowledged && (
+                          {!alert.acknowledged && (user?.role === 'Security' || user?.role === 'Supervisor') && (
                             <button
                               onClick={() => acknowledgeAlert(alert.id)}
                               className="flex items-center gap-1 px-3 py-1.5 text-sm bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200"
@@ -1133,7 +1484,7 @@ export default function AlertsPage() {
                             </button>
                           )}
                           
-                          {!alert.resolved && (
+                          {!alert.resolved && user?.permissions.canResolveIncidents && (
                             <button
                               onClick={() => resolveAlert(alert.id)}
                               className="flex items-center gap-1 px-3 py-1.5 text-sm bg-green-100 text-green-700 rounded-lg hover:bg-green-200"
@@ -1152,7 +1503,106 @@ export default function AlertsPage() {
             })}
           </div>
         )}
+        {assigningIncident && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-gray-900/50 p-4">
+            <div className="w-full max-w-3xl rounded-2xl bg-white shadow-2xl">
+              <div className="flex items-center justify-between border-b border-gray-100 px-6 py-4">
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900">Atribuir incidente</h3>
+                  <p className="text-sm text-gray-500">
+                    {assigningIncident.incident_type} em {assigningIncident.location_node}
+                  </p>
+                </div>
+                <button
+                  onClick={() => {
+                    setAssigningIncident(null);
+                    setStaffCandidates([]);
+                    setCandidateError('');
+                  }}
+                  className="rounded-lg p-2 text-gray-500 hover:bg-gray-100"
+                >
+                  <XCircle size={18} />
+                </button>
+              </div>
+
+              <div className="px-6 py-5">
+                <div className="flex flex-wrap gap-2">
+                  {(['security', 'medical', 'cleaning', 'supervisor'] as const).map((department) => (
+                    <button
+                      key={department}
+                      onClick={() => setSelectedDepartment(department)}
+                      className={`rounded-full px-4 py-2 text-sm font-medium ${
+                        selectedDepartment === department
+                          ? 'bg-gray-900 text-white'
+                          : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                      }`}
+                    >
+                      {department}
+                    </button>
+                  ))}
+                </div>
+
+                <div className="mt-5 rounded-xl border border-gray-200 bg-gray-50 p-4">
+                  <p className="text-sm text-gray-600">
+                    Disponibilidade baseada nos dispatches ativos. O ETA e a distância são calculados a partir da localização atual do staff até ao nó do incidente.
+                  </p>
+                </div>
+
+                <div className="mt-5 space-y-3">
+                  {candidateLoading ? (
+                    <p className="text-sm text-gray-500">A calcular candidatos e ETA...</p>
+                  ) : candidateError ? (
+                    <p className="text-sm text-red-600">{candidateError}</p>
+                  ) : staffCandidates.length === 0 ? (
+                    <p className="text-sm text-gray-500">Sem candidatos para este departamento.</p>
+                  ) : (
+                    staffCandidates.map((candidate) => (
+                      <div
+                        key={candidate.id}
+                        className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-gray-200 bg-white p-4"
+                      >
+                        <div>
+                          <p className="font-medium text-gray-900">{candidate.name}</p>
+                          <p className="text-sm text-gray-500">
+                            {candidate.role} • {candidate.location}
+                          </p>
+                          <div className="mt-2 flex flex-wrap gap-2 text-xs">
+                            <span
+                              className={`rounded-full px-2 py-1 ${
+                                candidate.availability === 'available'
+                                  ? 'bg-emerald-100 text-emerald-700'
+                                  : 'bg-red-100 text-red-700'
+                              }`}
+                            >
+                              {candidate.availability === 'available' ? 'Disponível' : 'Ocupado'}
+                            </span>
+                            <span className="rounded-full bg-gray-100 px-2 py-1 text-gray-700">
+                              ETA: {candidate.etaSeconds !== null ? `${Math.ceil(candidate.etaSeconds / 60)} min` : 'N/A'}
+                            </span>
+                            <span className="rounded-full bg-gray-100 px-2 py-1 text-gray-700">
+                              Distância: {candidate.distance !== null ? `${Math.round(candidate.distance)} m` : 'N/A'}
+                            </span>
+                          </div>
+                        </div>
+
+                        <button
+                          onClick={() => dispatchSpecificCandidate(assigningIncident, candidate)}
+                          disabled={
+                            candidate.availability !== 'available' ||
+                            incidentActionLoading === `dispatch-${assigningIncident.id}-${candidate.id}`
+                          }
+                          className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          Atribuir a este elemento
+                        </button>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
-    </MainLayout>
   );
 }
