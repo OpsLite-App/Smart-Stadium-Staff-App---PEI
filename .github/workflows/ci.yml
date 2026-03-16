@@ -2,15 +2,9 @@ name: CI Pipeline
 
 on:
   push:
-    branches: [ main, ci]
-    paths:
-      - 'services/**'
-      - '.github/workflows/ci.yml'
+    branches: [ main, dev, ci]
   pull_request:
     branches: [ main ]
-    paths:
-      - 'services/**'
-      - '.github/workflows/ci.yml'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
