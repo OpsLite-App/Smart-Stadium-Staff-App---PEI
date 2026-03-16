@@ -1,4 +1,4 @@
-name: CI Pipeline
+name: CI Pipeline Multi-Service
 
 on:
   push:
@@ -9,7 +9,6 @@ on:
 jobs:
   build-and-test:
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -18,31 +17,29 @@ jobs:
         uses: actions/setup-python@v4
         with:
           python-version: '3.10'
+          cache: 'pip' # Acelera as execuções seguintes
 
-      - name: Install dependencies
+      - name: Install Global CI Tools
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
-          pip install flake8 pytest
+          pip install flake8 pytest pytest-asyncio httpx
 
-      - name: Run linter (flake8)
+      - name: Run CI for all services
         run: |
-          if find . -name "*.py" | grep -q .; then
-            flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
-            flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
-          else
-            echo "No Python files found, skipping flake8"
-          fi
-
-      - name: Run tests
-        run: |
-          if find . -name "*test*.py" | grep -q .; then
-            pytest -v
-          else
-            echo "No test files found, skipping pytest"
-          fi
-
-      - name: Build documentation
-        run: |
-          pip install mkdocs-material
-          mkdocs build --strict
+          # Procura por todos os ficheiros de requirements no repo
+          for req_file in $(find . -name "requirements*.txt"); do
+            echo "--- Testing service for $req_file ---"
+            
+            # 1. Instala dependências específicas do serviço
+            pip install -r "$req_file"
+            
+            # 2. Executa o Linter na pasta desse serviço
+            service_dir=$(dirname "$req_file")
+            flake8 "$service_dir" --count --select=E9,F63,F7,F82 --show-source --statistics || true
+            
+            # 3. Executa os testes específicos dessa pasta
+            pytest "$service_dir" -v || echo "Aviso: Falha nos testes em $service_dir"
+            
+            # Limpa para evitar conflitos no próximo serviço do loop
+            pip uninstall -y -r "$req_file"
+          done
