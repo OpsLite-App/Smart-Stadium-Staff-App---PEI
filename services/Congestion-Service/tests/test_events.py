@@ -42,7 +42,7 @@ def test_congestion_trends_increasing():
 
 ### --- OLD DATA CLEANUP TEST (CLEANUP) --- ###
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_cleanup_removes_stale_data():
     """Tests if data older than 5 minutes is deleted"""
     # Inserting a data point that appears old (10 minutes ago)
