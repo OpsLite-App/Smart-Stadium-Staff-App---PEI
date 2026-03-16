@@ -9,3 +9,4 @@ pydantic
 paho-mqtt
 sqlalchemy
 httpx
+psycopg2
