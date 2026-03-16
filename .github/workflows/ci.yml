@@ -1,13 +1,28 @@
 name: CI Pipeline
 
-on: [push, pull_request]
+on:
+  push:
+    branches: [ main, ci]
+    paths:
+      - 'services/**'
+      - '.github/workflows/ci.yml'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'services/**'
+      - '.github/workflows/ci.yml'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build-and-test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
-      
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
@@ -15,30 +30,26 @@ jobs:
 
       - name: Run CI for all Python services
         run: |
-          # 1. Instalar ferramentas de teste globalmente para o ambiente
+          # Install global testing dependencies
           pip install --upgrade pip
           pip install pytest pytest-asyncio
           
-          # 2. Iterar sobre todos os serviços Python
-          # Usamos o pipe para garantir que o script não para a meio se um falhar
+          # Find and process all services containing a requirements.txt file
           find services -name "requirements*.txt" | while read req_file; do
             service_dir=$(dirname "$req_file")
-            echo "----------------------------------------------------"
-            echo "--- A processar serviço em: $service_dir ---"
-            echo "----------------------------------------------------"
+            echo "Processing service in: $service_dir"
             
-            # Instala dependências do serviço específico
+            # Install service-specific dependencies
             pip install -r "$req_file"
             
-            # Corre os testes
-            # O PYTHONPATH=$service_dir garante que o Python vê os módulos locais
+            # Execute tests with PYTHONPATH set to the service directory
             if PYTHONPATH=$service_dir pytest "$service_dir/tests" -v; then
-              echo "✅ Testes passaram em: $service_dir"
+              echo "Tests passed for: $service_dir"
             else
-              echo "❌ TESTES FALHARAM EM: $service_dir"
-              exit 1 # Força a pipeline a falhar se houver erros nos testes
+              echo "Tests failed for: $service_dir"
+              exit 1
             fi
             
-            # Limpeza
+            # Clean up dependencies to avoid environment conflicts
             pip uninstall -y -r "$req_file"
           done
