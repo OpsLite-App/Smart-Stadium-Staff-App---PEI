@@ -36,8 +36,8 @@ async def test_find_nearest_responder_selection(mock_staff_tracker):
     # Mock of AsyncClient.get method
     mock_get = AsyncMock()
     mock_get.side_effect = [
-        AsyncMock(status_code=200, json=AsyncMock(return_value=mock_responses[0])),
-        AsyncMock(status_code=200, json=AsyncMock(return_value=mock_responses[1]))
+        AsyncMock(status_code=200, json=lambda: mock_responses[0]),
+        AsyncMock(status_code=200, json=lambda: mock_responses[1])
     ]
 
     with patch("nearest_responder.httpx.AsyncClient.get", mock_get):
