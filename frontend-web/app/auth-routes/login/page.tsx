@@ -4,7 +4,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuthStore } from '@/lib/stores/useAuthStore';
-import { Shield, Brush, UserCog, Eye, EyeOff } from 'lucide-react';
+import { Shield, Brush, UserCog, Eye, EyeOff, HeartPulse } from 'lucide-react'; // ✅ Adicionar HeartPulse
 import { AppButton } from '@/components/ui/AppButton';
 
 export default function LoginPage() {
@@ -12,19 +12,22 @@ export default function LoginPage() {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [errors, setErrors] = useState<{ email?: string; password?: string }>({});
-  const [role, setRole] = useState<'Security' | 'Cleaning' | 'Supervisor'>('Security');
+  const [role, setRole] = useState<'Security' | 'Cleaning' | 'Supervisor' | 'Medical'>('Security');
   const { login, isLoading, user, hydrated, error, clearError } = useAuthStore();
   const router = useRouter();
 
-  const getDefaultRoute = (userRole?: 'Security' | 'Cleaning' | 'Supervisor') => {
+  const getDefaultRoute = (userRole?: 'Security' | 'Cleaning' | 'Supervisor' | 'Medical') => {
     if (userRole === 'Supervisor') {
       return '/app-routes/dashboard';
     }
-
+    // Médicos vão para o dashboard (ou pode ser mapa, como preferir)
+    if (userRole === 'Medical') {
+      return '/app-routes/dashboard'; // ou '/app-routes/map'
+    }
     return '/app-routes/map';
   };
 
-  // Se já estiver logado, redireciona para o mapa
+  // Se já estiver logado, redireciona
   useEffect(() => {
     if (hydrated && user) {
       router.replace(getDefaultRoute(user.role));
@@ -77,7 +80,8 @@ export default function LoginPage() {
             <label className="block text-xs font-bold text-[#6B7280] mb-3 tracking-wider">
               SELECIONE A SUA FUNÇÃO
             </label>
-            <div className="grid grid-cols-3 gap-2">
+            {/* Mudar grid para 4 colunas */}
+            <div className="grid grid-cols-4 gap-2">
               <button
                 onClick={() => setRole('Security')}
                 className={`
@@ -123,6 +127,23 @@ export default function LoginPage() {
                 <UserCog size={24} className={role === 'Supervisor' ? 'text-[#F59E0B]' : 'text-[#6B7280]'} />
                 <span className={`text-xs font-semibold ${role === 'Supervisor' ? 'text-[#F59E0B]' : 'text-[#6B7280]'}`}>
                   Supervisor
+                </span>
+              </button>
+
+              {/*  botão Medical */}
+              <button
+                onClick={() => setRole('Medical')}
+                className={`
+                  flex flex-col items-center gap-2 p-3 rounded-lg border-2 transition-all
+                  ${role === 'Medical' 
+                    ? 'border-red-500 bg-red-50' 
+                    : 'border-[#E5E7EB] bg-white hover:border-[#9CA3AF]'
+                  }
+                `}
+              >
+                <HeartPulse size={24} className={role === 'Medical' ? 'text-red-500' : 'text-[#6B7280]'} />
+                <span className={`text-xs font-semibold ${role === 'Medical' ? 'text-red-500' : 'text-[#6B7280]'}`}>
+                  Medical
                 </span>
               </button>
             </div>

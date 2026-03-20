@@ -5,7 +5,7 @@ import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import { api } from '../services/api';
 
-type Role = 'Security' | 'Cleaning' | 'Supervisor';
+type Role = 'Security' | 'Cleaning' | 'Supervisor' | 'Medical';
 
 interface User {
   email: string;
@@ -64,13 +64,13 @@ export const useAuthStore = create<AuthState>()(
             token: data.token,
             id: data.user_id,
             permissions: {
-              canViewHeatmap: role === 'Security' || role === 'Supervisor',
+              canViewHeatmap: role === 'Security' || role === 'Supervisor' || role === 'Medical',
               canViewBins: role === 'Cleaning' || role === 'Supervisor',
               canViewAlerts: true,
               canCreateIncidents: role === 'Supervisor',
               canManageIncidents: role === 'Supervisor',
               canDispatchIncidents: role === 'Supervisor',
-              canResolveIncidents: role === 'Supervisor',
+              canResolveIncidents: role === 'Supervisor' || role === 'Medical',
             },
           };
 
@@ -78,6 +78,10 @@ export const useAuthStore = create<AuthState>()(
 
           // Register cleaning staff in Maintenance Service for task assignment
           if (role === 'Cleaning') {
+            void api.registerStaffForMaintenance(String(data.user_id), email, role);
+          }
+
+          if (role === 'Medical') {
             void api.registerStaffForMaintenance(String(data.user_id), email, role);
           }
 
