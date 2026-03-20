@@ -8,6 +8,8 @@ export const EMERGENCY_BASE = process.env.NEXT_PUBLIC_API_EMERGENCY || "/api/eme
 export const MAINTENANCE_BASE = process.env.NEXT_PUBLIC_API_MAINTENANCE || "/api/maintenance";
 export const QUEUEING_BASE = process.env.NEXT_PUBLIC_API_QUEUEING || "/api/queueing";
 export const CHAT_BASE = process.env.NEXT_PUBLIC_API_CHAT || "/api/chat";
+export const ROUTING_BASE = process.env.NEXT_PUBLIC_API_ROUTING || '/api/routing';
+export const ROUTING_SERVICE = ROUTING_BASE;
 
 // Aliases para compatibilidade com imports antigos (não usar IPs; continua via rewrites)
 export const AUTH_SERVICE = AUTH_BASE;
@@ -260,7 +262,60 @@ export const api = {
     return response.data;
   },
 
-  // ---- PROFILE (mantive como tinhas; depende do backend) ----
+  registerStaffForMaintenance: async (staffId: string, name: string, role: string, location = 'N1') => {
+    try {
+      await axios.post(`${MAINTENANCE_BASE}/staff/register`, null, {
+        params: { staff_id: staffId, name, role: role.toLowerCase(), current_location: location },
+        timeout: 5000,
+        headers: { ...bearerHeader() },
+      });
+      // Ensure staff is marked available after registration
+      await axios.patch(`${MAINTENANCE_BASE}/staff/${staffId}/availability`, null, {
+        params: { is_available: true },
+        timeout: 5000,
+        headers: { ...bearerHeader() },
+      });
+    } catch { /* non-critical */ }
+  },
+  getRoute: async (fromNode: string, toNode: string): Promise<{ path: string[]; waypoints: { node_id: string; x: number; y: number }[]; eta_seconds: number; distance: number }> => {
+    const response = await axios.get(`${ROUTING_BASE}/route`, {
+      params: { from_node: fromNode, to_node: toNode },
+      timeout: 8000,
+      headers: { ...bearerHeader() },
+    });
+    return response.data;
+  },
+
+  // ---- MAINTENANCE TASKS ----
+  getMyTasks: async (staffId: string) => {
+    const statuses = ['pending', 'assigned', 'in_progress'];
+    const results = await Promise.all(
+      statuses.map((status) =>
+        axios.get(`${MAINTENANCE_BASE}/tasks`, {
+          params: { assigned_to: staffId, status },
+          timeout: 6000,
+          headers: { ...bearerHeader() },
+        }).then(r => r.data?.tasks ?? []).catch(() => [])
+      )
+    );
+    return results.flat();
+  },
+
+  completeTask: async (taskId: string) => {
+    const response = await axios.post(`${MAINTENANCE_BASE}/tasks/${taskId}/complete`, {}, {
+      timeout: 6000,
+      headers: { ...bearerHeader() },
+    });
+    return response.data;
+  },
+
+  startTask: async (taskId: string) => {
+    const response = await axios.post(`${MAINTENANCE_BASE}/tasks/${taskId}/start`, {}, {
+      timeout: 6000,
+      headers: { ...bearerHeader() },
+    });
+    return response.data;
+  },
   getProfileStats: async (userId: number) => {
     return axios.get(`${AUTH_SERVICE}/users/${userId}/stats`, {
       headers: { ...bearerHeader() },

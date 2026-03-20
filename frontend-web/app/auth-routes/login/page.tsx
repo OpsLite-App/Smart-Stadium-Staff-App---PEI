@@ -11,8 +11,9 @@ export default function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [errors, setErrors] = useState<{ email?: string; password?: string }>({});
   const [role, setRole] = useState<'Security' | 'Cleaning' | 'Supervisor'>('Security');
-  const { login, isLoading, user, hydrated } = useAuthStore();
+  const { login, isLoading, user, hydrated, error, clearError } = useAuthStore();
   const router = useRouter();
 
   const getDefaultRoute = (userRole?: 'Security' | 'Cleaning' | 'Supervisor') => {
@@ -47,6 +48,12 @@ export default function LoginPage() {
   }
 
   const handleLogin = async () => {
+    const newErrors: { email?: string; password?: string } = {};
+    if (!email) newErrors.email = 'O email é obrigatório.';
+    if (!password) newErrors.password = 'A palavra-passe é obrigatória.';
+    if (Object.keys(newErrors).length > 0) return setErrors(newErrors);
+    setErrors({});
+    clearError();
     const success = await login(email, password, role);
     if (success) {
       router.replace(getDefaultRoute(role));
@@ -130,11 +137,12 @@ export default function LoginPage() {
               <input
                 type="email"
                 value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="w-full px-4 py-3 border border-[#E5E7EB] rounded-lg text-[#1F2937] bg-white focus:outline-none focus:ring-2 focus:ring-[#4F46E5] focus:border-transparent"
+                onChange={(e) => { setEmail(e.target.value); setErrors(p => ({ ...p, email: undefined })); }}
+                className={`w-full px-4 py-3 border rounded-lg text-[#1F2937] bg-white focus:outline-none focus:ring-2 focus:ring-[#4F46E5] focus:border-transparent ${errors.email ? 'border-red-500' : 'border-[#E5E7EB]'}`}
                 placeholder="staff@email.com"
               />
             </div>
+            {errors.email && <p className="text-red-500 text-xs mt-1">{errors.email}</p>}
           </div>
 
           {/* Password Input */}
@@ -146,8 +154,8 @@ export default function LoginPage() {
               <input
                 type={showPassword ? 'text' : 'password'}
                 value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="w-full px-4 py-3 border border-[#E5E7EB] rounded-lg text-[#1F2937] bg-white focus:outline-none focus:ring-2 focus:ring-[#4F46E5] focus:border-transparent pr-12"
+                onChange={(e) => { setPassword(e.target.value); setErrors(p => ({ ...p, password: undefined })); }}
+                className={`w-full px-4 py-3 border rounded-lg text-[#1F2937] bg-white focus:outline-none focus:ring-2 focus:ring-[#4F46E5] focus:border-transparent pr-12 ${errors.password ? 'border-red-500' : 'border-[#E5E7EB]'}`}
                 placeholder="••••••••"
               />
               <button
@@ -163,7 +171,15 @@ export default function LoginPage() {
                 Esqueceu-se da password?
               </button>
             </div>
+            {errors.password && <p className="text-red-500 text-xs mt-1">{errors.password}</p>}
           </div>
+
+          {/* Login Error */}
+          {error && (
+            <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-red-600 text-sm text-center">
+              {error}
+            </div>
+          )}
 
           {/* Login Button */}
           <AppButton

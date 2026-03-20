@@ -75,3 +75,8 @@ body {
   background: transparent;
   border: none;
 }
+
+/* High contrast mode */
+.high-contrast {
+  filter: contrast(1.5);
+}

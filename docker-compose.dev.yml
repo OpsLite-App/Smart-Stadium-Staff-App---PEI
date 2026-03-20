@@ -102,7 +102,7 @@ services:
     environment:
       DATABASE_URI: postgresql://postgres:postgres@postgres_map:5432/estadio_do_dragao
     ports:
-      - "8000:8000"
+      - "8001:8000"
 
   routing-service:
     build:

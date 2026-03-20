@@ -16,7 +16,8 @@ import {
   X,
   Monitor,
   ArrowRight,
-  LayoutDashboard
+  LayoutDashboard,
+  ClipboardList
 } from 'lucide-react';
 import { useState } from 'react';
 
@@ -85,7 +86,8 @@ export function MainLayout({ children }: MainLayoutProps) {
       case 'Cleaning':
         return [
           ...baseNav,
-          { name: 'Tarefas', href: '/app-routes/alerts', icon: Bell, current: pathname === '/app-routes/alerts' },
+          { name: 'Tarefas', href: '/app-routes/tasks', icon: ClipboardList, current: pathname === '/app-routes/tasks' },
+          { name: 'Alertas', href: '/app-routes/alerts', icon: Bell, current: pathname === '/app-routes/alerts' },
           { name: 'Chat', href: '/app-routes/chat', icon: MessageCircle, current: pathname === '/app-routes/chat' },
           { name: 'Perfil', href: '/app-routes/profile', icon: User, current: pathname === '/app-routes/profile' },
         ];

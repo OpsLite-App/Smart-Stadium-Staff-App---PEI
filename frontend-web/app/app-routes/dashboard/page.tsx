@@ -121,7 +121,10 @@ export default function DashboardPage() {
     const requests = await Promise.allSettled([
       axios.get<StaffMember[]>(`${AUTH_SERVICE}/staff`, { headers, timeout: 6000 }),
       axios.get<{ incidents?: EmergencyIncident[] }>(`${EMERGENCY_SERVICE}/incidents`, { headers, timeout: 6000 }),
-      axios.get<BinAlert[]>(`${MAINTENANCE_SERVICE}/bins/alerts`, { headers, timeout: 6000 }),
+      axios.get<{ tasks?: BinAlert[]; total?: number }>(`${MAINTENANCE_SERVICE}/tasks`, { 
+        params: { task_type: 'bin_full' },
+        headers, timeout: 6000 
+      }),
       axios.get<{ alerts?: QueueAlert[] }>(`${QUEUEING_SERVICE}/alerts`, {
         params: { threshold_minutes: 8 },
         headers,
@@ -139,7 +142,7 @@ export default function DashboardPage() {
 
     if (staffRes.status === 'fulfilled') setStaff(staffRes.value.data || []);
     if (incidentsRes.status === 'fulfilled') setIncidents(incidentsRes.value.data?.incidents || []);
-    if (binsRes.status === 'fulfilled') setBinAlerts(binsRes.value.data || []);
+    if (binsRes.status === 'fulfilled') setBinAlerts((binsRes.value.data as { tasks?: BinAlert[] })?.tasks || []);
     if (queueRes.status === 'fulfilled') setQueueAlerts(queueRes.value.data?.alerts || []);
     if (congestionRes.status === 'fulfilled') setCongestionAlerts(congestionRes.value.data?.alerts || []);
     if (heatRes.status === 'fulfilled') setHeatmapPoints(heatRes.value.data?.points || []);
@@ -161,7 +164,8 @@ export default function DashboardPage() {
     void runInitial();
 
     const interval = setInterval(() => {
-      void fetchDashboardData();
+      setRefreshing(true);
+      void fetchDashboardData().finally(() => setRefreshing(false));
     }, 30000);
 
     return () => {
@@ -264,14 +268,16 @@ export default function DashboardPage() {
             <h1 className="text-3xl font-bold text-gray-900">{roleTitle}</h1>
             <p className="text-sm text-gray-500 mt-1">Dados reais dos serviços em tempo quase real</p>
           </div>
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-gray-500">Atualizado: {formattedUpdated}</span>
+          <div className="flex items-center gap-3">
+            <span className="text-xs text-gray-400">
+              {lastUpdated ? `Atualizado às ${new Date(lastUpdated).toLocaleTimeString('pt-PT')}` : ''}
+            </span>
             <button
               onClick={onRefresh}
-              className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
               disabled={refreshing}
+              className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
             >
-              <RefreshCw size={16} className={refreshing ? 'animate-spin' : ''} />
+              <RefreshCw size={18} className={refreshing ? 'animate-spin' : ''} />
               Atualizar
             </button>
           </div>

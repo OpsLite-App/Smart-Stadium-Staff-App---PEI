@@ -46,6 +46,7 @@ app.add_middleware(
 
 MAP_SERVICE_URL = os.getenv("MAP_SERVICE_URL", "http://map-service:8000")
 ROUTING_SERVICE_URL = os.getenv("ROUTING_SERVICE_URL", "http://routing-service:8002")
+AUTH_SERVICE_URL = os.getenv("AUTH_SERVICE_URL", "http://auth-service:8081")
 
 # ========== GLOBAL STATE ==========
 
@@ -74,6 +75,39 @@ async def startup():
     # Initialize task manager
     task_manager = TaskManager(ROUTING_SERVICE_URL, MAP_SERVICE_URL)
     print("✅ Task manager initialized")
+
+    # Load cleaning staff from auth service
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            resp = await client.get(f"{AUTH_SERVICE_URL}/auth/staff")
+            if resp.status_code == 200:
+                staff_list = resp.json()
+                from database import SessionLocal
+                from models import MaintenanceTask
+                db_check = SessionLocal()
+                try:
+                    for member in staff_list:
+                        role = str(member.get("role", "")).lower()
+                        if "clean" in role:
+                            sid = str(member["id"])
+                            staff_coordinator.register_staff(
+                                staff_id=sid,
+                                name=member.get("name") or f"staff-{sid}",
+                                role="cleaning",
+                                current_location=member.get("location", "N1")
+                            )
+                            # If staff already has an active task, mark as unavailable
+                            active = db_check.query(MaintenanceTask).filter(
+                                MaintenanceTask.assigned_to == sid,
+                                MaintenanceTask.status.in_(["assigned", "in_progress"])
+                            ).first()
+                            if active:
+                                staff_coordinator.set_availability(sid, False)
+                finally:
+                    db_check.close()
+                print(f"✅ Pre-loaded cleaning staff from auth service")
+    except Exception as e:
+        print(f"⚠️  Could not pre-load staff: {e}")
     
     # Start MQTT listener
     start_mqtt_listener(task_manager)

@@ -1362,7 +1362,7 @@ export default function ChatPage() {
                       }}
                       placeholder="Escreva uma mensagem..."
                       rows={1}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-[#4F46E5] focus:border-transparent"
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-[#4F46E5] focus:border-transparent placeholder:text-gray-500 text-gray-900"
                     />
                   </div>
 

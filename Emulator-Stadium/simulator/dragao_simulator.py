@@ -468,7 +468,7 @@ def run_integrated_simulation(duration_seconds=60):
 if __name__ == "__main__":
     import sys
     
-    duration = 60
+    duration = 3600 
     if len(sys.argv) > 1:
         try:
             duration = int(sys.argv[1])

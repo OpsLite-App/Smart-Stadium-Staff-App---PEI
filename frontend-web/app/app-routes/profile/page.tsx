@@ -134,6 +134,12 @@ export default function ProfilePage() {
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [vibrationEnabled, setVibrationEnabled] = useState(false);
   const [language, setLanguage] = useState<'pt' | 'en'>('pt');
+  const [fontSize, setFontSize] = useState<'sm' | 'md' | 'lg'>(() =>
+    (localStorage.getItem('font-size') as 'sm' | 'md' | 'lg') || 'md'
+  );
+  const [contrast, setContrast] = useState<number>(() =>
+    Number(localStorage.getItem('contrast') || '100')
+  );
 
   const [profileName, setProfileName] = useState('');
   const [profileLocation, setProfileLocation] = useState('Sem localização');
@@ -153,6 +159,17 @@ export default function ProfilePage() {
     const storedLang = localStorage.getItem('user-language');
     if (storedLang === 'pt' || storedLang === 'en') setLanguage(storedLang);
   }, []);
+
+  useEffect(() => {
+    const sizeMap = { sm: '14px', md: '16px', lg: '19px' };
+    document.documentElement.style.fontSize = sizeMap[fontSize];
+    localStorage.setItem('font-size', fontSize);
+  }, [fontSize]);
+
+  useEffect(() => {
+    document.documentElement.style.filter = contrast !== 100 ? `contrast(${contrast}%)` : '';
+    localStorage.setItem('contrast', String(contrast));
+  }, [contrast]);
 
   useEffect(() => {
     if (!user) return;
@@ -545,6 +562,51 @@ export default function ProfilePage() {
               checked={onDuty}
               onChange={setOnDuty}
             />
+
+            {/* Font size */}
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <span className="text-[#6B7280]" style={{ fontSize: 20 }}>A</span>
+                <span className="text-sm text-[#1F2937]">Tamanho de letra</span>
+              </div>
+              <div className="flex gap-2">
+                {(['sm', 'md', 'lg'] as const).map((s) => (
+                  <button
+                    key={s}
+                    onClick={() => setFontSize(s)}
+                    className={`px-3 py-1 text-sm rounded-lg transition-colors ${
+                      fontSize === s ? 'bg-[#4F46E5] text-white' : 'bg-gray-100 text-[#6B7280] hover:bg-gray-200'
+                    }`}
+                  >
+                    {s === 'sm' ? 'A' : s === 'md' ? 'A+' : 'A++'}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Contrast slider */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <span className="text-[#6B7280]">◑</span>
+                  <span className="text-sm text-[#1F2937]">Contraste</span>
+                </div>
+                <span className="text-sm font-medium text-[#4F46E5]">{contrast}%</span>
+              </div>
+              <input
+                type="range"
+                min={80}
+                max={150}
+                value={contrast}
+                onChange={(e) => setContrast(Number(e.target.value))}
+                className="w-full accent-[#4F46E5]"
+              />
+              <div className="flex justify-between text-xs text-gray-400">
+                <span>Baixo</span>
+                <button onClick={() => setContrast(100)} className="text-[#4F46E5] hover:underline">Reset</button>
+                <span>Alto</span>
+              </div>
+            </div>
           </div>
         </div>
 

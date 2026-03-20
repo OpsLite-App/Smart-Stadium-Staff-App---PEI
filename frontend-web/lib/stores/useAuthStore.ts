@@ -75,6 +75,12 @@ export const useAuthStore = create<AuthState>()(
           };
 
           set({ user: userData, isLoading: false });
+
+          // Register cleaning staff in Maintenance Service for task assignment
+          if (role === 'Cleaning') {
+            void api.registerStaffForMaintenance(String(data.user_id), email, role);
+          }
+
           return true;
 
         } catch (err: unknown) {

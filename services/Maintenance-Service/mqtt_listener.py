@@ -70,7 +70,7 @@ def process_event(event: dict, task_manager, db):
     """Process different types of stadium events"""
     event_type = event.get('event_type')
     
-    if event_type == 'bin_full':
+    if event_type in ('bin_full', 'bin_alert'):
         handle_bin_full(event, task_manager, db)
     
     elif event_type == 'spill_detected':

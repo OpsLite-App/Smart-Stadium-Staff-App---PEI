@@ -268,7 +268,7 @@ class TaskManager:
         task.assigned_at = datetime.now()
         task.status = TaskStatus.ASSIGNED
         
-        # CORRIGIDO: Marcar staff como indisponível ANTES do commit
+        # Mark staff as unavailable until task is completed
         staff_coordinator_instance.set_availability(staff_id, False)
         print(f"🔒 Staff {staff_id} marked as unavailable")
         
@@ -334,8 +334,9 @@ class TaskManager:
                 print(f"   → Could not calculate route")
         
         if not nearest_staff:
-            print(f"❌ Could not find nearest staff (routing failed for all)")
-            return None
+            # Fallback: assign to first available staff if routing failed
+            nearest_staff = available_staff[0]["id"]
+            print(f"⚠️  Routing failed, assigning to first available: {nearest_staff}")
         
         print(f"✅ Nearest staff: {nearest_staff} ({min_distance}m away)")
         

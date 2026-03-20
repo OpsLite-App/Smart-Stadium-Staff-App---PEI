@@ -131,6 +131,17 @@ interface ActiveDispatchEntry {
   status: string;
 }
 
+interface MaintenanceTask {
+  id: string;
+  task_type: string;
+  location_node: string;
+  priority: string;
+  status: string;
+  description?: string;
+  assigned_to?: string;
+  main_metadata?: { bin_id?: string; fill_percentage?: number };
+}
+
 const ALERT_SEVERITIES = ['critical', 'high', 'medium', 'low', 'info'] as const;
 
 function normalizeSeverity(value: unknown): Alert['severity'] {
@@ -289,7 +300,9 @@ export default function AlertsPage() {
   const [incidents, setIncidents] = useState<EmergencyIncidentAdmin[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [incidentActionLoading, setIncidentActionLoading] = useState<string | null>(null);
+  const [incidentNodeError, setIncidentNodeError] = useState('');
   const [incidentForm, setIncidentForm] = useState({
     incident_type: 'medical',
     location_node: 'N1',
@@ -352,7 +365,6 @@ export default function AlertsPage() {
     localStorage.setItem('alerts-resolved-overrides', JSON.stringify(overrides));
   };
 
-  // Load alerts from API
   const fetchAlerts = async () => {
     try {
       setRefreshing(true);
@@ -447,6 +459,7 @@ export default function AlertsPage() {
     } finally {
       setLoading(false);
       setRefreshing(false);
+      setLastUpdated(new Date());
     }
   };
 
@@ -545,7 +558,6 @@ export default function AlertsPage() {
     setFilteredAlerts(filtered);
   }, [alerts, filters]);
 
-  // Load alerts on component mount
   useEffect(() => {
     fetchAlerts();
 
@@ -621,7 +633,10 @@ export default function AlertsPage() {
     client.activate();
 
     // Auto refresh every 30 seconds
-    const interval = setInterval(fetchAlerts, 30000);
+    const interval = setInterval(() => {
+      setRefreshing(true);
+      void fetchAlerts();
+    }, 30000);
 
     return () => {
       client.deactivate();
@@ -750,6 +765,18 @@ export default function AlertsPage() {
 
   const createIncident = async () => {
     if (!user?.permissions.canCreateIncidents) return;
+
+    // Validate node
+    try {
+      await axios.get(`/api/routing/route`, {
+        params: { from_node: incidentForm.location_node, to_node: incidentForm.location_node },
+        timeout: 4000,
+      });
+      setIncidentNodeError('');
+    } catch {
+      setIncidentNodeError(`Nó "${incidentForm.location_node}" não existe no mapa.`);
+      return;
+    }
 
     try {
       setIncidentActionLoading('create');
@@ -1046,12 +1073,25 @@ export default function AlertsPage() {
                   <option value="other">other</option>
                 </select>
 
-                <input
-                  value={incidentForm.location_node}
-                  onChange={(e) => setIncidentForm((prev) => ({ ...prev, location_node: e.target.value }))}
-                  placeholder="Nó da ocorrência"
-                  className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900"
-                />
+                <div>
+                  <input
+                    value={incidentForm.location_node}
+                    onChange={(e) => { setIncidentForm((prev) => ({ ...prev, location_node: e.target.value })); setIncidentNodeError(''); }}
+                    onBlur={async (e) => {
+                      const node = e.target.value.trim();
+                      if (!node) return;
+                      try {
+                        await axios.get(`/api/routing/route`, { params: { from_node: node, to_node: node }, timeout: 4000 });
+                        setIncidentNodeError('');
+                      } catch {
+                        setIncidentNodeError(`Nó "${node}" não existe no mapa.`);
+                      }
+                    }}
+                    placeholder="Nó da ocorrência (ex: N1)"
+                    className={`w-full rounded-xl border px-3 py-2 text-sm text-gray-900 ${incidentNodeError ? 'border-red-400 bg-red-50' : 'border-gray-200 bg-white'}`}
+                  />
+                  {incidentNodeError && <p className="mt-1 text-xs text-red-600">{incidentNodeError}</p>}
+                </div>
 
                 <select
                   value={incidentForm.severity}
@@ -1157,7 +1197,12 @@ export default function AlertsPage() {
             </p>
           </div>
           
-          <div className="flex gap-2 mt-4 md:mt-0">
+          <div className="flex gap-2 mt-4 md:mt-0 items-center">
+            {lastUpdated && (
+              <span className="text-xs text-gray-400">
+                Atualizado às {lastUpdated.toLocaleTimeString('pt-PT')}
+              </span>
+            )}
             <button
               onClick={() => setShowFilters(!showFilters)}
               className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50"
@@ -1172,7 +1217,7 @@ export default function AlertsPage() {
             <button
               onClick={fetchAlerts}
               disabled={refreshing}
-              className="flex items-center gap-2 px-4 py-2 bg-[#4F46E5] text-white rounded-lg hover:bg-[#4338CA] disabled:opacity-50"
+              className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
             >
               <RefreshCw size={18} className={refreshing ? 'animate-spin' : ''} />
               Atualizar
