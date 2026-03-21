@@ -1,0 +1,17 @@
+C:/Users/ksolo/STM32CubeIDE/workspace_2.1.0/STM32N6-GettingStarted-ObjectDetection-main/Model/STM32N6570-DK/network.c:365:13:_ec_blob_cache_start_func_133	1
+C:/Users/ksolo/STM32CubeIDE/workspace_2.1.0/STM32N6-GettingStarted-ObjectDetection-main/Model/STM32N6570-DK/network.c:253:13:_ec_blob_cache_start_func_115	1
+C:/Users/ksolo/STM32CubeIDE/workspace_2.1.0/STM32N6-GettingStarted-ObjectDetection-main/Model/STM32N6570-DK/network.c:141:13:_ec_blob_cache_start_func_1	1
+C:/Users/ksolo/STM32CubeIDE/workspace_2.1.0/STM32N6-GettingStarted-ObjectDetection-main/Model/STM32N6570-DK/network.c:268:13:LL_ATON_End_EpochBlock_132	1
+C:/Users/ksolo/STM32CubeIDE/workspace_2.1.0/STM32N6-GettingStarted-ObjectDetection-main/Model/STM32N6570-DK/network.c:156:13:LL_ATON_End_EpochBlock_114	1
+C:/Users/ksolo/STM32CubeIDE/workspace_2.1.0/STM32N6-GettingStarted-ObjectDetection-main/Model/STM32N6570-DK/network.c:88:36:LL_ATON_WeightEncryption_Info_network	1
+C:/Users/ksolo/STM32CubeIDE/workspace_2.1.0/STM32N6-GettingStarted-ObjectDetection-main/Model/STM32N6570-DK/network.c:97:36:LL_ATON_BlobEncryption_Info_network	1
+C:/Users/ksolo/STM32CubeIDE/workspace_2.1.0/STM32N6-GettingStarted-ObjectDetection-main/Model/STM32N6570-DK/network.c:106:26:LL_ATON_Set_User_Input_Buffer_network	1
+C:/Users/ksolo/STM32CubeIDE/workspace_2.1.0/STM32N6-GettingStarted-ObjectDetection-main/Model/STM32N6570-DK/network.c:113:7:LL_ATON_Get_User_Input_Buffer_network	1
+C:/Users/ksolo/STM32CubeIDE/workspace_2.1.0/STM32N6-GettingStarted-ObjectDetection-main/Model/STM32N6570-DK/network.c:120:26:LL_ATON_Set_User_Output_Buffer_network	1
+C:/Users/ksolo/STM32CubeIDE/workspace_2.1.0/STM32N6-GettingStarted-ObjectDetection-main/Model/STM32N6570-DK/network.c:127:7:LL_ATON_Get_User_Output_Buffer_network	1
+C:/Users/ksolo/STM32CubeIDE/workspace_2.1.0/STM32N6-GettingStarted-ObjectDetection-main/Model/STM32N6570-DK/network_ecblobs.h:10848:6:LL_ATON_EC_Network_Init_network	1
+C:/Users/ksolo/STM32CubeIDE/workspace_2.1.0/STM32N6-GettingStarted-ObjectDetection-main/Model/STM32N6570-DK/network_ecblobs.h:10854:6:LL_ATON_EC_Inference_Init_network	1
+C:/Users/ksolo/STM32CubeIDE/workspace_2.1.0/STM32N6-GettingStarted-ObjectDetection-main/Model/STM32N6570-DK/network.c:391:31:LL_ATON_EpochBlockItems_network	1
+C:/Users/ksolo/STM32CubeIDE/workspace_2.1.0/STM32N6-GettingStarted-ObjectDetection-main/Model/STM32N6570-DK/network.c:470:30:LL_ATON_Input_Buffers_Info_network	1
+C:/Users/ksolo/STM32CubeIDE/workspace_2.1.0/STM32N6-GettingStarted-ObjectDetection-main/Model/STM32N6570-DK/network.c:5466:30:LL_ATON_Output_Buffers_Info_network	1
+C:/Users/ksolo/STM32CubeIDE/workspace_2.1.0/STM32N6-GettingStarted-ObjectDetection-main/Model/STM32N6570-DK/network.c:5561:30:LL_ATON_Internal_Buffers_Info_network	1

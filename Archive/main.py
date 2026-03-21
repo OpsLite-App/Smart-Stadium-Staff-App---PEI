@@ -1,6 +1,9 @@
 import cv2
 import numpy as np
 import onnxruntime as ort
+import paho.mqtt.client as mqtt
+import json, uuid, os
+from datetime import datetime
 
 # EBC model normalization constants from the original implementation
 MEAN = np.array([0.48145466, 0.4578275, 0.40821073], dtype=np.float32)
@@ -27,10 +30,20 @@ def preprocess_image(frame, target_size=(448, 448)):
     
     return image
 
+MQTT_BROKER = os.getenv("MQTT_BROKER", "localhost")
+MQTT_PORT   = int(os.getenv("MQTT_PORT", 1883))
+AREA_ID     = os.getenv("AREA_ID", "N17")  # node ID da zona monitorizada
+CAPACITY    = int(os.getenv("CAPACITY", 150))
+
 def main():
     # 1. Load the ONNX model
     model_path = "model/zip_n_model_quant.onnx"
     session = ort.InferenceSession(model_path)
+
+    # MQTT
+    mqtt_client = mqtt.Client()
+    mqtt_client.connect(MQTT_BROKER, MQTT_PORT)
+    mqtt_client.loop_start()
     
     input_name = session.get_inputs()[0].name
     input_shape = session.get_inputs()[0].shape
@@ -45,6 +58,32 @@ def main():
     print(f"Model expects input: {input_shape}")
 
     cap = cv2.VideoCapture(0)
+    if not cap.isOpened():
+        # Fallback: use static image for testing without camera
+        print("⚠️  No camera found, using static image for testing")
+        frame = cv2.imread(os.path.join(os.path.dirname(__file__), "resources/025.jpg"))
+        if frame is None:
+            print("❌ No image found either, exiting")
+            return
+        blob = preprocess_image(frame, target_size=(w, h))
+        outputs = session.run(None, {input_name: blob})
+        density_map = outputs[0][0][0]
+        count = int(round(np.sum(density_map)))
+        occupancy = min(round(count / CAPACITY * 100, 1), 100.0)
+        event = {
+            "event_id":      str(uuid.uuid4()),
+            "event_type":    "crowd_density",
+            "timestamp":     datetime.now().isoformat() + "Z",
+            "area_id":       AREA_ID,
+            "area_type":     "normal",
+            "current_count": count,
+            "capacity":      CAPACITY,
+            "occupancy_rate": occupancy,
+            "heat_level":    "green" if occupancy < 50 else "yellow" if occupancy < 80 else "red",
+        }
+        mqtt_client.publish("stadium/crowd/density-updates", json.dumps(event))
+        print(f"→ {AREA_ID}: {count} pessoas ({occupancy}%)")
+        return
     
     while cap.isOpened():
         ret, frame = cap.read()
@@ -63,8 +102,23 @@ def main():
             continue
 
         # 4. Calculate Crowd Count
-        # EBC models output density maps where the sum equals the estimated count
-        count = np.sum(density_map)
+        count = int(round(np.sum(density_map)))
+
+        # Publish to MQTT
+        occupancy = min(round(count / CAPACITY * 100, 1), 100.0)
+        event = {
+            "event_id":      str(uuid.uuid4()),
+            "event_type":    "crowd_density",
+            "timestamp":     datetime.now().isoformat() + "Z",
+            "area_id":       AREA_ID,
+            "area_type":     "normal",
+            "current_count": count,
+            "capacity":      CAPACITY,
+            "occupancy_rate": occupancy,
+            "heat_level":    "green" if occupancy < 50 else "yellow" if occupancy < 80 else "red",
+        }
+        mqtt_client.publish("stadium/crowd/density-updates", json.dumps(event))
+        print(f"→ {AREA_ID}: {count} pessoas ({occupancy}%)")
 
         # 5. Generate Heatmap Visualization
         # Resize density map to match original frame size for visualization
@@ -89,7 +143,7 @@ def main():
         cv2.rectangle(result, (0, 0), (300, 80), (0, 0, 0), -1)
         
         # Count display
-        cv2.putText(result, f"Count: {int(round(count))}", (10, 35), 
+        cv2.putText(result, f"Count: {count}", (10, 35), 
                     cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
         
         # Model info

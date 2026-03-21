@@ -1,0 +1,2 @@
+C:/Users/ksolo/STM32CubeIDE/workspace_2.1.0/STM32N6-GettingStarted-ObjectDetection-main/Middlewares/stm32-mw-camera/sensors/ov5640/ov5640_reg.c:45:9:ov5640_read_reg	4	static
+C:/Users/ksolo/STM32CubeIDE/workspace_2.1.0/STM32N6-GettingStarted-ObjectDetection-main/Middlewares/stm32-mw-camera/sensors/ov5640/ov5640_reg.c:58:9:ov5640_write_reg	4	static
