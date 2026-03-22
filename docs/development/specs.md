@@ -5,17 +5,16 @@ Detailed microservices architecture with component interactions.
 
 ## Technology Stack
 ### Frontend
-- **Framework**: Flutter 3.0+
+- **Framework**: React + Next.js
 - **State Management**: Riverpod
-- **Maps**: Mapbox/Google Maps
-- **Real-time**: Socket.io
+- **Real-time**: WebSocket
 
 ### Backend
 - **Language**: Java 17 (Spring Boot)
-- **API Gateway**: Spring Cloud Gateway
-- **Database**: PostgreSQL 15 + Redis
-- **Message Broker**: Apache Kafka
-- **Containerization**: Docker + Kubernetes
+- **API Gateway**: Spring Gateway
+- **Database**: PostgreSQL 15 
+- **Message Broker**: MQTT
+- **Containerization**: Docker
 
 ## Data Models
 ### Core Entities
