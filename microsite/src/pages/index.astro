@@ -2,6 +2,7 @@
 import '../styles/global.css';
 
 const backgroundImage = "/dragao.jpg"; 
+const logoImage = "/logo.jpeg";
 
 const capabilities = [
   {
@@ -36,6 +37,8 @@ const capabilities = [
 		<meta charset="utf-8" />
 		<meta name="viewport" content="width=device-width" />
 		<title>Smart Stadium OpsLite</title>
+		
+		<link rel="icon" type="image/jpeg" href={logoImage} />
 	</head>
 	<body class="bg-slate-50 text-slate-900 antialiased font-sans">
 		
@@ -44,11 +47,27 @@ const capabilities = [
 			<div class="absolute inset-0 bg-gradient-to-tr from-slate-50 via-slate-50/80 to-transparent"></div>
 		</div>
 
-		<main class="min-h-screen flex flex-col px-8 pt-12 pb-6 max-w-6xl mx-auto relative">
+		<nav class="fixed top-0 left-0 right-0 z-50 bg-white/40 backdrop-blur-md border-b border-white/20">
+			<div class="max-w-6xl mx-auto px-8 h-20 flex items-center justify-between">
+				<a href="/" class="flex items-center gap-3 group">
+					<img src={logoImage} alt="OpsLite Logo" class="h-10 w-auto rounded-lg shadow-sm group-hover:scale-105 transition-transform" />
+					<span class="font-black tracking-tighter text-slate-900 uppercase">OpsLite</span>
+				</a>
+
+				<div class="hidden md:flex items-center gap-8 text-[10px] font-bold tracking-[0.2em] uppercase text-slate-600">
+					<a href="/overview" class="hover:text-blue-700 transition-colors">Overview</a>
+					<a href="/architecture" class="hover:text-blue-700 transition-colors">Architecture</a>
+					<a href="/milestones" class="hover:text-blue-700 transition-colors">Milestones</a>
+					<a href="/team" class="hover:text-blue-700 transition-colors">Team</a>
+				</div>
+			</div>
+		</nav>
+
+		<main class="min-h-screen flex flex-col px-8 pt-28 pb-6 max-w-6xl mx-auto relative">
 			
 			<div class="flex-grow flex flex-col justify-center gap-16">
 				
-				<section>
+				<section id="overview">
 					<header class="mb-8">
 						<h1 class="text-5xl md:text-7xl font-black tracking-tighter leading-[0.9] text-slate-950 uppercase">
 							Smart Stadium <br/>
@@ -66,27 +85,28 @@ const capabilities = [
 					</div>
 				</section>
 
-				<section>
-					<h2 class="text-[10px] font-bold tracking-[0.5em] text-slate-500 uppercase mb-8">Core Capabilities</h2>
-					<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-						{capabilities.map((cap) => (
-							<a 
-								href={cap.link} 
-								class="group p-6 bg-white/40 backdrop-blur-md border border-white/60 rounded-3xl hover:bg-white/80 hover:border-blue-400 hover:-translate-y-1 transition-all duration-300 shadow-sm block cursor-pointer"
-							>
-								<div class="text-2xl mb-4 grayscale group-hover:grayscale-0 transition-all">{cap.icon}</div>
-								<h3 class="text-sm font-bold text-slate-900 mb-2 uppercase tracking-tight group-hover:text-blue-700 transition-colors">
-									{cap.title}
-								</h3>
-								<p class="text-xs leading-relaxed text-slate-600">
-									{cap.desc}
-								</p>
-								<div class="mt-4 text-[9px] font-bold text-blue-600 opacity-0 group-hover:opacity-100 transition-opacity uppercase tracking-widest">
-									View Details →
-								</div>
-							</a>
-						))}
-					</div>
+				<section class="mb-16">
+				    <h2 class="text-[10px] font-bold tracking-[0.5em] text-slate-500 uppercase mb-8">Core Capabilities</h2>
+				    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+				        {capabilities.map((cap) => (
+				            <div 
+				                class="group p-6 bg-white/40 backdrop-blur-md border border-white/60 rounded-3xl hover:bg-white/60 hover:border-blue-300 transition-all duration-300 shadow-sm block"
+				            >
+				                {/* Removida a classe 'grayscale' e 'group-hover:grayscale-0' */}
+				                <div class="text-2xl mb-4 transition-all">
+				                    {cap.icon}
+				                </div>
+							
+				                <h3 class="text-sm font-bold text-slate-900 mb-2 uppercase tracking-tight group-hover:text-blue-700 transition-colors">
+				                    {cap.title}
+				                </h3>
+							
+				                <p class="text-xs leading-relaxed text-slate-600">
+				                    {cap.desc}
+				                </p>
+				            </div>
+				        ))}
+				    </div>
 				</section>
 
 			</div>
