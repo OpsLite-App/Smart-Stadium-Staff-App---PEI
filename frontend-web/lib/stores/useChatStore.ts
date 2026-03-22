@@ -6,7 +6,7 @@ export type Message = {
   text: string;
   senderId: string;
   senderName: string;
-  senderRole: 'Security' | 'Cleaning' | 'Supervisor';
+  senderRole: 'Security' | 'Cleaning' | 'Supervisor' | 'Medical';
   timestamp: Date;
   groupId: string;
   read: boolean;
@@ -26,6 +26,7 @@ export type ChatGroup = {
 interface ChatState {
   messages: Message[];
   groups: ChatGroup[];
+  filteredGroups: ChatGroup[]; // ✅ Novo: grupos filtrados por role
   activeGroupId: string | null;
   onlineUsers: string[];
   
@@ -34,10 +35,11 @@ interface ChatState {
   markAsRead: (groupId: string) => void;
   addGroup: (group: Omit<ChatGroup, 'id' | 'unreadCount'>) => void;
   toggleUserOnline: (userId: string) => void;
+  filterGroupsByRole: (role: string) => void; // ✅ Nova função
 }
 
-// Dados mock iniciais
-const INITIAL_GROUPS: ChatGroup[] = [
+// Grupos base (todos os canais disponíveis)
+const ALL_GROUPS: ChatGroup[] = [
   {
     id: 'all',
     name: 'Geral - Todos',
@@ -85,6 +87,14 @@ const INITIAL_GROUPS: ChatGroup[] = [
   },
 ];
 
+// ✅ Mapeamento de roles para canais permitidos
+const ROLE_GROUPS: Record<string, string[]> = {
+  Security: ['all', 'security', 'supervisors'],
+  Cleaning: ['all', 'cleaning', 'supervisors'],
+  Supervisor: ['all', 'security', 'cleaning', 'medical', 'supervisors'],
+  Medical: ['all', 'medical', 'supervisors'], // ✅ Médico só vê Geral, Médicos e Supervisores
+};
+
 const INITIAL_MESSAGES: Message[] = [
   {
     id: '1',
@@ -126,27 +136,49 @@ const INITIAL_MESSAGES: Message[] = [
     groupId: 'all',
     read: true,
   },
+  {
+    id: '5',
+    text: 'Preciso de apoio médico no Setor A4',
+    senderId: 'sec2',
+    senderName: 'Ana Silva',
+    senderRole: 'Security',
+    timestamp: new Date(Date.now() - 60000),
+    groupId: 'medical',
+    read: false,
+  },
 ];
 
 export const useChatStore = create<ChatState>()(
   persist(
     (set, get) => ({
       messages: INITIAL_MESSAGES,
-      groups: INITIAL_GROUPS,
-      activeGroupId: 'all',
-      onlineUsers: ['sec1', 'sup1', 'clean2'],
+      groups: ALL_GROUPS,
+      filteredGroups: [], // ✅ Inicialmente vazio
+      activeGroupId: null,
+      onlineUsers: ['sec1', 'sup1', 'clean2', 'med2'],
+
+      // ✅ Nova função para filtrar grupos por role
+      filterGroupsByRole: (role: string) => {
+        const allowedGroupIds = ROLE_GROUPS[role] || ['all'];
+        const filtered = get().groups.filter(group => allowedGroupIds.includes(group.id));
+        set({ filteredGroups: filtered });
+        
+        // Se o grupo ativo não estiver na lista, limpar
+        const activeGroup = get().activeGroupId;
+        if (activeGroup && !allowedGroupIds.includes(activeGroup)) {
+          set({ activeGroupId: filtered[0]?.id || null });
+        }
+      },
 
       sendMessage: (text, groupId) => {
-        // Valores padrão
         let userName = 'Usuario';
-        let userRole: 'Security' | 'Cleaning' | 'Supervisor' = 'Security';
+        let userRole: 'Security' | 'Cleaning' | 'Supervisor' | 'Medical' = 'Security';
 
-        // Função auxiliar para criar e enviar a mensagem
         const createAndSendMessage = (
           text: string, 
           groupId: string, 
           senderName: string, 
-          senderRole: 'Security' | 'Cleaning' | 'Supervisor'
+          senderRole: 'Security' | 'Cleaning' | 'Supervisor' | 'Medical'
         ) => {
           const newMessage: Message = {
             id: Date.now().toString(),
@@ -165,12 +197,19 @@ export const useChatStore = create<ChatState>()(
               : group
           );
 
+          // Atualizar também os filteredGroups
+          const updatedFiltered = get().filteredGroups.map(group =>
+            group.id === groupId
+              ? { ...group, lastMessage: newMessage, unreadCount: group.unreadCount + 1 }
+              : group
+          );
+
           set(state => ({
             messages: [...state.messages, newMessage],
             groups: updatedGroups,
+            filteredGroups: updatedFiltered,
           }));
 
-          // Resposta automatica para emergencias
           if (groupId === 'all' && text.toLowerCase().includes('emergencia')) {
             setTimeout(() => {
               const autoReply: Message = {
@@ -183,25 +222,27 @@ export const useChatStore = create<ChatState>()(
                 groupId,
                 read: false,
               };
-              set(state => ({ messages: [...state.messages, autoReply] }));
+              set(state => ({ 
+                messages: [...state.messages, autoReply],
+                filteredGroups: state.filteredGroups.map(g =>
+                  g.id === groupId ? { ...g, lastMessage: autoReply, unreadCount: g.unreadCount + 1 } : g
+                )
+              }));
             }, 2000);
           }
         };
 
-        // Tentar obter o user da auth store de forma segura
         if (typeof window !== 'undefined') {
-          // Importação dinâmica para evitar problemas no servidor
           import('./useAuthStore')
             .then(({ useAuthStore }) => {
               const user = useAuthStore.getState().user;
               if (user) {
                 userName = user.email.split('@')[0];
-                userRole = user.role;
+                userRole = user.role as 'Security' | 'Cleaning' | 'Supervisor' | 'Medical';
               }
               createAndSendMessage(text, groupId, userName, userRole);
             })
             .catch(() => {
-              // Se falhar, usa valores padrão
               createAndSendMessage(text, groupId, userName, userRole);
             });
         } else {
@@ -219,6 +260,9 @@ export const useChatStore = create<ChatState>()(
           groups: state.groups.map(group =>
             group.id === groupId ? { ...group, unreadCount: 0 } : group
           ),
+          filteredGroups: state.filteredGroups.map(group =>
+            group.id === groupId ? { ...group, unreadCount: 0 } : group
+          ),
           messages: state.messages.map(msg =>
             msg.groupId === groupId ? { ...msg, read: true } : msg
           ),
@@ -231,7 +275,10 @@ export const useChatStore = create<ChatState>()(
           id: Date.now().toString(),
           unreadCount: 0,
         };
-        set(state => ({ groups: [...state.groups, newGroup] }));
+        set(state => ({ 
+          groups: [...state.groups, newGroup],
+          filteredGroups: [...state.filteredGroups, newGroup]
+        }));
       },
 
       toggleUserOnline: (userId) => {
@@ -248,7 +295,8 @@ export const useChatStore = create<ChatState>()(
       partialize: (state) => ({ 
         messages: state.messages,
         groups: state.groups,
-        activeGroupId: state.activeGroupId 
+        activeGroupId: state.activeGroupId,
+        filteredGroups: state.filteredGroups
       }),
     }
   )

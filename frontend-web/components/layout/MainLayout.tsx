@@ -4,6 +4,7 @@ import { ReactNode, useEffect } from 'react';
 import { useAuthStore } from '@/lib/stores/useAuthStore';
 import { usePathname, useRouter } from 'next/navigation';
 import { 
+  HeartPulse,
   Map, 
   Bell, 
   User, 
@@ -102,14 +103,15 @@ export function MainLayout({ children }: MainLayoutProps) {
           { name: 'Perfil', href: '/app-routes/profile', icon: User, current: pathname === '/app-routes/profile' },
         ];
 
-      case 'Medical':
-        return [
-          { name: 'Dashboard', href: '/app-routes/dashboard', icon: LayoutDashboard, current: pathname === '/app-routes/dashboard' },
-          { name: 'Alertas', href: '/app-routes/alerts', icon: Bell, current: pathname === '/app-routes/alerts' },
-          { name: 'Mapa', href: '/app-routes/map', icon: Map, current: pathname === '/app-routes/map' },
-          { name: 'Chat', href: '/app-routes/chat', icon: MessageCircle, current: pathname === '/app-routes/chat' },
-          { name: 'Perfil', href: '/app-routes/profile', icon: User, current: pathname === '/app-routes/profile' },
-        ];
+    case 'Medical':
+    return [
+      { name: 'Dashboard', href: '/app-routes/dashboard', icon: LayoutDashboard, current: pathname === '/app-routes/dashboard' },
+      { name: 'Incidentes', href: '/app-routes/medical/incidents', icon: HeartPulse, current: pathname.includes('/medical/incidents') }, // ✅ NOVO
+      { name: 'Alertas', href: '/app-routes/alerts', icon: Bell, current: pathname === '/app-routes/alerts' },
+      { name: 'Mapa', href: '/app-routes/map', icon: Map, current: pathname === '/app-routes/map' },
+      { name: 'Chat', href: '/app-routes/chat', icon: MessageCircle, current: pathname === '/app-routes/chat' },
+      { name: 'Perfil', href: '/app-routes/profile', icon: User, current: pathname === '/app-routes/profile' },
+    ];
       
       default:
         return baseNav;

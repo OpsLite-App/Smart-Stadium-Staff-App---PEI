@@ -149,44 +149,47 @@ export default function MapPage() {
     };
   }, []);
 
-  useEffect(() => {
-    let mounted = true;
-    const load = async () => {
-      setLoading(true);
-      try {
-        const [staffData, heatData, binsData] = await Promise.all([
-          api.getStaff().catch(() => []),
-          api.getHeatmapPoints().catch(() => ({ points: [] as HeatmapPoint[] })),
-          axios.get(`${MAINTENANCE_BASE}/bins/alerts`).then(r => r.data as { bin_id: string; location_node: string }[]).catch(() => []),
-        ]);
-        if (!mounted) return;
-        setStaff(staffData);
+ // app/app-routes/map/page.tsx
+// Localiza este useEffect (por volta da linha 140-160)
 
-        // Deduplicate bins by bin_id, map node to coords
-        const seenBins = new Set<string>();
-        const realBins: BinPoint[] = [];
-        for (const b of binsData) {
-          if (!seenBins.has(b.bin_id) && NODE_COORDS[b.location_node]) {
-            seenBins.add(b.bin_id);
-            const [lat, lng] = NODE_COORDS[b.location_node];
-            realBins.push({ id: b.bin_id, name: `Lixeira ${b.bin_id}`, lat, lng });
-          }
+useEffect(() => {
+  let mounted = true;
+  const load = async () => {
+    setLoading(true);
+    try {
+      const [staffData, heatData, binsData] = await Promise.all([
+        api.getStaff().catch(() => []),
+        api.getHeatmapPoints().catch(() => ({ points: [] as HeatmapPoint[] })),
+        user?.permissions?.canViewBins 
+          ? axios.get(`${MAINTENANCE_BASE}/bins/alerts`).then(r => r.data as { bin_id: string; location_node: string }[]).catch(() => [])
+          : Promise.resolve([])
+      ]);
+      if (!mounted) return;
+      setStaff(staffData);
+
+      const seenBins = new Set<string>();
+      const realBins: BinPoint[] = [];
+      for (const b of binsData) {
+        if (!seenBins.has(b.bin_id) && NODE_COORDS[b.location_node]) {
+          seenBins.add(b.bin_id);
+          const [lat, lng] = NODE_COORDS[b.location_node];
+          realBins.push({ id: b.bin_id, name: `Lixeira ${b.bin_id}`, lat, lng });
         }
-        if (realBins.length > 0) setBins(realBins);
-        const validPoints = (heatData.points || []).filter(
-          (p) => Number.isFinite(p.latitude) && Number.isFinite(p.longitude) && p.latitude !== 0 && p.longitude !== 0
-        );
-        if (validPoints.length >= 3) { setHeatmap(validPoints); setUsingFallbackHeatmap(false); }
-        else { setHeatmap(DEFAULT_HEATMAP); setUsingFallbackHeatmap(true); }
-      } finally {
-        if (mounted) setLoading(false);
       }
-    };
-    load();
-    const timer = setInterval(load, 30000);
-    return () => { mounted = false; clearInterval(timer); };
-  }, []);
-
+      if (realBins.length > 0) setBins(realBins);
+      const validPoints = (heatData.points || []).filter(
+        (p) => Number.isFinite(p.latitude) && Number.isFinite(p.longitude) && p.latitude !== 0 && p.longitude !== 0
+      );
+      if (validPoints.length >= 3) { setHeatmap(validPoints); setUsingFallbackHeatmap(false); }
+      else { setHeatmap(DEFAULT_HEATMAP); setUsingFallbackHeatmap(true); }
+    } finally {
+      if (mounted) setLoading(false);
+    }
+  };
+  load();
+  const timer = setInterval(load, 30000);
+  return () => { mounted = false; clearInterval(timer); };
+}, [user?.permissions?.canViewBins]); 
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
