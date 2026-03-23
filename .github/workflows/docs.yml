@@ -3,9 +3,6 @@ name: Deploy Astro Site
 on:
   push:
     branches: [ main, dev ]
-    paths:
-      - 'microsite/**'
-      - '.github/workflows/docs.yml'
   pull_request:
     branches: [ main, dev ]
   workflow_dispatch: 
