@@ -2,10 +2,12 @@ name: Deploy Astro Site
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main, dev ]
     paths:
       - 'microsite/**'
       - '.github/workflows/docs.yml'
+  pull_request:
+    branches: [ main, dev ]
   workflow_dispatch: 
 
 permissions:
@@ -42,6 +44,8 @@ jobs:
 
   deploy:
     needs: build
+    # Only runs if the push happened on the main branch
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     environment:
       name: github-pages
