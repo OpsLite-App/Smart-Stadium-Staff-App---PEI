@@ -23,4 +23,4 @@ venv/
 backend/auth-service/target/
 ws-gateway/target/
 
-*.Zone.Identifier
+*:Zone.Identifier
