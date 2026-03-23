@@ -314,6 +314,8 @@ export default function AlertsPage() {
   const [staffCandidates, setStaffCandidates] = useState<StaffCandidate[]>([]);
   const [candidateLoading, setCandidateLoading] = useState(false);
   const [candidateError, setCandidateError] = useState('');
+  const [showSuccessToast, setShowSuccessToast] = useState<string | null>(null);
+  const [showMapPicker, setShowMapPicker] = useState(false);
   const [stats, setStats] = useState<AlertStats>({
     total: 0,
     critical: 0,
@@ -912,6 +914,8 @@ export default function AlertsPage() {
       });
       setAssigningIncident(null);
       setStaffCandidates([]);
+      setShowSuccessToast(`${candidate.name} atribuído com sucesso ao incidente!`);
+      setTimeout(() => setShowSuccessToast(null), 4000);
       await fetchAlerts();
     } catch (error) {
       console.error('Error dispatching specific candidate:', error);
@@ -1048,6 +1052,52 @@ export default function AlertsPage() {
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      {/* Success toast */}
+      {showSuccessToast && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[9999] flex items-center gap-3 bg-emerald-600 text-white px-5 py-3 rounded-xl shadow-xl animate-fade-in">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M20 6L9 17l-5-5"/></svg>
+          <span className="font-medium text-sm">{showSuccessToast}</span>
+        </div>
+      )}
+
+      {/* Map picker modal */}
+      {showMapPicker && (
+        <div className="fixed inset-0 z-[9998] bg-black/60 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200">
+              <span className="font-bold text-gray-900">Escolher localização no mapa</span>
+              <button onClick={() => setShowMapPicker(false)} className="p-1 hover:bg-gray-100 rounded-lg">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+              </button>
+            </div>
+            <div className="p-5">
+              <p className="text-sm text-gray-500 mb-4">Seleciona o nó mais próximo do incidente:</p>
+              <div className="grid grid-cols-5 gap-2">
+                {['N1','N2','N3','N4','N5','N6','N7','N8','N9','N10','N15','N16','N17','N18','N19'].map(node => (
+                  <button
+                    key={node}
+                    onClick={() => {
+                      setIncidentForm(prev => ({ ...prev, location_node: node }));
+                      setIncidentNodeError('');
+                      setShowMapPicker(false);
+                    }}
+                    className={`py-3 rounded-xl text-sm font-bold border-2 transition-colors ${
+                      incidentForm.location_node === node
+                        ? 'bg-indigo-600 text-white border-indigo-600'
+                        : 'bg-white text-gray-700 border-gray-200 hover:border-indigo-400 hover:bg-indigo-50'
+                    }`}
+                  >
+                    {node}
+                  </button>
+                ))}
+              </div>
+              <div className="mt-4 p-3 bg-indigo-50 rounded-xl text-sm text-indigo-700">
+                📍 Selecionado: <span className="font-bold">{incidentForm.location_node}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
         {isSupervisor && (
           <div className="mb-6 grid gap-6 xl:grid-cols-[1.05fr_1.45fr]">
             <div className="rounded-2xl border border-amber-200 bg-[linear-gradient(180deg,#fffdf7,#fff7ea)] p-5">
@@ -1074,22 +1124,25 @@ export default function AlertsPage() {
                 </select>
 
                 <div>
-                  <input
-                    value={incidentForm.location_node}
-                    onChange={(e) => { setIncidentForm((prev) => ({ ...prev, location_node: e.target.value })); setIncidentNodeError(''); }}
-                    onBlur={async (e) => {
-                      const node = e.target.value.trim();
-                      if (!node) return;
-                      try {
-                        await axios.get(`/api/routing/route`, { params: { from_node: node, to_node: node }, timeout: 4000 });
-                        setIncidentNodeError('');
-                      } catch {
-                        setIncidentNodeError(`Nó "${node}" não existe no mapa.`);
-                      }
-                    }}
-                    placeholder="Nó da ocorrência (ex: N1)"
-                    className={`w-full rounded-xl border px-3 py-2 text-sm text-gray-900 ${incidentNodeError ? 'border-red-400 bg-red-50' : 'border-gray-200 bg-white'}`}
-                  />
+                  <div className="flex gap-2">
+                    <select
+                      value={incidentForm.location_node}
+                      onChange={(e) => { setIncidentForm(prev => ({ ...prev, location_node: e.target.value })); setIncidentNodeError(''); }}
+                      className={`flex-1 rounded-xl border px-3 py-2 text-sm text-gray-900 ${incidentNodeError ? 'border-red-400 bg-red-50' : 'border-gray-200 bg-white'}`}
+                    >
+                      {['N1','N2','N3','N4','N5','N6','N7','N8','N9','N10','N15','N16','N17','N18','N19'].map(n => (
+                        <option key={n} value={n}>{n}</option>
+                      ))}
+                    </select>
+                    <button
+                      type="button"
+                      onClick={() => setShowMapPicker(true)}
+                      className="px-3 py-2 rounded-xl border border-indigo-300 bg-indigo-50 text-indigo-700 text-sm font-medium hover:bg-indigo-100 flex items-center gap-1.5"
+                      title="Escolher no mapa"
+                    >
+                      🗺️ Mapa
+                    </button>
+                  </div>
                   {incidentNodeError && <p className="mt-1 text-xs text-red-600">{incidentNodeError}</p>}
                 </div>
 

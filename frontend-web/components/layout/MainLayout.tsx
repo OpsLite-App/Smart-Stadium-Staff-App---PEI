@@ -78,6 +78,7 @@ export function MainLayout({ children }: MainLayoutProps) {
       case 'Security':
         return [
           ...baseNav,
+          { name: 'Tarefas', href: '/app-routes/tasks', icon: ClipboardList, current: pathname === '/app-routes/tasks' },
           { name: 'Alertas', href: '/app-routes/alerts', icon: Bell, current: pathname === '/app-routes/alerts' },
           { name: 'Chat', href: '/app-routes/chat', icon: MessageCircle, current: pathname === '/app-routes/chat' },
           { name: 'Emergência', href: '/app-routes/emergency', icon: AlertOctagon, current: pathname === '/app-routes/emergency' },
@@ -98,6 +99,7 @@ export function MainLayout({ children }: MainLayoutProps) {
           { name: 'Dashboard', href: '/app-routes/dashboard', icon: LayoutDashboard, current: pathname === '/app-routes/dashboard' },
           { name: 'Analytics', href: '/app-routes/analytics', icon: BarChart3, current: pathname === '/app-routes/analytics' },
           { name: 'Equipa', href: '/app-routes/team', icon: Users, current: pathname === '/app-routes/team' },
+          { name: 'Tarefas', href: '/app-routes/tasks', icon: ClipboardList, current: pathname === '/app-routes/tasks' },
           { name: 'Alertas', href: '/app-routes/alerts', icon: Bell, current: pathname === '/app-routes/alerts' },
           { name: 'Mapa', href: '/app-routes/map', icon: Map, current: pathname === '/app-routes/map' },
           { name: 'Perfil', href: '/app-routes/profile', icon: User, current: pathname === '/app-routes/profile' },
@@ -106,7 +108,8 @@ export function MainLayout({ children }: MainLayoutProps) {
     case 'Medical':
     return [
       { name: 'Dashboard', href: '/app-routes/dashboard', icon: LayoutDashboard, current: pathname === '/app-routes/dashboard' },
-      { name: 'Incidentes', href: '/app-routes/medical/incidents', icon: HeartPulse, current: pathname.includes('/medical/incidents') }, // ✅ NOVO
+      { name: 'Tarefas', href: '/app-routes/tasks', icon: ClipboardList, current: pathname === '/app-routes/tasks' },
+      { name: 'Incidentes', href: '/app-routes/medical/incidents', icon: HeartPulse, current: pathname.includes('/medical/incidents') },
       { name: 'Alertas', href: '/app-routes/alerts', icon: Bell, current: pathname === '/app-routes/alerts' },
       { name: 'Mapa', href: '/app-routes/map', icon: Map, current: pathname === '/app-routes/map' },
       { name: 'Chat', href: '/app-routes/chat', icon: MessageCircle, current: pathname === '/app-routes/chat' },

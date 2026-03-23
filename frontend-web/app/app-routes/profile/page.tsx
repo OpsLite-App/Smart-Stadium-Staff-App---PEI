@@ -27,7 +27,8 @@ import {
 import { Avatar } from '@/components/ui/Avatar';
 import { Switch } from '@/components/ui/Switch';
 import { Badge } from '@/components/ui/Badge';
-import { AUTH_SERVICE, EMERGENCY_SERVICE, MAINTENANCE_SERVICE } from '@/lib/services/api';
+import { useNavigationStore } from '@/lib/stores/useNavigationStore';
+import { AUTH_SERVICE, EMERGENCY_SERVICE, MAINTENANCE_SERVICE, api } from '@/lib/services/api';
 
 type Role = 'Security' | 'Cleaning' | 'Supervisor' | string;
 
@@ -154,6 +155,8 @@ export default function ProfilePage() {
     badges: [],
   });
   const [recentActivity, setRecentActivity] = useState<RecentActivity[]>([]);
+  const [pendingDispatches, setPendingDispatches] = useState<any[]>([]);
+  const [dispatchActionLoading, setDispatchActionLoading] = useState<string | null>(null);
 
   useEffect(() => {
     const storedLang = localStorage.getItem('user-language');
@@ -298,6 +301,27 @@ export default function ProfilePage() {
 
         setRecentActivity(activities);
 
+        // Fetch pending dispatches for this user
+        if (user.role !== 'Supervisor') {
+          try {
+            const [dispatchRes, incidentRes] = await Promise.all([
+              axios.get(`${EMERGENCY_SERVICE}/dispatch/active`, { headers, timeout: 5000 }),
+              axios.get(`${EMERGENCY_SERVICE}/incidents`, { headers, timeout: 5000 }),
+            ]);
+            const allDispatches: any[] = dispatchRes.data ?? [];
+            const allIncidents: any[] = incidentRes.data?.incidents ?? incidentRes.data ?? [];
+            const myId = String(user.id);
+            const mine = allDispatches.filter(
+              d => d.responder_id === myId ||
+                   d.responder_id === `STAFF_${user.role?.toUpperCase()}_${myId.padStart(3,'0')}`
+            ).map(d => {
+              const inc = allIncidents.find(i => i.id === d.incident_id);
+              return { ...d, incident_type: inc?.incident_type, incident_location: inc?.location_node, incident_severity: inc?.severity };
+            });
+            setPendingDispatches(mine);
+          } catch { /* non-critical */ }
+        }
+
         if (
           staffRes.status === 'rejected' &&
           emergencyStatsRes.status === 'rejected' &&
@@ -320,6 +344,26 @@ export default function ProfilePage() {
     setLanguage(lang);
     i18n.changeLanguage(lang);
     localStorage.setItem('user-language', lang);
+  };
+
+  const { setNavigation } = useNavigationStore();
+
+  const handleNavigateDispatch = async (d: any) => {
+    setDispatchActionLoading(`nav-${d.id}`);
+    try {
+      const fromNode = 'N1';
+      const waypoints = d.route_nodes?.length >= 2
+        ? d.route_nodes.map((n: string) => ({ node_id: n, x: 0, y: 0 }))
+        : (await api.getRoute(fromNode, d.incident_location ?? 'N1').catch(() => ({ waypoints: [] }))).waypoints;
+      setNavigation({
+        taskId: d.id, binId: d.incident_id,
+        binName: `${(d.incident_type ?? 'incident').toUpperCase()} — ${d.incident_location}`,
+        targetNode: d.incident_location ?? 'N1', fromNode,
+        waypoints: waypoints as any, etaSeconds: d.eta_seconds ?? 0,
+      });
+      router.push('/app-routes/map');
+    } catch { alert('Não foi possível calcular a rota.'); }
+    finally { setDispatchActionLoading(null); }
   };
 
   const handleLogout = async () => {
@@ -381,6 +425,26 @@ export default function ProfilePage() {
 
       <div className="px-6 pt-16">
         {error ? <div className="mb-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</div> : null}
+
+        {/* Pending dispatches banner */}
+        {pendingDispatches.length > 0 && (
+          <div className="mb-4 rounded-xl border border-blue-200 bg-blue-50 p-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <AlertTriangle size={16} className="text-blue-500" />
+                <span className="font-semibold text-blue-700 text-sm">
+                  {pendingDispatches.length} tarefa{pendingDispatches.length > 1 ? 's' : ''} atribuída{pendingDispatches.length > 1 ? 's' : ''} a ti
+                </span>
+              </div>
+              <button
+                onClick={() => router.push('/app-routes/tasks')}
+                className="text-xs font-medium text-blue-600 hover:underline"
+              >
+                Ver no separador Tarefas →
+              </button>
+            </div>
+          </div>
+        )}
 
         <div className="bg-white rounded-xl shadow-sm p-6 mb-4">
           <div className="flex items-start justify-between mb-4">

@@ -390,6 +390,7 @@ class IncidentManager:
             print(f"❌ Incident {request.incident_id} not found")
             return None
 
+        route_data = {"path": [], "distance": 0, "eta_seconds": 0}
         try:
             async with httpx.AsyncClient(timeout=5.0) as client:
                 response = await client.get(
@@ -400,15 +401,12 @@ class IncidentManager:
                         "avoid_crowds": True
                     }
                 )
+                if response.status_code == 200:
+                    route_data = response.json()
+                else:
+                    print(f"⚠️  Route unavailable for {request.responder_id}, dispatching without route")
         except httpx.RequestError as e:
-            print(f"❌ Routing Service error for {request.responder_id}: {e}")
-            return None
-
-        if response.status_code != 200:
-            print(f"❌ Failed to calculate route for responder {request.responder_id}")
-            return None
-
-        route_data = response.json()
+            print(f"⚠️  Routing Service unreachable for {request.responder_id}: {e}")
 
         dispatch = ResponderDispatch(
             id=f"dispatch-{uuid.uuid4().hex[:8]}",
