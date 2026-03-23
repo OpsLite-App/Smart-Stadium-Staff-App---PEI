@@ -10,5 +10,10 @@ export default defineConfig({
     plugins: [tailwindcss()]
   },
 
-  integrations: [react()]
+  integrations: [react()],
+
+  site: 'https://opslite-app.github.io',
+
+  base: '/Smart-Stadium-Staff-App---PEI'
+
 });
