@@ -473,6 +473,11 @@ static void Display_NetworkOutput(od_pp_out_t *p_postprocess, uint32_t inference
     UTIL_LCDEx_PrintfAt(-x0-width, y0, RIGHT_MODE, "%.0f%%", rois[i].conf*100.0f);
   }
 
+  /* Send people count to stm32_bridge via UART */
+  char uart_buf[32];
+  snprintf(uart_buf, sizeof(uart_buf), "{\"people\":%lu}\n", (unsigned long)nb_rois);
+  HAL_UART_Transmit(&huart1, (uint8_t*)uart_buf, strlen(uart_buf), HAL_MAX_DELAY);
+
   UTIL_LCD_SetBackColor(0x40000000);
   UTIL_LCDEx_PrintfAt(0, LINE(2), CENTER_MODE, "Objects %u", nb_rois);
   UTIL_LCDEx_PrintfAt(0, LINE(20), CENTER_MODE, "Inference: %ums", inference_ms);
