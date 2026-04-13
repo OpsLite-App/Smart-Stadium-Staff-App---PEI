@@ -43,6 +43,10 @@ const nextConfig: NextConfig = {
         destination: "http://localhost:8002/api/:path*",
       },
       {
+        source: "/api/map/:path*",
+        destination: "http://localhost:8001/api/:path*",
+      },
+      {
         source: "/api/chat/:path*",
         destination: "http://localhost:8008/:path*",
       },

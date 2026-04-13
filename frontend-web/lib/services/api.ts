@@ -9,6 +9,7 @@ export const MAINTENANCE_BASE = process.env.NEXT_PUBLIC_API_MAINTENANCE || "/api
 export const QUEUEING_BASE = process.env.NEXT_PUBLIC_API_QUEUEING || "/api/queueing";
 export const CHAT_BASE = process.env.NEXT_PUBLIC_API_CHAT || "/api/chat";
 export const ROUTING_BASE = process.env.NEXT_PUBLIC_API_ROUTING || '/api/routing';
+export const MAP_BASE = process.env.NEXT_PUBLIC_API_MAP || '/api/map';
 export const ROUTING_SERVICE = ROUTING_BASE;
 
 // Aliases para compatibilidade com imports antigos (não usar IPs; continua via rewrites)
@@ -343,5 +344,26 @@ export const api = {
       { onDuty: status },
       { headers: { ...bearerHeader() }, timeout: 5000 }
     );
+  },
+
+  // ---- CROWD & QUEUE ----
+  getCrowdSummary: async () => {
+    const r = await axios.get(`${CONGESTION_BASE}/congestion/summary`, { timeout: 5000, headers: { ...bearerHeader() } });
+    return r.data;
+  },
+
+  getCrowdAreas: async () => {
+    const r = await axios.get(`${CONGESTION_BASE}/heatmap`, { timeout: 5000, headers: { ...bearerHeader() } });
+    return (r.data.areas ?? []) as any[];
+  },
+
+  getQueueStatus: async () => {
+    const r = await axios.get(`${QUEUEING_BASE}/status`, { timeout: 5000, headers: { ...bearerHeader() } });
+    return (r.data.queues ?? []) as any[];
+  },
+
+  getGates: async (): Promise<{ id: string; gate_number: string; x: number; y: number }[]> => {
+    const r = await axios.get(`${MAP_BASE}/gates`, { timeout: 5000, headers: { ...bearerHeader() } });
+    return r.data ?? [];
   },
 };
