@@ -12,7 +12,7 @@ export const ROUTING_BASE = process.env.NEXT_PUBLIC_API_ROUTING || '/api/routing
 export const MAP_BASE = process.env.NEXT_PUBLIC_API_MAP || '/api/map';
 export const ROUTING_SERVICE = ROUTING_BASE;
 
-// Aliases para compatibilidade com imports antigos (não usar IPs; continua via rewrites)
+export const POSITIONING_BASE = process.env.NEXT_PUBLIC_API_POSITIONING || "/api/positioning";
 export const AUTH_SERVICE = AUTH_BASE;
 export const CONGESTION_SERVICE = CONGESTION_BASE;
 export const EMERGENCY_SERVICE = EMERGENCY_BASE;
@@ -46,6 +46,24 @@ export interface LoginResponse {
   token: string;
   user_id: number;
   role: string;
+}
+
+export interface StaffPosition {
+  staff_id: string;
+  x: number;
+  y: number;
+  zone: string;
+  location_id: string;
+  confidence: number;
+  updated_at: string;
+}
+
+// Linear mapping from stadium map coords (x,y) to lat/lng
+// Calibrated from NODE_COORDS: x∈[0,300] → lng∈[-8.5847,-8.5827], y∈[0,200] → lat∈[41.1608,41.1623]
+export function mapCoordsToLatLng(x: number, y: number): [number, number] {
+  const lat = 41.1608 + (y / 200) * (41.1623 - 41.1608);
+  const lng = -8.5847 + (x / 300) * (-8.5827 - (-8.5847));
+  return [lat, lng];
 }
 
 export interface StaffMember {
@@ -360,6 +378,18 @@ export const api = {
   getQueueStatus: async () => {
     const r = await axios.get(`${QUEUEING_BASE}/status`, { timeout: 5000, headers: { ...bearerHeader() } });
     return (r.data.queues ?? []) as any[];
+  },
+
+  getStaffPositions: async (staffIds: string[]): Promise<StaffPosition[]> => {
+    const results = await Promise.allSettled(
+      staffIds.map((id) =>
+        axios.get<StaffPosition>(`${POSITIONING_BASE}/position/${id}`, { timeout: 3000 })
+          .then((r) => r.data)
+      )
+    );
+    return results
+      .filter((r): r is PromiseFulfilledResult<StaffPosition> => r.status === "fulfilled")
+      .map((r) => r.value);
   },
 
   getGates: async (): Promise<{ id: string; gate_number: string; x: number; y: number }[]> => {

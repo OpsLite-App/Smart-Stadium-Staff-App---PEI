@@ -171,9 +171,11 @@ services:
       - routing-service
       - map-service
       - mosquitto
+      - positioning-service
     environment:
       ROUTING_SERVICE_URL: http://routing-service:8002
       MAP_SERVICE_URL: http://map-service:8000
+      POSITIONING_SERVICE_URL: http://positioning-service:8004
       MQTT_HOST: mosquitto
       MQTT_BROKER: mosquitto
       MQTT_PORT: "1883"
@@ -193,6 +195,37 @@ services:
     ports:
       - "8008:8000"
 
+
+  postgres_positioning:
+    image: postgres:15-alpine
+    container_name: postgres_positioning
+    environment:
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: positioning
+    ports:
+      - "5437:5432"
+    volumes:
+      - postgres_positioning_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U admin -d positioning -h localhost"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 5s
+
+  positioning-service:
+    build:
+      context: ./services/Positioning-Service
+      dockerfile: Dockerfile
+    container_name: positioning-service
+    depends_on:
+      postgres_positioning:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://admin:password@postgres_positioning:5432/positioning
+    ports:
+      - "8004:8004"
 
   event-processor:
     build:
@@ -232,3 +265,4 @@ volumes:
   postgres_auth_data:
   postgres_map_data:
   postgres_chat_data:
+  postgres_positioning_data:

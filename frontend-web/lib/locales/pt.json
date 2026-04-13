@@ -12,18 +12,155 @@
     "emergency": "SOS",
     "profile": "Perfil"
   },
+  "common": {
+    "refresh": "Atualizar",
+    "loading": "A carregar...",
+    "updated_at": "Atualizado às",
+    "no_data": "Sem dados disponíveis",
+    "navigate": "Navegar",
+    "accept": "Aceitar",
+    "refuse": "Recusar",
+    "done": "Feito",
+    "cancel": "Cancelar",
+    "back": "← Voltar",
+    "available": "Disponível",
+    "busy": "Ocupado",
+    "export": "Exportar",
+    "view_all": "Ver todos",
+    "route_error": "Não foi possível calcular a rota.",
+    "complete_error": "Erro ao marcar como concluído."
+  },
   "dashboard": {
-    "title": "Painel de Segurança",
-    "subtitle": "Sistema Operacional • Ao Vivo",
+    "title_security": "Dashboard de Segurança",
+    "title_cleaning": "Dashboard de Limpeza",
+    "title_supervisor": "Dashboard de Supervisão",
+    "title_default": "Dashboard Operacional",
+    "subtitle": "Dados reais dos serviços em tempo quase real",
+    "error": "Não foi possível carregar dados dos serviços.",
     "stats": {
-      "gates": "Portas",
-      "people": "Pessoas",
-      "sos": "SOS Ativos",
-      "zones": "Zonas Crít."
+      "active_staff": "Staff ativo",
+      "total_registered": "Total registado",
+      "open_incidents": "Incidentes abertos",
+      "critical": "Críticos",
+      "congestion": "Congestionamento",
+      "risk_zones": "Zonas risco (heatmap)",
+      "pending_ops": "Operações pendentes",
+      "bins": "Lixeiras",
+      "queues": "Filas"
     },
-    "sections": {
-      "priority": "ALERTAS PRIORITÁRIOS",
-      "gates": "ESTADO DAS PORTAS"
+    "feed": {
+      "title": "Feed operacional",
+      "loading": "A carregar eventos...",
+      "empty": "Sem eventos ativos neste momento."
+    },
+    "team": {
+      "title": "Estado da equipa",
+      "loading": "A carregar equipa...",
+      "empty": "Sem staff disponível."
+    },
+    "timeline": {
+      "incident": "Incidente {{type}}",
+      "location": "Local",
+      "congestion": "Congestionamento elevado",
+      "bin": "Lixeira por recolher",
+      "queue": "Fila longa"
+    },
+    "roles": {
+      "security": "Segurança",
+      "cleaning": "Limpeza",
+      "supervisor": "Supervisão",
+      "medical": "Médica",
+      "maintenance": "Manutenção",
+      "staff": "Staff"
+    }
+  },
+  "tasks": {
+    "title": "As minhas tarefas",
+    "active_count_one": "{{count}} tarefa ativa",
+    "active_count_other": "{{count}} tarefas ativas",
+    "loading": "A carregar tarefas...",
+    "empty_title": "Sem tarefas pendentes",
+    "empty_subtitle": "Estás em dia! 🎉",
+    "section_incidents": "Incidentes atribuídos",
+    "section_maintenance": "Tarefas de manutenção",
+    "location": "Local",
+    "fill": "cheio",
+    "eta": "ETA",
+    "seconds": "s"
+  },
+  "emergency": {
+    "center_title": "CENTRAL DE EMERGÊNCIA",
+    "center_subtitle": "Apenas para uso em situações críticas.",
+    "activating": "A ATIVAR MODO DE EMERGÊNCIA...",
+    "mode_title": "MODO DE EMERGÊNCIA",
+    "mode_subtitle": "SIGA O PROTOCOLO DE EVACUAÇÃO",
+    "instructions_title": "INSTRUÇÕES (SEGURANÇA)",
+    "instruction_gates": "Abrir Portões de Emergência N1 e N2",
+    "instruction_megaphone": "Usar megafone para guiar multidão",
+    "instruction_radio": "Manter canal 1 livre para Coordenação",
+    "location_sharing": "A sua localização está a ser partilhada.",
+    "safe": "ESTOU EM SEGURANÇA",
+    "report_danger": "REPORTAR PERIGO",
+    "safe_alert": "Status enviado: SEGURO",
+    "danger_alert": "Perigo reportado! A equipa de emergência foi notificada."
+  },
+  "analytics": {
+    "title": "Analytics Dashboard",
+    "subtitle": "Visão geral do desempenho operacional",
+    "tabs": {
+      "overview": "Visão Geral",
+      "alerts": "Alertas",
+      "performance": "Performance"
+    },
+    "time": {
+      "today": "Hoje",
+      "week": "Esta Semana",
+      "month": "Este Mês"
+    },
+    "kpi": {
+      "avg_response": "Tempo Médio Resposta",
+      "resolved": "Alertas Resolvidos",
+      "efficiency": "Eficiência Equipa",
+      "active_staff": "Staff Ativo",
+      "goal_reached": "Meta Atingida"
+    },
+    "charts": {
+      "alert_trend": "Tendência de Alertas",
+      "response_time": "Tempo de Resposta (min)",
+      "alerts_by_zone": "Alertas por Zona",
+      "peak_hours": "Horários de Pico",
+      "team_performance": "Performance das Equipas",
+      "recent_events": "Eventos Recentes",
+      "alerts_label": "Alertas",
+      "resolved_label": "Resolvidos",
+      "incidents_label": "Incidentes"
+    },
+    "table": {
+      "time": "Hora",
+      "type": "Tipo",
+      "location": "Local",
+      "team": "Equipa",
+      "status": "Estado",
+      "resolved": "Resolvido",
+      "in_progress": "Em andamento"
+    },
+    "zones": {
+      "north_gate": "Portão Norte",
+      "south_stand": "Bancada Sul",
+      "commercial": "Área Comercial",
+      "parking": "Estacionamento"
+    },
+    "teams": {
+      "security": "Segurança",
+      "cleaning": "Limpeza",
+      "medical": "Médicos",
+      "supervisors": "Supervisores"
+    },
+    "events": {
+      "sos_medical": "SOS Médico",
+      "bin_full": "Lixeira Cheia",
+      "gate_blocked": "Portão Bloqueado",
+      "conflict": "Conflito"
     }
   },
   "profile": {

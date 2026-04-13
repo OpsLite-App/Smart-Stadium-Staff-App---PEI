@@ -3,6 +3,7 @@
 import { ReactNode, useEffect } from 'react';
 import { useAuthStore } from '@/lib/stores/useAuthStore';
 import { usePathname, useRouter } from 'next/navigation';
+import { LangToggle } from '@/components/ui/LangToggle';
 import { 
   HeartPulse,
   Map, 
@@ -249,14 +250,11 @@ export function MainLayout({ children }: MainLayoutProps) {
       {/* Mobile sidebar */}
       <div className="lg:hidden">
         <div className="fixed top-0 left-0 right-0 z-20 bg-white border-b border-gray-200 px-4 py-3 flex items-center justify-between">
-          <button
-            onClick={() => setSidebarOpen(!sidebarOpen)}
-            className="p-2 rounded-md text-gray-400 hover:text-gray-500 hover:bg-gray-100"
-          >
+          <button onClick={() => setSidebarOpen(!sidebarOpen)} className="p-2 rounded-md text-gray-400 hover:text-gray-500 hover:bg-gray-100">
             {sidebarOpen ? <X size={24} /> : <Menu size={24} />}
           </button>
           <span className="font-semibold text-gray-900">OpsLite</span>
-          <div className="w-8" />
+          <LangToggle />
         </div>
 
         {sidebarOpen && (
@@ -352,6 +350,9 @@ export function MainLayout({ children }: MainLayoutProps) {
           </div>
 
           <div className="p-4 border-t">
+            <div className="flex items-center gap-3 mb-3">
+              <LangToggle className="w-full justify-center" />
+            </div>
             <div className="flex items-center gap-3 mb-4">
               <div className="w-8 h-8 bg-gray-200 rounded-full flex items-center justify-center">
                 <User size={16} className="text-gray-600" />

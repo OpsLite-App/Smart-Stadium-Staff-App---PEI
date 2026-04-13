@@ -74,39 +74,71 @@ class ResponderAssignment:
     priority: str
 
 
+POSITIONING_SERVICE_URL = os.getenv("POSITIONING_SERVICE_URL", "http://positioning-service:8004")
+ROUTING_SERVICE_URL_ENV = os.getenv("ROUTING_SERVICE_URL", "http://routing-service:8002")
+
+
+async def _get_staff_node_from_positioning(staff_id: str, routing_service_url: str) -> Optional[str]:
+    """
+    Fetch staff (x, y) from Positioning Service and convert to nearest graph Node ID
+    via Routing Service /api/route/nearest.
+    Returns None if positioning or routing is unavailable.
+    """
+    try:
+        async with httpx.AsyncClient(timeout=3.0) as client:
+            pos_resp = await client.get(f"{POSITIONING_SERVICE_URL}/position/{staff_id}")
+            if pos_resp.status_code != 200:
+                return None
+            pos = pos_resp.json()
+
+            # Ask routing service for the nearest node to these coordinates
+            nearest_resp = await client.get(
+                f"{routing_service_url}/api/route/nearest-to-coords",
+                params={"x": pos["x"], "y": pos["y"]}
+            )
+            if nearest_resp.status_code == 200:
+                return nearest_resp.json().get("node_id")
+    except httpx.RequestError:
+        pass
+    return None
+
+
 class StaffTracker:
     """
-    Tracks staff positions and availability
-    In production, this would sync with a real-time tracking system
+    Tracks staff positions and availability.
+    Positions are resolved live from the Positioning Service when available.
     """
-    
+
     def __init__(self):
         self.staff: Dict[str, StaffMember] = {}
-    
+
     def add_staff(self, staff: StaffMember):
-        """Register a staff member"""
         self.staff[staff.id] = staff
-    
+
     def update_position(self, staff_id: str, new_position: str):
-        """Update staff position"""
         if staff_id in self.staff:
             self.staff[staff_id].current_position = new_position
-    
+
     def update_status(self, staff_id: str, new_status: StaffStatus):
-        """Update staff availability status"""
         if staff_id in self.staff:
             self.staff[staff_id].status = new_status
-    
+
     def get_available_by_role(self, role: StaffRole) -> List[StaffMember]:
-        """Get all available staff with specific role"""
-        return [
-            staff for staff in self.staff.values()
-            if staff.role == role and staff.is_available()
-        ]
-    
+        return [s for s in self.staff.values() if s.role == role and s.is_available()]
+
     def get_staff(self, staff_id: str) -> Optional[StaffMember]:
-        """Get staff by ID"""
         return self.staff.get(staff_id)
+
+    async def resolve_positions(self, routing_service_url: str):
+        """
+        For every registered staff member, try to fetch their live position
+        from the Positioning Service and update current_position with the
+        nearest graph node. Falls back to the existing static position.
+        """
+        for staff in self.staff.values():
+            node = await _get_staff_node_from_positioning(staff.id, routing_service_url)
+            if node:
+                staff.current_position = node
 
 
 async def find_nearest_responder(
@@ -114,31 +146,9 @@ async def find_nearest_responder(
     staff_tracker: StaffTracker,
     routing_service_url: str
 ) -> Optional[ResponderAssignment]:
-    """
-    NEAREST RESPONDER ALGORITHM
-    
-    For each available staff member with correct role:
-    1. Call Routing Service to calculate route to incident
-    2. Calculate ETA based on distance and role speed
-    3. Apply priority weight to ETA
-    4. Return staff with minimum weighted ETA
-    
-    Priority weights:
-    - critical: ETA x 0.5 (prioritize speed)
-    - high: ETA x 0.75
-    - medium: ETA x 1.0
-    - low: ETA x 1.5 (ok to be slower)
-    
-    Args:
-        incident: Emergency incident request (IncidentRequest dataclass)
-        staff_tracker: Staff tracking system
-        routing_service_url: URL of Routing Service (e.g., http://localhost:8002)
-    
-    Returns:
-        ResponderAssignment with best staff member, or None if no one available
-    """
-    
-    # Get available staff with required role
+    # Refresh positions from Positioning Service before evaluating
+    await staff_tracker.resolve_positions(routing_service_url)
+
     available_staff = staff_tracker.get_available_by_role(incident.required_role)
     
     if not available_staff:
@@ -216,14 +226,10 @@ async def find_multiple_responders(
     routing_service_url: str,
     num_responders: int = 3
 ) -> List[ResponderAssignment]:
-    """
-    Find multiple responders for large-scale emergency
-    
-    Use case: Fire alarm requires multiple security staff
-    
-    Returns top N nearest available staff members
-    """
-    
+    """Find multiple responders for large-scale emergency"""
+    # Refresh positions from Positioning Service before evaluating
+    await staff_tracker.resolve_positions(routing_service_url)
+
     available_staff = staff_tracker.get_available_by_role(incident.required_role)
     
     if not available_staff:

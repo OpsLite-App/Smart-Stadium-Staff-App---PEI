@@ -12,18 +12,155 @@
     "emergency": "SOS",
     "profile": "Profile"
   },
+  "common": {
+    "refresh": "Refresh",
+    "loading": "Loading...",
+    "updated_at": "Updated at",
+    "no_data": "No data available",
+    "navigate": "Navigate",
+    "accept": "Accept",
+    "refuse": "Refuse",
+    "done": "Done",
+    "cancel": "Cancel",
+    "back": "← Back",
+    "available": "Available",
+    "busy": "Busy",
+    "export": "Export",
+    "view_all": "View all",
+    "route_error": "Could not calculate route.",
+    "complete_error": "Error marking as complete."
+  },
   "dashboard": {
-    "title": "Security Dashboard",
-    "subtitle": "Operating System • Live",
+    "title_security": "Security Dashboard",
+    "title_cleaning": "Cleaning Dashboard",
+    "title_supervisor": "Supervisor Dashboard",
+    "title_default": "Operations Dashboard",
+    "subtitle": "Live data from services",
+    "error": "Could not load data from services.",
     "stats": {
-      "gates": "Gates",
-      "people": "Crowd",
-      "sos": "Active SOS",
-      "zones": "Crit. Zones"
+      "active_staff": "Active staff",
+      "total_registered": "Total registered",
+      "open_incidents": "Open incidents",
+      "critical": "Critical",
+      "congestion": "Congestion",
+      "risk_zones": "Risk zones (heatmap)",
+      "pending_ops": "Pending operations",
+      "bins": "Bins",
+      "queues": "Queues"
     },
-    "sections": {
-      "priority": "PRIORITY ALERTS",
-      "gates": "LIVE GATE STATUS"
+    "feed": {
+      "title": "Operations feed",
+      "loading": "Loading events...",
+      "empty": "No active events at this time."
+    },
+    "team": {
+      "title": "Team status",
+      "loading": "Loading team...",
+      "empty": "No staff available."
+    },
+    "timeline": {
+      "incident": "Incident {{type}}",
+      "location": "Location",
+      "congestion": "High congestion",
+      "bin": "Bin to collect",
+      "queue": "Long queue"
+    },
+    "roles": {
+      "security": "Security",
+      "cleaning": "Cleaning",
+      "supervisor": "Supervisor",
+      "medical": "Medical",
+      "maintenance": "Maintenance",
+      "staff": "Staff"
+    }
+  },
+  "tasks": {
+    "title": "My tasks",
+    "active_count_one": "{{count}} active task",
+    "active_count_other": "{{count}} active tasks",
+    "loading": "Loading tasks...",
+    "empty_title": "No pending tasks",
+    "empty_subtitle": "You're all caught up! 🎉",
+    "section_incidents": "Assigned incidents",
+    "section_maintenance": "Maintenance tasks",
+    "location": "Location",
+    "fill": "full",
+    "eta": "ETA",
+    "seconds": "s"
+  },
+  "emergency": {
+    "center_title": "EMERGENCY CENTER",
+    "center_subtitle": "For use in critical situations only.",
+    "activating": "ACTIVATING EMERGENCY MODE...",
+    "mode_title": "EMERGENCY MODE",
+    "mode_subtitle": "FOLLOW EVACUATION PROTOCOL",
+    "instructions_title": "INSTRUCTIONS (SECURITY)",
+    "instruction_gates": "Open Emergency Gates N1 and N2",
+    "instruction_megaphone": "Use megaphone to guide crowd",
+    "instruction_radio": "Keep channel 1 free for Coordination",
+    "location_sharing": "Your location is being shared.",
+    "safe": "I AM SAFE",
+    "report_danger": "REPORT DANGER",
+    "safe_alert": "Status sent: SAFE",
+    "danger_alert": "Danger reported! The emergency team has been notified."
+  },
+  "analytics": {
+    "title": "Analytics Dashboard",
+    "subtitle": "Overview of operational performance",
+    "tabs": {
+      "overview": "Overview",
+      "alerts": "Alerts",
+      "performance": "Performance"
+    },
+    "time": {
+      "today": "Today",
+      "week": "This Week",
+      "month": "This Month"
+    },
+    "kpi": {
+      "avg_response": "Avg Response Time",
+      "resolved": "Resolved Alerts",
+      "efficiency": "Team Efficiency",
+      "active_staff": "Active Staff",
+      "goal_reached": "Goal Reached"
+    },
+    "charts": {
+      "alert_trend": "Alert Trend",
+      "response_time": "Response Time (min)",
+      "alerts_by_zone": "Alerts by Zone",
+      "peak_hours": "Peak Hours",
+      "team_performance": "Team Performance",
+      "recent_events": "Recent Events",
+      "alerts_label": "Alerts",
+      "resolved_label": "Resolved",
+      "incidents_label": "Incidents"
+    },
+    "table": {
+      "time": "Time",
+      "type": "Type",
+      "location": "Location",
+      "team": "Team",
+      "status": "Status",
+      "resolved": "Resolved",
+      "in_progress": "In progress"
+    },
+    "zones": {
+      "north_gate": "North Gate",
+      "south_stand": "South Stand",
+      "commercial": "Commercial Area",
+      "parking": "Parking"
+    },
+    "teams": {
+      "security": "Security",
+      "cleaning": "Cleaning",
+      "medical": "Medical",
+      "supervisors": "Supervisors"
+    },
+    "events": {
+      "sos_medical": "Medical SOS",
+      "bin_full": "Full Bin",
+      "gate_blocked": "Blocked Gate",
+      "conflict": "Conflict"
     }
   },
   "profile": {

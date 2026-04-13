@@ -2,11 +2,14 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
+import '@/lib/i18n';
 import { useRouter } from 'next/navigation';
 import { AlertOctagon, DoorOpen, Megaphone, Radio, CheckCircle } from 'lucide-react';
 import { AppButton } from '@/components/ui/AppButton';
 
 export default function EmergencyPage() {
+  const { t } = useTranslation();
   const router = useRouter();
   const [mode, setMode] = useState<'idle' | 'counting' | 'active'>('idle');
   const [countdown, setCountdown] = useState(3);
@@ -43,12 +46,12 @@ export default function EmergencyPage() {
   };
 
   const handleSafety = () => {
-    alert("Status enviado: SEGURO");
+    alert(t('emergency.safe_alert'));
     handleCancel();
   };
 
   const handleReportDanger = () => {
-    alert("Perigo reportado! A equipa de emergência foi notificada.");
+    alert(t('emergency.danger_alert'));
   };
 
   if (mode === 'active') {
@@ -59,48 +62,34 @@ export default function EmergencyPage() {
             <div className="flex justify-center mb-4">
               <AlertOctagon size={64} className="text-white animate-pulse" />
             </div>
-            <h1 className="text-3xl font-black text-white mb-2">MODO DE EMERGÊNCIA</h1>
-            <p className="text-[#FECACA] font-semibold tracking-wider">SIGA O PROTOCOLO DE EVACUAÇÃO</p>
+            <h1 className="text-3xl font-black text-white mb-2">{t('emergency.mode_title')}</h1>
+            <p className="text-[#FECACA] font-semibold tracking-wider">{t('emergency.mode_subtitle')}</p>
           </div>
 
           <div className="bg-white rounded-2xl p-6 shadow-xl mb-6">
             <h2 className="text-lg font-bold text-[#DC2626] mb-4 pb-2 border-b border-[#FEE2E2]">
-              INSTRUÇÕES (SEGURANÇA)
+              {t('emergency.instructions_title')}
             </h2>
-            
             <div className="space-y-4">
               <div className="flex items-center gap-3">
                 <DoorOpen size={24} className="text-[#DC2626]" />
-                <span className="text-[#1F2937] font-medium">Abrir Portões de Emergência N1 e N2</span>
+                <span className="text-[#1F2937] font-medium">{t('emergency.instruction_gates')}</span>
               </div>
               <div className="flex items-center gap-3">
                 <Megaphone size={24} className="text-[#DC2626]" />
-                <span className="text-[#1F2937] font-medium">Usar megafone para guiar multidão</span>
+                <span className="text-[#1F2937] font-medium">{t('emergency.instruction_megaphone')}</span>
               </div>
               <div className="flex items-center gap-3">
                 <Radio size={24} className="text-[#DC2626]" />
-                <span className="text-[#1F2937] font-medium">Manter canal 1 livre para Coordenação</span>
+                <span className="text-[#1F2937] font-medium">{t('emergency.instruction_radio')}</span>
               </div>
             </div>
           </div>
 
           <div className="mt-8">
-            <p className="text-[#FECACA] text-center mb-4">A sua localização está a ser partilhada.</p>
-            
-            <AppButton 
-              title="ESTOU EM SEGURANÇA" 
-              onClick={handleSafety}
-              fullWidth
-              className="bg-[#10B981] hover:bg-[#059669] text-white font-bold py-3 px-4 rounded-lg mb-3"
-            />
-            
-            <AppButton 
-              title="REPORTAR PERIGO" 
-              onClick={handleReportDanger}
-              mode="outlined"
-              fullWidth
-              className="border-2 border-white text-white hover:bg-white hover:text-[#DC2626] font-bold py-3 px-4 rounded-lg"
-            />
+            <p className="text-[#FECACA] text-center mb-4">{t('emergency.location_sharing')}</p>
+            <AppButton title={t('emergency.safe')} onClick={handleSafety} fullWidth className="bg-[#10B981] hover:bg-[#059669] text-white font-bold py-3 px-4 rounded-lg mb-3" />
+            <AppButton title={t('emergency.report_danger')} onClick={handleReportDanger} mode="outlined" fullWidth className="border-2 border-white text-white hover:bg-white hover:text-[#DC2626] font-bold py-3 px-4 rounded-lg" />
           </div>
         </div>
       </div>
@@ -110,10 +99,8 @@ export default function EmergencyPage() {
   return (
     <div className="min-h-screen bg-[#F3F4F6] flex items-center justify-center p-4">
       <div className="text-center max-w-md">
-        <h1 className="text-2xl font-bold text-[#1F2937] mb-2">CENTRAL DE EMERGÊNCIA</h1>
-        <p className="text-[#6B7280] mb-8">
-          Apenas para uso em situações críticas.
-        </p>
+        <h1 className="text-2xl font-bold text-[#1F2937] mb-2">{t('emergency.center_title')}</h1>
+        <p className="text-[#6B7280] mb-8">{t('emergency.center_subtitle')}</p>
 
         <button
           onClick={() => setMode('counting')}
@@ -142,21 +129,15 @@ export default function EmergencyPage() {
 
         {mode === 'counting' && (
           <div className="text-center">
-            <p className="text-[#EF4444] font-bold mb-3">A ATIVAR MODO DE EMERGÊNCIA...</p>
-            <button
-              onClick={handleCancel}
-              className="px-8 py-2 bg-white border border-gray-200 rounded-full text-[#1F2937] font-medium hover:bg-gray-50"
-            >
-              CANCELAR
+            <p className="text-[#EF4444] font-bold mb-3">{t('emergency.activating')}</p>
+            <button onClick={handleCancel} className="px-8 py-2 bg-white border border-gray-200 rounded-full text-[#1F2937] font-medium hover:bg-gray-50">
+              {t('common.cancel')}
             </button>
           </div>
         )}
 
-        <button
-          onClick={() => router.back()}
-          className="mt-8 text-[#6B7280] hover:text-[#1F2937]"
-        >
-          ← Voltar
+        <button onClick={() => router.back()} className="mt-8 text-[#6B7280] hover:text-[#1F2937]">
+          {t('common.back')}
         </button>
       </div>
     </div>

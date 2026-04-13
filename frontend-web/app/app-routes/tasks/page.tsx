@@ -1,6 +1,8 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
+import '@/lib/i18n';
 import { useRouter } from 'next/navigation';
 import { useAuthStore } from '@/lib/stores/useAuthStore';
 import { useNavigationStore } from '@/lib/stores/useNavigationStore';
@@ -52,6 +54,7 @@ const SEVERITY_STYLE: Record<string, string> = {
 };
 
 export default function TasksPage() {
+  const { t } = useTranslation();
   const { user } = useAuthStore();
   const router = useRouter();
   const { setNavigation } = useNavigationStore();
@@ -141,7 +144,7 @@ export default function TasksPage() {
       });
       router.push('/app-routes/map');
     } catch {
-      alert('Não foi possível calcular a rota.');
+      alert(t('common.route_error'));
     } finally {
       setActionLoading(null);
     }
@@ -153,7 +156,7 @@ export default function TasksPage() {
       await api.completeTask(taskId);
       setTaskStatus(prev => ({ ...prev, [taskId]: 'done' }));
     } catch {
-      alert('Erro ao marcar como concluído.');
+      alert(t('common.complete_error'));
     } finally {
       setActionLoading(null);
     }
@@ -188,7 +191,7 @@ export default function TasksPage() {
       });
       router.push('/app-routes/map');
     } catch {
-      alert('Não foi possível calcular a rota.');
+      alert(t('common.route_error'));
     } finally {
       setActionLoading(null);
     }
@@ -200,27 +203,24 @@ export default function TasksPage() {
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
-      {/* Header */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">As minhas tarefas</h1>
+          <h1 className="text-3xl font-bold text-gray-900">{t('tasks.title')}</h1>
           <div className="flex items-center gap-3 mt-1">
             <p className="text-sm text-gray-500">
-              {totalCount} tarefa{totalCount !== 1 ? 's' : ''} ativa{totalCount !== 1 ? 's' : ''}
+              {t(totalCount === 1 ? 'tasks.active_count_one' : 'tasks.active_count_other', { count: totalCount })}
             </p>
             <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-0.5 text-xs font-semibold border ${
-              isBusy
-                ? 'bg-orange-50 text-orange-700 border-orange-200'
-                : 'bg-green-50 text-green-700 border-green-200'
+              isBusy ? 'bg-orange-50 text-orange-700 border-orange-200' : 'bg-green-50 text-green-700 border-green-200'
             }`}>
               <span className={`w-1.5 h-1.5 rounded-full ${isBusy ? 'bg-orange-500' : 'bg-green-500'}`} />
-              {isBusy ? 'Ocupado' : 'Disponível'}
+              {isBusy ? t('common.busy') : t('common.available')}
             </span>
           </div>
         </div>
         <div className="flex items-center gap-3">
           {lastUpdated && (
-            <span className="text-xs text-gray-400">Atualizado às {lastUpdated.toLocaleTimeString('pt-PT')}</span>
+            <span className="text-xs text-gray-400">{t('common.updated_at')} {lastUpdated.toLocaleTimeString()}</span>
           )}
           <button
             onClick={() => { setRefreshing(true); void fetchTasks(); }}
@@ -228,25 +228,24 @@ export default function TasksPage() {
             className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50"
           >
             <RefreshCw size={18} className={refreshing ? 'animate-spin' : ''} />
-            Atualizar
+            {t('common.refresh')}
           </button>
         </div>
       </div>
 
       {loading ? (
-        <div className="rounded-xl border border-gray-200 bg-white p-12 text-center text-gray-500">A carregar tarefas...</div>
+        <div className="rounded-xl border border-gray-200 bg-white p-12 text-center text-gray-500">{t('tasks.loading')}</div>
       ) : totalCount === 0 ? (
         <div className="rounded-xl border border-gray-200 bg-white p-12 text-center">
           <CheckCircle size={40} className="mx-auto text-emerald-400 mb-3" />
-          <p className="font-medium text-gray-700">Sem tarefas pendentes</p>
-          <p className="text-sm text-gray-400 mt-1">Estás em dia! 🎉</p>
+          <p className="font-medium text-gray-700">{t('tasks.empty_title')}</p>
+          <p className="text-sm text-gray-400 mt-1">{t('tasks.empty_subtitle')}</p>
         </div>
       ) : (
         <div className="space-y-4">
-          {/* Emergency dispatches */}
           {activeDispatches.length > 0 && (
             <div className="space-y-3">
-              <p className="text-xs font-bold text-gray-400 uppercase tracking-wider">Incidentes atribuídos</p>
+              <p className="text-xs font-bold text-gray-400 uppercase tracking-wider">{t('tasks.section_incidents')}</p>
               {activeDispatches.map(d => {
                 const status = dispatchStatus[d.id] ?? 'pending';
                 return (
@@ -256,49 +255,32 @@ export default function TasksPage() {
                         <AlertTriangle size={18} className="text-red-500 shrink-0" />
                         <div>
                           <p className="font-bold text-gray-900 capitalize">{d.incident_type?.replace('_', ' ')}</p>
-                          <p className="text-sm text-gray-500">Local: <span className="font-medium">{d.incident_location}</span></p>
+                          <p className="text-sm text-gray-500">{t('tasks.location')}: <span className="font-medium">{d.incident_location}</span></p>
                         </div>
                       </div>
                       <span className={`shrink-0 rounded-full border px-2 py-0.5 text-xs font-medium ${SEVERITY_STYLE[d.incident_severity ?? 'medium'] ?? SEVERITY_STYLE.medium}`}>
                         {d.incident_severity}
                       </span>
                     </div>
-
                     {status === 'accepted' ? (
                       <div className="flex gap-2">
-                        <button
-                          onClick={() => handleNavigateDispatch(d)}
-                          disabled={!!actionLoading}
-                          className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50"
-                        >
-                          <MapPin size={16} /> Navegar
+                        <button onClick={() => handleNavigateDispatch(d)} disabled={!!actionLoading} className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50">
+                          <MapPin size={16} /> {t('common.navigate')}
                         </button>
                         <span className="flex items-center gap-1 px-3 py-2 bg-green-100 text-green-700 rounded-lg text-sm font-medium border border-green-200">
-                          <ThumbsUp size={14} /> Aceite
+                          <ThumbsUp size={14} /> {t('common.accept')}
                         </span>
                       </div>
                     ) : (
                       <div className="flex gap-2">
-                        <button
-                          onClick={() => handleAcceptDispatch(d.id)}
-                          disabled={!!actionLoading}
-                          className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 disabled:opacity-50"
-                        >
-                          <ThumbsUp size={16} /> Aceitar
+                        <button onClick={() => handleAcceptDispatch(d.id)} disabled={!!actionLoading} className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 disabled:opacity-50">
+                          <ThumbsUp size={16} /> {t('common.accept')}
                         </button>
-                        <button
-                          onClick={() => handleNavigateDispatch(d)}
-                          disabled={!!actionLoading}
-                          className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50"
-                        >
-                          <MapPin size={16} /> Navegar
+                        <button onClick={() => handleNavigateDispatch(d)} disabled={!!actionLoading} className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50">
+                          <MapPin size={16} /> {t('common.navigate')}
                         </button>
-                        <button
-                          onClick={() => handleRefuseDispatch(d.id)}
-                          disabled={!!actionLoading}
-                          className="flex items-center justify-center gap-2 px-3 py-2 bg-white border border-gray-300 text-gray-600 rounded-lg text-sm font-medium hover:bg-gray-50 disabled:opacity-50"
-                        >
-                          <X size={16} /> Recusar
+                        <button onClick={() => handleRefuseDispatch(d.id)} disabled={!!actionLoading} className="flex items-center justify-center gap-2 px-3 py-2 bg-white border border-gray-300 text-gray-600 rounded-lg text-sm font-medium hover:bg-gray-50 disabled:opacity-50">
+                          <X size={16} /> {t('common.refuse')}
                         </button>
                       </div>
                     )}
@@ -308,11 +290,10 @@ export default function TasksPage() {
             </div>
           )}
 
-          {/* Maintenance tasks */}
           {activeTasks.length > 0 && (
             <div className="space-y-3">
               {activeDispatches.length > 0 && (
-                <p className="text-xs font-bold text-gray-400 uppercase tracking-wider">Tarefas de manutenção</p>
+                <p className="text-xs font-bold text-gray-400 uppercase tracking-wider">{t('tasks.section_maintenance')}</p>
               )}
               {activeTasks.map(task => {
                 const status = taskStatus[task.id] ?? 'pending';
@@ -324,9 +305,9 @@ export default function TasksPage() {
                           {task.description ?? `Lixeira ${task.main_metadata?.bin_id ?? task.location_node}`}
                         </p>
                         <p className="text-sm text-gray-500 mt-0.5">
-                          Local: {task.location_node}
+                          {t('tasks.location')}: {task.location_node}
                           {task.main_metadata?.fill_percentage != null && (
-                            <span className="ml-2 font-medium text-orange-600">{task.main_metadata.fill_percentage}% cheio</span>
+                            <span className="ml-2 font-medium text-orange-600">{task.main_metadata.fill_percentage}% {t('tasks.fill')}</span>
                           )}
                         </p>
                       </div>
@@ -334,46 +315,25 @@ export default function TasksPage() {
                         {task.priority}
                       </span>
                     </div>
-
                     {status === 'accepted' ? (
                       <div className="flex gap-2">
-                        <button
-                          onClick={() => handleNavigateTask(task)}
-                          disabled={!!actionLoading}
-                          className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50"
-                        >
-                          <MapPin size={16} /> Navegar
+                        <button onClick={() => handleNavigateTask(task)} disabled={!!actionLoading} className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50">
+                          <MapPin size={16} /> {t('common.navigate')}
                         </button>
-                        <button
-                          onClick={() => handleDoneTask(task.id)}
-                          disabled={!!actionLoading}
-                          className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 disabled:opacity-50"
-                        >
-                          <CheckCircle size={16} /> Feito
+                        <button onClick={() => handleDoneTask(task.id)} disabled={!!actionLoading} className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 disabled:opacity-50">
+                          <CheckCircle size={16} /> {t('common.done')}
                         </button>
                       </div>
                     ) : (
                       <div className="flex gap-2">
-                        <button
-                          onClick={() => handleAcceptTask(task.id)}
-                          disabled={!!actionLoading}
-                          className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 disabled:opacity-50"
-                        >
-                          <ThumbsUp size={16} /> Aceitar
+                        <button onClick={() => handleAcceptTask(task.id)} disabled={!!actionLoading} className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 disabled:opacity-50">
+                          <ThumbsUp size={16} /> {t('common.accept')}
                         </button>
-                        <button
-                          onClick={() => handleNavigateTask(task)}
-                          disabled={!!actionLoading}
-                          className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50"
-                        >
-                          <MapPin size={16} /> Navegar
+                        <button onClick={() => handleNavigateTask(task)} disabled={!!actionLoading} className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50">
+                          <MapPin size={16} /> {t('common.navigate')}
                         </button>
-                        <button
-                          onClick={() => handleRefuseTask(task.id)}
-                          disabled={!!actionLoading}
-                          className="flex items-center justify-center gap-2 px-3 py-2 bg-white border border-gray-300 text-gray-600 rounded-lg text-sm font-medium hover:bg-gray-50 disabled:opacity-50"
-                        >
-                          <X size={16} /> Recusar
+                        <button onClick={() => handleRefuseTask(task.id)} disabled={!!actionLoading} className="flex items-center justify-center gap-2 px-3 py-2 bg-white border border-gray-300 text-gray-600 rounded-lg text-sm font-medium hover:bg-gray-50 disabled:opacity-50">
+                          <X size={16} /> {t('common.refuse')}
                         </button>
                       </div>
                     )}
