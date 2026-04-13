@@ -23,7 +23,7 @@ services:
       POSTGRES_PASSWORD: password
       POSTGRES_DB: stadium
     ports:
-      - "5432:5432"
+      - "5433:5432"
     volumes:
       - postgres_auth_data:/var/lib/postgresql/data
       - ./backend/database/init:/docker-entrypoint-initdb.d
@@ -111,8 +111,13 @@ services:
     container_name: routing-service
     depends_on:
       - map-service
+      - postgres_map
     environment:
       MAP_SERVICE_URL: http://map-service:8000
+      DATABASE_URI: postgresql://postgres:postgres@postgres_map:5432/estadio_do_dragao
+      PGR_DATABASE_URI: postgresql://postgres:postgres@host.docker.internal:5432/indoor_map
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     ports:
       - "8002:8002"
 

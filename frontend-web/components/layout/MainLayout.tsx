@@ -7,6 +7,7 @@ import { LangToggle } from '@/components/ui/LangToggle';
 import { 
   HeartPulse,
   Map, 
+  Navigation,
   Bell, 
   User, 
   MessageCircle, 
@@ -72,6 +73,7 @@ export function MainLayout({ children }: MainLayoutProps) {
   const getNavigation = () => {
     const baseNav = [
       { name: 'Mapa', href: '/app-routes/map', icon: Map, current: pathname === '/app-routes/map' },
+      { name: 'Navegação', href: '/app-routes/navigation', icon: Navigation, current: pathname === '/app-routes/navigation' },
       { name: 'Dashboard', href: '/app-routes/dashboard', icon: BarChart3, current: pathname === '/app-routes/dashboard' },
     ];
 
