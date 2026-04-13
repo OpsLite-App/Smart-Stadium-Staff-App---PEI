@@ -225,6 +225,21 @@ async def multi_destination_route(from_node: str = Query(...), to_nodes: List[st
     return route_handler.get_multi_destination_route(request)
 
 
+@app.get("/api/route/nearest-to-coords")
+async def nearest_node_to_coords(x: float, y: float):
+    """Find the nearest graph node to given (x, y) coordinates"""
+    if not GRAPH:
+        await load_graph_from_map_service()
+        if not GRAPH:
+            raise HTTPException(status_code=503, detail="Graph not loaded")
+
+    best_node = min(
+        GRAPH.nodes.items(),
+        key=lambda item: (item[1].x - x) ** 2 + (item[1].y - y) ** 2
+    )
+    return {"node_id": best_node[0], "x": best_node[1].x, "y": best_node[1].y}
+
+
 @app.post("/api/route/nearest")
 async def find_nearest(target: str = Query(...), candidates: List[str] = Query(...)):
     """

@@ -1,6 +1,8 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
+import '@/lib/i18n';
 import axios from 'axios';
 import { useAuthStore } from '@/lib/stores/useAuthStore';
 import {
@@ -92,15 +94,16 @@ function toSeverity(value: string | undefined | null): Severity {
 
 function normalizeRole(role: string | undefined | null): string {
   const value = String(role ?? '').toLowerCase();
-  if (value.includes('security')) return 'Segurança';
-  if (value.includes('clean')) return 'Limpeza';
-  if (value.includes('supervisor')) return 'Supervisão';
-  if (value.includes('medical')) return 'Médica';
-  if (value.includes('maintenance')) return 'Manutenção';
-  return 'Staff';
+  if (value.includes('security')) return 'security';
+  if (value.includes('clean')) return 'cleaning';
+  if (value.includes('supervisor')) return 'supervisor';
+  if (value.includes('medical')) return 'medical';
+  if (value.includes('maintenance')) return 'maintenance';
+  return 'staff';
 }
 
 export default function DashboardPage() {
+  const { t } = useTranslation();
   const { user } = useAuthStore();
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -206,28 +209,28 @@ export default function DashboardPage() {
     const timeline: TimelineItem[] = [
       ...openIncidents.slice(0, 6).map((i) => ({
         id: `incident-${i.id}`,
-        title: `Incidente ${i.incident_type}`,
-        detail: `Local: ${i.location_node}`,
+        title: t('dashboard.timeline.incident', { type: i.incident_type }),
+        detail: `${t('dashboard.timeline.location')}: ${i.location_node}`,
         severity: toSeverity(i.severity),
         timestamp: i.created_at || new Date().toISOString(),
       })),
       ...congestionAlerts.slice(0, 6).map((a, idx) => ({
         id: `congestion-${a.area_id}-${idx}`,
-        title: 'Congestionamento elevado',
+        title: t('dashboard.timeline.congestion'),
         detail: `${a.area_id} com ${Math.round(a.occupancy_rate)}%`,
         severity: toSeverity(a.severity || (a.occupancy_rate >= 95 ? 'critical' : 'high')),
         timestamp: new Date().toISOString(),
       })),
       ...openBinAlerts.slice(0, 6).map((b) => ({
         id: `bin-${b.id}`,
-        title: 'Lixeira por recolher',
+        title: t('dashboard.timeline.bin'),
         detail: `${b.location_node} (${Math.round(b.fill_percentage)}%)`,
         severity: toSeverity(b.priority),
         timestamp: b.created_at || new Date().toISOString(),
       })),
       ...queueAlerts.slice(0, 6).map((q, idx) => ({
         id: `queue-${q.location_id}-${idx}`,
-        title: 'Fila longa',
+        title: t('dashboard.timeline.queue'),
         detail: `${q.location_id} (${q.wait_time_minutes.toFixed(1)} min)`,
         severity: toSeverity(q.status),
         timestamp: new Date().toISOString(),
@@ -250,11 +253,8 @@ export default function DashboardPage() {
 
   const roleTitle = useMemo(() => {
     const role = normalizeRole(user?.role);
-    if (role === 'Segurança') return 'Dashboard de Segurança';
-    if (role === 'Limpeza') return 'Dashboard de Limpeza';
-    if (role === 'Supervisão') return 'Dashboard de Supervisão';
-    return 'Dashboard Operacional';
-  }, [user?.role]);
+    return t(`dashboard.title_${role}`, { defaultValue: t('dashboard.title_default') });
+  }, [user?.role, t]);
 
   const formattedUpdated = useMemo(() => {
     if (!lastUpdated) return 'sem atualização';
@@ -266,11 +266,11 @@ export default function DashboardPage() {
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h1 className="text-3xl font-bold text-gray-900">{roleTitle}</h1>
-            <p className="text-sm text-gray-500 mt-1">Dados reais dos serviços em tempo quase real</p>
+            <p className="text-sm text-gray-500 mt-1">{t('dashboard.subtitle')}</p>
           </div>
           <div className="flex items-center gap-3">
             <span className="text-xs text-gray-400">
-              {lastUpdated ? `Atualizado às ${new Date(lastUpdated).toLocaleTimeString('pt-PT')}` : ''}
+              {lastUpdated ? `${t('common.updated_at')} ${new Date(lastUpdated).toLocaleTimeString()}` : ''}
             </span>
             <button
               onClick={onRefresh}
@@ -278,50 +278,50 @@ export default function DashboardPage() {
               className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
             >
               <RefreshCw size={18} className={refreshing ? 'animate-spin' : ''} />
-              Atualizar
+              {t('common.refresh')}
             </button>
           </div>
         </div>
 
         {error && (
-          <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>
+          <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{t('dashboard.error')}</div>
         )}
 
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
           <div className="rounded-xl border border-gray-200 bg-white p-5">
             <div className="flex items-center justify-between">
-              <span className="text-sm text-gray-500">Staff ativo</span>
+              <span className="text-sm text-gray-500">{t('dashboard.stats.active_staff')}</span>
               <Users className="text-blue-600" size={20} />
             </div>
             <p className="text-3xl font-bold text-gray-900 mt-2">{loading ? '...' : derived.activeStaff}</p>
-            <p className="text-xs text-gray-500 mt-1">Total registado: {staff.length}</p>
+            <p className="text-xs text-gray-500 mt-1">{t('dashboard.stats.total_registered')}: {staff.length}</p>
           </div>
 
           <div className="rounded-xl border border-gray-200 bg-white p-5">
             <div className="flex items-center justify-between">
-              <span className="text-sm text-gray-500">Incidentes abertos</span>
+              <span className="text-sm text-gray-500">{t('dashboard.stats.open_incidents')}</span>
               <Shield className="text-red-600" size={20} />
             </div>
             <p className="text-3xl font-bold text-gray-900 mt-2">{loading ? '...' : derived.openIncidents}</p>
-            <p className="text-xs text-gray-500 mt-1">Críticos: {derived.criticalIncidents}</p>
+            <p className="text-xs text-gray-500 mt-1">{t('dashboard.stats.critical')}: {derived.criticalIncidents}</p>
           </div>
 
           <div className="rounded-xl border border-gray-200 bg-white p-5">
             <div className="flex items-center justify-between">
-              <span className="text-sm text-gray-500">Congestionamento</span>
+              <span className="text-sm text-gray-500">{t('dashboard.stats.congestion')}</span>
               <Flame className="text-orange-600" size={20} />
             </div>
             <p className="text-3xl font-bold text-gray-900 mt-2">{loading ? '...' : derived.congestionAlerts}</p>
-            <p className="text-xs text-gray-500 mt-1">Zonas risco (heatmap): {derived.heatRiskAreas}</p>
+            <p className="text-xs text-gray-500 mt-1">{t('dashboard.stats.risk_zones')}: {derived.heatRiskAreas}</p>
           </div>
 
           <div className="rounded-xl border border-gray-200 bg-white p-5">
             <div className="flex items-center justify-between">
-              <span className="text-sm text-gray-500">Operações pendentes</span>
+              <span className="text-sm text-gray-500">{t('dashboard.stats.pending_ops')}</span>
               <Trash2 className="text-emerald-600" size={20} />
             </div>
             <p className="text-3xl font-bold text-gray-900 mt-2">{loading ? '...' : derived.openBinAlerts + derived.queueAlerts}</p>
-            <p className="text-xs text-gray-500 mt-1">Lixeiras: {derived.openBinAlerts} • Filas: {derived.queueAlerts}</p>
+            <p className="text-xs text-gray-500 mt-1">{t('dashboard.stats.bins')}: {derived.openBinAlerts} • {t('dashboard.stats.queues')}: {derived.queueAlerts}</p>
           </div>
         </div>
 
@@ -329,13 +329,13 @@ export default function DashboardPage() {
           <div className="xl:col-span-2 rounded-xl border border-gray-200 bg-white">
             <div className="border-b border-gray-100 px-5 py-4 flex items-center gap-2">
               <AlertTriangle size={18} className="text-gray-700" />
-              <h2 className="text-lg font-semibold text-gray-900">Feed operacional</h2>
+              <h2 className="text-lg font-semibold text-gray-900">{t('dashboard.feed.title')}</h2>
             </div>
             <div className="p-4 space-y-3">
               {loading ? (
-                <p className="text-sm text-gray-500">A carregar eventos...</p>
+                <p className="text-sm text-gray-500">{t('dashboard.feed.loading')}</p>
               ) : derived.timeline.length === 0 ? (
-                <p className="text-sm text-gray-500">Sem eventos ativos neste momento.</p>
+                <p className="text-sm text-gray-500">{t('dashboard.feed.empty')}</p>
               ) : (
                 derived.timeline.map((item) => (
                   <div key={item.id} className="rounded-lg border border-gray-100 p-3">
@@ -348,7 +348,7 @@ export default function DashboardPage() {
                     <p className="text-sm text-gray-600 mt-1">{item.detail}</p>
                     <div className="mt-2 flex items-center gap-1 text-xs text-gray-400">
                       <Clock size={12} />
-                      {new Date(item.timestamp).toLocaleString('pt-PT')}
+                      {new Date(item.timestamp).toLocaleString()}
                     </div>
                   </div>
                 ))
@@ -359,19 +359,19 @@ export default function DashboardPage() {
           <div className="rounded-xl border border-gray-200 bg-white">
             <div className="border-b border-gray-100 px-5 py-4 flex items-center gap-2">
               <Waves size={18} className="text-gray-700" />
-              <h2 className="text-lg font-semibold text-gray-900">Estado da equipa</h2>
+              <h2 className="text-lg font-semibold text-gray-900">{t('dashboard.team.title')}</h2>
             </div>
             <div className="p-4 space-y-3">
               {loading ? (
-                <p className="text-sm text-gray-500">A carregar equipa...</p>
+                <p className="text-sm text-gray-500">{t('dashboard.team.loading')}</p>
               ) : staff.length === 0 ? (
-                <p className="text-sm text-gray-500">Sem staff disponível.</p>
+                <p className="text-sm text-gray-500">{t('dashboard.team.empty')}</p>
               ) : (
                 staff.slice(0, 8).map((member) => (
                   <div key={member.id} className="flex items-center justify-between rounded-lg bg-gray-50 px-3 py-2">
                     <div>
                       <p className="text-sm font-medium text-gray-900">{member.name || `Staff ${member.id}`}</p>
-                      <p className="text-xs text-gray-500">{normalizeRole(member.role)} • {member.location || 'N/A'}</p>
+                      <p className="text-xs text-gray-500">{t(`dashboard.roles.${normalizeRole(member.role)}`, { defaultValue: member.role })} • {member.location || 'N/A'}</p>
                     </div>
                     <span className="text-xs text-gray-600">{member.status || 'unknown'}</span>
                   </div>

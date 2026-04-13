@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import 'leaflet.heat';
-import { api, type HeatmapPoint, type StaffMember, MAINTENANCE_BASE } from '@/lib/services/api';import axios from 'axios';
+import { api, type HeatmapPoint, type StaffMember, type StaffPosition, mapCoordsToLatLng, MAINTENANCE_BASE } from '@/lib/services/api';
 import { useAuthStore } from '@/lib/stores/useAuthStore';
 import { useNavigationStore } from '@/lib/stores/useNavigationStore';
 import { Navigation as _Nav, X, MapPin, Clock, ChevronRight, ArrowUp, Users, AlertTriangle, DoorOpen, TrendingUp, RefreshCw } from 'lucide-react';
@@ -152,6 +152,7 @@ export default function MapPage() {
 
   const [loading, setLoading] = useState(true);
   const [staff, setStaff] = useState<StaffMember[]>([]);
+  const [staffPositions, setStaffPositions] = useState<Record<string, StaffPosition>>({});
   const [heatmap, setHeatmap] = useState<HeatmapPoint[]>([]);
   const [showHeatmap, setShowHeatmap] = useState(true);
   const [usingFallbackHeatmap, setUsingFallbackHeatmap] = useState(false);
@@ -243,6 +244,12 @@ export default function MapPage() {
         ]);
         if (!mounted) return;
         setStaff(staffData);
+
+        // Fetch real positions from Positioning Service
+        const positions = await api.getStaffPositions(staffData.map((s) => String(s.id))).catch(() => []);
+        const posMap: Record<string, StaffPosition> = {};
+        for (const p of positions) posMap[p.staff_id] = p;
+        setStaffPositions(posMap);
         const seenBins = new Set<string>();
         const realBins: BinPoint[] = [];
         for (const b of binsData) {
@@ -300,13 +307,18 @@ export default function MapPage() {
         iconSize: [30, 30],
         iconAnchor: [15, 15],
       });
-      L.marker(fallbackPositions[idx % fallbackPositions.length], { icon })
-        .bindPopup(`<b>${member.name}</b><br/>${member.role}`)
+      const pos = staffPositions[String(member.id)];
+      const latlng: L.LatLngTuple = pos
+        ? mapCoordsToLatLng(pos.x, pos.y)
+        : fallbackPositions[idx % fallbackPositions.length];
+      const confidenceLabel = pos ? ` · ${Math.round(pos.confidence * 100)}%` : '';
+      L.marker(latlng, { icon })
+        .bindPopup(`<b>${member.name}</b><br/>${member.role}${confidenceLabel}`)
         .addTo(layer);
     });
     layer.addTo(map);
     staffLayerRef.current = layer;
-  }, [staff, user?.id]);
+  }, [staff, staffPositions, user?.id]);
 
   // Heatmap layer
   useEffect(() => {
