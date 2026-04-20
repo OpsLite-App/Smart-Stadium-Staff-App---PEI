@@ -12,6 +12,11 @@ import os
 
 from astar import Graph, HazardMap, hazard_aware_astar, find_nearest_node, multi_destination_route
 from api_handlers import RouteAPIHandler, HazardAPIHandler
+from pgrouting import (
+    PgRoutingService,
+    EdgeOverrideCreate,
+    OperationalEventCreate,
+)
 
 # ========== FASTAPI APP ==========
 
@@ -42,6 +47,16 @@ HAZARD_MAP: Optional[HazardMap] = None
 # API Handlers (only routing and hazards)
 route_handler: Optional[RouteAPIHandler] = None
 hazard_handler: Optional[HazardAPIHandler] = None
+pgrouting_service: Optional[PgRoutingService] = None
+
+
+def get_pgrouting_service() -> PgRoutingService:
+    """Lazily initialize direct pgRouting access."""
+    global pgrouting_service
+    if pgrouting_service is None:
+        pgrouting_service = PgRoutingService()
+        pgrouting_service.initialize_runtime_tables()
+    return pgrouting_service
 
 
 # ========== STARTUP ==========
@@ -61,6 +76,11 @@ async def startup():
     
     # Load graph from Map Service
     success = await load_graph_from_map_service()
+    try:
+        get_pgrouting_service()
+        print("✅ pgRouting runtime tables ready")
+    except Exception as e:
+        print(f"⚠️  pgRouting runtime tables unavailable: {e}")
     
     if success and GRAPH:
         # Initialize API handlers (ONLY route and hazard)
@@ -203,6 +223,76 @@ async def get_route(
     )
     
     return route_handler.get_route(request)
+
+
+@app.get("/api/route/pgrouting")
+async def get_pgrouting_route(
+    from_node: int = Query(..., description="Start node ID from PostGIS/pgRouting graph"),
+    to_node: int = Query(..., description="End node ID from PostGIS/pgRouting graph")
+):
+    """
+    Calculate an indoor route directly with pgRouting.
+
+    Example: /api/route/pgrouting?from_node=63&to_node=71
+    """
+    service = get_pgrouting_service()
+    return service.get_route(from_node, to_node)
+
+
+@app.get("/api/pois")
+async def get_pois():
+    """Return indoor POIs from the real PostGIS database."""
+    service = get_pgrouting_service()
+    return service.list_pois()
+
+
+@app.get("/api/route/pgrouting/by-poi")
+async def get_pgrouting_route_by_poi(
+    from_poi_id: int = Query(..., description="Start POI ID"),
+    to_poi_id: int = Query(..., description="End POI ID")
+):
+    """
+    Calculate an indoor route between two POIs by resolving their node IDs.
+
+    Example: /api/route/pgrouting/by-poi?from_poi_id=33&to_poi_id=40
+    """
+    service = get_pgrouting_service()
+    return service.get_route_by_poi(from_poi_id, to_poi_id)
+
+
+@app.get("/api/graph/status")
+async def get_graph_status():
+    """Return a minimal graph status payload for frontend use."""
+    service = get_pgrouting_service()
+    return service.get_graph_status()
+
+
+@app.get("/api/graph/edge-overrides")
+async def list_edge_overrides():
+    """List live edge overrides used by routing."""
+    service = get_pgrouting_service()
+    return service.list_edge_overrides()
+
+
+@app.post("/api/graph/edge-overrides")
+async def create_edge_override(payload: EdgeOverrideCreate):
+    """Create a live edge override for blocked paths or congestion."""
+    service = get_pgrouting_service()
+    return service.create_edge_override(payload)
+
+
+@app.get("/api/graph/events")
+async def list_operational_events():
+    """List active and historical operational events."""
+    service = get_pgrouting_service()
+    return service.list_operational_events()
+
+
+@app.post("/api/graph/events")
+async def create_operational_event(payload: OperationalEventCreate):
+    """Create a minimal operational monitoring event."""
+    service = get_pgrouting_service()
+    return service.create_operational_event(payload)
 
 
 @app.post("/api/route/multi")
