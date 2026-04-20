@@ -49,6 +49,18 @@ except Exception as e:
     ZIP_AVAILABLE = False
     print(f"❌ Erro inesperado: {type(e).__name__}: {e}")
     print("⚠️  Usando contagens aleatórias")
+
+# ===== INTEGRAÇÃO CNN =====
+print("🔍 A tentar carregar modelo CNN (YOLO)...")
+try:
+    from cnn_counter import get_counter as get_cnn_counter
+    cnn_counter = get_cnn_counter()
+    CNN_AVAILABLE = True
+    print("✅ CNN crowd model loaded!")
+except Exception as e:
+    CNN_AVAILABLE = False
+    print(f"⚠️  CNN não disponível: {e} — usando contagens aleatórias nos portões")
+
 # ========== CONFIGURATION ==========
    
 MAP_SERVICE_URL = os.getenv("MAP_SERVICE_URL", "http://localhost:8000")
@@ -191,6 +203,8 @@ class IntegratedEventGenerator:
             return None
         
         self.gate_counters[gate_id] += 1 if direction == "entry" else -1
+
+        cnn_count = cnn_counter.get_count(gate_id) if CNN_AVAILABLE else max(0, self.gate_counters[gate_id])
         
         event = {
             "event_id": str(uuid.uuid4()),
@@ -199,7 +213,7 @@ class IntegratedEventGenerator:
             "gate_id": gate_id,
             "person_id": f"P_{person_id:06d}",
             "direction": direction,
-            "current_count": max(0, self.gate_counters[gate_id]),
+            "current_count": cnn_count,
             "throughput_per_min": round(random.uniform(15, 25), 1),
             "location": {"x": gate['x'], "y": gate['y']},
             "metadata": {
