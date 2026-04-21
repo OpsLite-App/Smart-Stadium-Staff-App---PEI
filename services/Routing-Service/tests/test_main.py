@@ -109,6 +109,43 @@ def test_pgrouting_route_endpoint(client):
     mocked_service.get_route.assert_called_once_with(63, 71)
 
 
+def test_combined_pgrouting_route_endpoint(client):
+    """Test the combined indoor-outdoor pgRouting endpoint with a mocked service."""
+    print("\nTesting combined pgRouting endpoint...")
+
+    mocked_service = MagicMock()
+    mocked_service.get_combined_route.return_value = {
+        "start_node": 1003,
+        "end_node": 71,
+        "path": [1003, 1002, 1001, 65, 70, 71],
+        "distance": 33.0,
+        "eta_seconds": 22,
+        "instructions": [
+            "Start outside the building",
+            "Continue on the outdoor path for approximately 30 meters",
+            "Enter the building",
+            "Use the stairs to go to floor 2",
+            "You have arrived at your destination"
+        ]
+    }
+
+    with patch("main.get_pgrouting_service", return_value=mocked_service):
+        response = client.get("/api/route/pgrouting/combined", params={
+            "from_node": 1003,
+            "to_node": 71
+        })
+
+    data = response.json()
+    print(f"Combined pgRouting response: {data}")
+
+    assert response.status_code == 200
+    assert data["start_node"] == 1003
+    assert data["end_node"] == 71
+    assert data["path"][0] == 1003
+    assert "instructions" in data
+    mocked_service.get_combined_route.assert_called_once_with(1003, 71)
+
+
 def test_pois_endpoint(client):
     """Test the POIs endpoint with a mocked pgRouting service."""
     print("\nTesting POIs endpoint...")

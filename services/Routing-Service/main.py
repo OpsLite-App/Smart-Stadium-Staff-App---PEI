@@ -239,6 +239,20 @@ async def get_pgrouting_route(
     return service.get_route(from_node, to_node)
 
 
+@app.get("/api/route/pgrouting/combined")
+async def get_combined_pgrouting_route(
+    from_node: int = Query(..., description="Start node ID from the combined outdoor-indoor graph"),
+    to_node: int = Query(..., description="End node ID from the combined outdoor-indoor graph")
+):
+    """
+    Calculate a route across the combined outdoor and indoor graph.
+
+    Example: /api/route/pgrouting/combined?from_node=1003&to_node=71
+    """
+    service = get_pgrouting_service()
+    return service.get_combined_route(from_node, to_node)
+
+
 @app.get("/api/pois")
 async def get_pois():
     """Return indoor POIs from the real PostGIS database."""

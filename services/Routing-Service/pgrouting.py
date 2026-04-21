@@ -142,9 +142,78 @@ class PgRoutingService:
         ORDER BY ordered_route.seq
     """
 
+    COMBINED_ROUTE_SQL = """
+        WITH route AS (
+            SELECT *
+            FROM pgr_dijkstra(
+                '
+                SELECT
+                    e.edge_id AS id,
+                    e.from_node AS source,
+                    e.to_node AS target,
+                    e.cost * COALESCE(ao.cost_multiplier, 1.0) AS cost,
+                    e.cost * COALESCE(ao.cost_multiplier, 1.0) AS reverse_cost
+                FROM routing_edges_combined e
+                LEFT JOIN (
+                    SELECT
+                        edge_id,
+                        BOOL_OR(is_blocked) AS is_blocked,
+                        MAX(cost_multiplier) AS cost_multiplier
+                    FROM graph_edge_overrides
+                    WHERE is_active = TRUE
+                      AND (starts_at IS NULL OR starts_at <= NOW())
+                      AND (ends_at IS NULL OR ends_at >= NOW())
+                    GROUP BY edge_id
+                ) ao ON ao.edge_id = e.edge_id
+                WHERE COALESCE(ao.is_blocked, FALSE) = FALSE
+                ',
+                %s,
+                %s,
+                directed := false
+            )
+        ),
+        ordered_route AS (
+            SELECT
+                route.*,
+                LEAD(route.node) OVER (ORDER BY route.seq) AS next_node
+            FROM route
+        )
+        SELECT
+            ordered_route.seq,
+            ordered_route.path_seq,
+            ordered_route.node AS current_node,
+            ordered_route.next_node,
+            ordered_route.edge,
+            ordered_route.cost,
+            ordered_route.agg_cost,
+            e.edge_id,
+            e.from_node,
+            e.to_node,
+            e.length,
+            e.type,
+            e.floor_id,
+            e.graph_source,
+            current_nodes.floor_id AS current_floor_id,
+            next_nodes.floor_id AS next_floor_id,
+            current_nodes.node_source AS current_node_source,
+            next_nodes.node_source AS next_node_source
+        FROM ordered_route
+        LEFT JOIN routing_edges_combined e ON ordered_route.edge = e.edge_id
+        LEFT JOIN routing_nodes_combined current_nodes ON ordered_route.node = current_nodes.node_id
+        LEFT JOIN routing_nodes_combined next_nodes ON ordered_route.next_node = next_nodes.node_id
+        WHERE ordered_route.edge <> -1
+        ORDER BY ordered_route.seq
+    """
+
     NODE_SQL = """
         SELECT node_id, floor_id, type
         FROM nodes
+        WHERE node_id = ANY(%s)
+    """
+
+    COMBINED_NODE_SQL = """
+        SELECT node_id, floor_id, node_type, node_source
+        FROM routing_nodes_combined
         WHERE node_id = ANY(%s)
     """
 
@@ -238,6 +307,142 @@ class PgRoutingService:
         ON operational_events (status, is_active, starts_at, ends_at)
     """
 
+    CREATE_OUTDOOR_NODES_SQL = """
+        CREATE TABLE IF NOT EXISTS outdoor_nodes (
+            id BIGSERIAL PRIMARY KEY,
+            node_id INTEGER NOT NULL UNIQUE,
+            label TEXT,
+            type VARCHAR(50) NOT NULL DEFAULT 'outdoor',
+            geom geometry(Point),
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+    """
+
+    CREATE_OUTDOOR_EDGES_SQL = """
+        CREATE TABLE IF NOT EXISTS outdoor_edges (
+            id BIGSERIAL PRIMARY KEY,
+            edge_id INTEGER NOT NULL UNIQUE,
+            from_node INTEGER NOT NULL,
+            to_node INTEGER NOT NULL,
+            length DOUBLE PRECISION NOT NULL,
+            cost DOUBLE PRECISION NOT NULL,
+            type VARCHAR(50) NOT NULL DEFAULT 'outdoor_path',
+            accessible VARCHAR(20) NOT NULL DEFAULT 'yes',
+            geom geometry(LineString),
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+    """
+
+    CREATE_CONNECTION_EDGES_SQL = """
+        CREATE TABLE IF NOT EXISTS graph_connection_edges (
+            id BIGSERIAL PRIMARY KEY,
+            edge_id INTEGER NOT NULL UNIQUE,
+            from_node INTEGER NOT NULL,
+            to_node INTEGER NOT NULL,
+            length DOUBLE PRECISION NOT NULL,
+            cost DOUBLE PRECISION NOT NULL,
+            type VARCHAR(50) NOT NULL DEFAULT 'entrance_connection',
+            accessible VARCHAR(20) NOT NULL DEFAULT 'yes',
+            geom geometry(LineString),
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+    """
+
+    CREATE_OUTDOOR_NODE_INDEX_SQL = """
+        CREATE INDEX IF NOT EXISTS idx_outdoor_nodes_node_id
+        ON outdoor_nodes (node_id)
+    """
+
+    CREATE_OUTDOOR_EDGE_INDEX_SQL = """
+        CREATE INDEX IF NOT EXISTS idx_outdoor_edges_nodes
+        ON outdoor_edges (from_node, to_node)
+    """
+
+    CREATE_CONNECTION_EDGE_INDEX_SQL = """
+        CREATE INDEX IF NOT EXISTS idx_connection_edges_nodes
+        ON graph_connection_edges (from_node, to_node)
+    """
+
+    CREATE_ROUTING_NODES_VIEW_SQL = """
+        CREATE OR REPLACE VIEW routing_nodes_combined AS
+        SELECT
+            n.node_id,
+            n.floor_id,
+            n.type AS node_type,
+            'indoor'::text AS node_source
+        FROM nodes n
+        UNION ALL
+        SELECT
+            o.node_id,
+            NULL::integer AS floor_id,
+            o.type AS node_type,
+            'outdoor'::text AS node_source
+        FROM outdoor_nodes o
+    """
+
+    CREATE_ROUTING_EDGES_VIEW_SQL = """
+        CREATE OR REPLACE VIEW routing_edges_combined AS
+        SELECT
+            e.edge_id,
+            e.from_node,
+            e.to_node,
+            e.length,
+            e.cost,
+            e.type,
+            e.accessible,
+            e.floor_id,
+            'indoor'::text AS graph_source
+        FROM edges e
+        UNION ALL
+        SELECT
+            oe.edge_id,
+            oe.from_node,
+            oe.to_node,
+            oe.length,
+            oe.cost,
+            oe.type,
+            oe.accessible,
+            NULL::integer AS floor_id,
+            'outdoor'::text AS graph_source
+        FROM outdoor_edges oe
+        UNION ALL
+        SELECT
+            ce.edge_id,
+            ce.from_node,
+            ce.to_node,
+            ce.length,
+            ce.cost,
+            ce.type,
+            ce.accessible,
+            NULL::integer AS floor_id,
+            'connection'::text AS graph_source
+        FROM graph_connection_edges ce
+    """
+
+    SEED_OUTDOOR_NODES_SQL = """
+        INSERT INTO outdoor_nodes (node_id, label, type)
+        VALUES
+            (1001, 'Campus Entrance Gate', 'outdoor_entrance'),
+            (1002, 'Campus Walkway East', 'outdoor_path'),
+            (1003, 'Campus Plaza', 'outdoor_path')
+        ON CONFLICT (node_id) DO NOTHING
+    """
+
+    SEED_OUTDOOR_EDGES_SQL = """
+        INSERT INTO outdoor_edges (edge_id, from_node, to_node, length, cost, type, accessible)
+        VALUES
+            (10001, 1003, 1002, 18.0, 18.0, 'outdoor_path', 'yes'),
+            (10002, 1002, 1001, 12.0, 12.0, 'outdoor_path', 'yes')
+        ON CONFLICT (edge_id) DO NOTHING
+    """
+
+    SEED_CONNECTION_EDGE_SQL = """
+        INSERT INTO graph_connection_edges (edge_id, from_node, to_node, length, cost, type, accessible)
+        VALUES
+            (20001, 1001, 65, 3.0, 3.0, 'entrance_connection', 'yes')
+        ON CONFLICT (edge_id) DO NOTHING
+    """
+
     INSERT_EDGE_OVERRIDE_SQL = """
         INSERT INTO graph_edge_overrides (
             edge_id, is_blocked, cost_multiplier, reason, source, severity,
@@ -273,18 +478,41 @@ class PgRoutingService:
     """
 
     def initialize_runtime_tables(self) -> None:
-        """Create runtime tables used for live updates if they do not exist yet."""
+        """Create runtime, outdoor, and combined routing objects if they do not exist yet."""
         with get_connection() as conn:
             conn.execute(self.CREATE_EDGE_OVERRIDES_SQL)
             conn.execute(self.CREATE_OPERATIONAL_EVENTS_SQL)
+            conn.execute(self.CREATE_OUTDOOR_NODES_SQL)
+            conn.execute(self.CREATE_OUTDOOR_EDGES_SQL)
+            conn.execute(self.CREATE_CONNECTION_EDGES_SQL)
             conn.execute(self.CREATE_EDGE_OVERRIDE_INDEX_SQL)
             conn.execute(self.CREATE_OPERATIONAL_EVENTS_INDEX_SQL)
+            conn.execute(self.CREATE_OUTDOOR_NODE_INDEX_SQL)
+            conn.execute(self.CREATE_OUTDOOR_EDGE_INDEX_SQL)
+            conn.execute(self.CREATE_CONNECTION_EDGE_INDEX_SQL)
+            conn.execute(self.SEED_OUTDOOR_NODES_SQL)
+            conn.execute(self.SEED_OUTDOOR_EDGES_SQL)
+            conn.execute(self.SEED_CONNECTION_EDGE_SQL)
+            conn.execute(self.CREATE_ROUTING_NODES_VIEW_SQL)
+            conn.execute(self.CREATE_ROUTING_EDGES_VIEW_SQL)
             conn.commit()
 
     def get_route(self, from_node: int, to_node: int) -> PgRoutingRouteResponse:
         """Calculate a route and generate simple human-readable instructions."""
         with get_connection() as conn:
             return self._build_route_response(conn, from_node, to_node)
+
+    def get_combined_route(self, from_node: int, to_node: int) -> PgRoutingRouteResponse:
+        """Calculate a route across the combined outdoor-indoor graph."""
+        with get_connection() as conn:
+            return self._build_route_response(
+                conn,
+                from_node,
+                to_node,
+                route_sql=self.COMBINED_ROUTE_SQL,
+                node_sql=self.COMBINED_NODE_SQL,
+                instruction_mode="combined",
+            )
 
     def get_route_by_poi(self, from_poi_id: int, to_poi_id: int) -> PgRoutingRouteResponse:
         """Resolve POIs to graph nodes and calculate a route between them."""
@@ -415,21 +643,36 @@ class PgRoutingService:
             rows = conn.execute(self.LIST_OPERATIONAL_EVENTS_SQL).fetchall()
         return [self._to_operational_event_response(row) for row in rows]
 
-    def _build_route_response(self, conn, from_node: int, to_node: int) -> PgRoutingRouteResponse:
-        node_metadata = self._fetch_node_metadata(conn, [from_node, to_node])
+    def _build_route_response(
+        self,
+        conn,
+        from_node: int,
+        to_node: int,
+        route_sql: str | None = None,
+        node_sql: str | None = None,
+        instruction_mode: str = "indoor",
+    ) -> PgRoutingRouteResponse:
+        node_metadata = self._fetch_node_metadata(conn, [from_node, to_node], node_sql or self.NODE_SQL)
         self._validate_nodes(from_node, to_node, node_metadata)
 
-        route_rows = conn.execute(self.ROUTE_SQL, (from_node, to_node)).fetchall()
+        route_rows = conn.execute(route_sql or self.ROUTE_SQL, (from_node, to_node)).fetchall()
 
         if not route_rows:
             raise HTTPException(status_code=404, detail="No path found between the selected nodes")
 
         path = self._build_path(from_node, route_rows)
         distance = round(sum(float(row["length"] or 0.0) for row in route_rows), 2)
-        instructions = self._build_instructions(
-            start_floor=node_metadata[from_node].get("floor_id"),
-            route_rows=route_rows,
-        )
+        if instruction_mode == "combined":
+            instructions = self._build_combined_instructions(
+                start_source=node_metadata[from_node].get("node_source"),
+                start_floor=node_metadata[from_node].get("floor_id"),
+                route_rows=route_rows,
+            )
+        else:
+            instructions = self._build_instructions(
+                start_floor=node_metadata[from_node].get("floor_id"),
+                route_rows=route_rows,
+            )
 
         return PgRoutingRouteResponse(
             start_node=from_node,
@@ -440,8 +683,8 @@ class PgRoutingService:
             instructions=instructions,
         )
 
-    def _fetch_node_metadata(self, conn, node_ids: List[int]) -> Dict[int, Dict]:
-        rows = conn.execute(self.NODE_SQL, (node_ids,)).fetchall()
+    def _fetch_node_metadata(self, conn, node_ids: List[int], sql: str) -> Dict[int, Dict]:
+        rows = conn.execute(sql, (node_ids,)).fetchall()
         return {int(row["node_id"]): row for row in rows}
 
     def _validate_nodes(self, from_node: int, to_node: int, node_metadata: Dict[int, Dict]) -> None:
@@ -506,9 +749,15 @@ class PgRoutingService:
             if is_stairs:
                 flush_continuous_segment()
                 if next_floor is not None and next_floor != current_floor:
-                    instructions.append(f"Use the stairs to go to floor {int(next_floor)}")
+                    stair_instruction = f"Use the stairs to go to floor {int(next_floor)}"
                 else:
-                    instructions.append("Use the stairs")
+                    stair_instruction = "Use the stairs"
+
+                if instructions and instructions[-1].startswith("Use the stairs"):
+                    if "to go to floor" in stair_instruction:
+                        instructions[-1] = stair_instruction
+                else:
+                    instructions.append(stair_instruction)
                 if next_floor is not None:
                     current_floor = int(next_floor)
                 continue
@@ -520,6 +769,92 @@ class PgRoutingService:
 
         flush_continuous_segment()
         instructions.append("You have arrived at your destination")
+        return instructions
+
+    def _build_combined_instructions(
+        self,
+        start_source: str | None,
+        start_floor: int | None,
+        route_rows: List[Dict],
+    ) -> List[str]:
+        instructions: List[str] = []
+
+        if start_source == "outdoor":
+            instructions.append("Start outside the building")
+        else:
+            instructions.append(
+                f"Start on floor {start_floor}" if start_floor is not None else "Start at the selected origin"
+            )
+
+        outdoor_distance = 0.0
+        indoor_rows: List[Dict] = []
+        current_segment = "outdoor" if start_source == "outdoor" else "indoor"
+
+        def flush_outdoor_segment():
+            nonlocal outdoor_distance
+            if outdoor_distance <= 0:
+                return
+            instructions.append(
+                f"Continue on the outdoor path for approximately {self._format_meters(max(1, round(outdoor_distance)))}"
+            )
+            outdoor_distance = 0.0
+
+        def flush_indoor_segment():
+            nonlocal indoor_rows
+            if not indoor_rows:
+                return
+            indoor_start_floor = indoor_rows[0].get("current_floor_id")
+            indoor_instructions = self._build_instructions(indoor_start_floor, indoor_rows)
+            indoor_instructions = [
+                instruction
+                for instruction in indoor_instructions
+                if not instruction.startswith("Start") and instruction != "You have arrived at your destination"
+            ]
+            instructions.extend(indoor_instructions)
+            indoor_rows = []
+
+        for row in route_rows:
+            graph_source = (row.get("graph_source") or "").strip().lower()
+            edge_type = (row.get("type") or "").strip().lower()
+            segment_length = float(row.get("length") or 0.0)
+
+            if graph_source == "outdoor":
+                if current_segment == "indoor":
+                    flush_indoor_segment()
+                    current_segment = "outdoor"
+                outdoor_distance += segment_length
+                continue
+
+            if graph_source == "connection" or "entrance" in edge_type:
+                if current_segment == "outdoor":
+                    flush_outdoor_segment()
+                else:
+                    flush_indoor_segment()
+
+                current_node_source = (row.get("current_node_source") or "").strip().lower()
+                next_node_source = (row.get("next_node_source") or "").strip().lower()
+
+                if current_node_source == "outdoor" and next_node_source == "indoor":
+                    instructions.append("Enter the building")
+                    current_segment = "indoor"
+                elif current_node_source == "indoor" and next_node_source == "outdoor":
+                    instructions.append("Exit the building")
+                    current_segment = "outdoor"
+                continue
+
+            if current_segment == "outdoor":
+                flush_outdoor_segment()
+                current_segment = "indoor"
+            indoor_rows.append(row)
+
+        if current_segment == "outdoor":
+            flush_outdoor_segment()
+        else:
+            flush_indoor_segment()
+
+        if not instructions or instructions[-1] != "You have arrived at your destination":
+            instructions.append("You have arrived at your destination")
+
         return instructions
 
     def _is_corridor_like(self, edge_type: str) -> bool:
