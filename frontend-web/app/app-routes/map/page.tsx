@@ -5,6 +5,7 @@ import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import 'leaflet.heat';
 import { api, type HeatmapPoint, type StaffMember, type StaffPosition, mapCoordsToLatLng, MAINTENANCE_BASE } from '@/lib/services/api';
+import axios from 'axios';
 import { useAuthStore } from '@/lib/stores/useAuthStore';
 import { useNavigationStore } from '@/lib/stores/useNavigationStore';
 import { Navigation as _Nav, X, MapPin, Clock, ChevronRight, ArrowUp, Users, AlertTriangle, DoorOpen, TrendingUp, RefreshCw } from 'lucide-react';
@@ -771,8 +772,9 @@ export default function MapPage() {
                 <div className="space-y-2">
                   {queues.map((q) => {
                     const util = Math.min(100, Math.round(q.utilization * 100));
-                    const isUnstable = q.status === 'unstable' || q.utilization > 1;
-                    const waitDisplay = q.wait_time_minutes > 9999 ? '∞' : `${Math.round(q.wait_time_minutes)} min`;
+                    const isUnstable = q.queue_length > 20;
+                    const waitDisplay = q.wait_time_minutes < 1 ? '< 1 min'
+                      : `${Math.round(q.wait_time_minutes)} min`;
                     return (
                       <div key={q.location_id} className={`rounded-xl border p-3 ${isUnstable ? 'border-red-200 bg-red-50' : 'border-gray-200 bg-white'}`}>
                         <div className="flex items-center justify-between mb-2">
