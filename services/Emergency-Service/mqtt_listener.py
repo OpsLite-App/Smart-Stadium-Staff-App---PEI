@@ -154,6 +154,7 @@ def start_mqtt_listener(incident_manager, evacuation_coordinator):
     
     def mqtt_thread():
         client = mqtt.Client(
+            mqtt.CallbackAPIVersion.VERSION2,
             client_id="emergency-service",
             protocol=mqtt.MQTTv5,
             userdata={

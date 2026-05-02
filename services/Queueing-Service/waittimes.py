@@ -162,7 +162,7 @@ def start_mqtt_listener():
         return
     
     def mqtt_thread():
-        client = mqtt.Client(protocol=mqtt.MQTTv5)
+        client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, protocol=mqtt.MQTTv5)
         client.on_message = on_mqtt_message
         
         try:

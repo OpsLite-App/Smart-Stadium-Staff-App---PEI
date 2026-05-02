@@ -495,6 +495,7 @@ if MQTT_AVAILABLE:
         def __init__(self, processor: EventProcessor):
             self.processor = processor
             self.client = mqtt.Client(
+                mqtt.CallbackAPIVersion.VERSION1,
                 client_id=f"event-processor-{os.getpid()}",
                 clean_session=True
             )

@@ -19,7 +19,7 @@ def on_connect(client, userdata, flags, rc):
 
 while True:
     try:
-        client = mqtt.Client(client_id="healthcheck-queueing", protocol=mqtt.MQTTv311)
+        client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION1, client_id="healthcheck-queueing", protocol=mqtt.MQTTv311)
         client.on_connect = on_connect
         client.connect(host, port, 5)
         client.loop_forever()

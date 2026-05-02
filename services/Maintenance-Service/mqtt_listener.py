@@ -220,6 +220,7 @@ def start_mqtt_listener(task_manager):
     def mqtt_thread():
         """Background thread for MQTT"""
         client = mqtt.Client(
+            mqtt.CallbackAPIVersion.VERSION2,
             client_id="maintenance-service",
             protocol=mqtt.MQTTv5,
             userdata={'task_manager': task_manager}
