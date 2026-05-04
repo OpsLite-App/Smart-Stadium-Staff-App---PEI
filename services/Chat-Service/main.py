@@ -90,6 +90,12 @@ def create_message(message: schemas.ChatMessageCreate, db: Session = Depends(get
 def get_messages_for_room(room: str, db: Session = Depends(get_db)):
     return db.query(models.ChatMessage).filter(models.ChatMessage.room == room).all()
 
+
+@app.get("/health")
+def health_check():
+    """Health check for Docker"""
+    return {"status": "ok"}
+
 # Start the MQTT client in a background thread
 logging.info("Initializing MQTT client thread.")
 mqtt_thread = threading.Thread(target=mqtt_client_thread)
