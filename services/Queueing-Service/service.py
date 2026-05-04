@@ -120,6 +120,12 @@ def root():
     }
 
 
+@app.get("/health")
+def health_check():
+    """Health check for Docker"""
+    return {"status": "ok"}
+
+
 @app.post("/api/queue/update")
 def update_queue_state(update: QueueStateUpdate):
     """
