@@ -35,7 +35,7 @@ services:
       start_period: 5s
 
   postgres_map:
-    image: postgres:15-alpine
+    image: postgis/postgis:15-3.3-alpine
     container_name: postgres_map
     environment:
       POSTGRES_USER: postgres
