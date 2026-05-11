@@ -82,6 +82,10 @@ class OperationalEventResponse(OperationalEventCreate):
 class PgRoutingService:
     """Compute routes directly in PostgreSQL using pgRouting."""
 
+    CREATE_PGROUTING_EXTENSION_SQL = """
+        CREATE EXTENSION IF NOT EXISTS pgrouting
+    """
+
     ROUTE_SQL = """
         WITH route AS (
             SELECT *
@@ -219,13 +223,13 @@ class PgRoutingService:
 
     POIS_SQL = """
         SELECT id, name, node_id, floor_id, category
-        FROM "POIs"
+        FROM pois
         ORDER BY floor_id, id
     """
 
     POI_BY_IDS_SQL = """
         SELECT id, name, node_id, floor_id, category
-        FROM "POIs"
+        FROM pois
         WHERE id = ANY(%s)
     """
 
@@ -249,7 +253,7 @@ class PgRoutingService:
             (SELECT COUNT(*) FROM nodes) AS nodes,
             (SELECT COUNT(*) FROM edges) AS edges,
             (SELECT COUNT(*) FROM floors) AS floors,
-            (SELECT COUNT(*) FROM "POIs") AS pois,
+            (SELECT COUNT(*) FROM pois) AS pois,
             (SELECT COUNT(DISTINCT edge_id) FROM active_overrides WHERE is_blocked = TRUE) AS blocked_edges,
             (SELECT COUNT(DISTINCT edge_id) FROM active_overrides WHERE is_blocked = FALSE AND cost_multiplier > 1.0) AS cost_overrides,
             (SELECT COUNT(*) FROM active_events) AS active_alerts,
@@ -480,6 +484,7 @@ class PgRoutingService:
     def initialize_runtime_tables(self) -> None:
         """Create runtime, outdoor, and combined routing objects if they do not exist yet."""
         with get_connection() as conn:
+            conn.execute(self.CREATE_PGROUTING_EXTENSION_SQL)
             conn.execute(self.CREATE_EDGE_OVERRIDES_SQL)
             conn.execute(self.CREATE_OPERATIONAL_EVENTS_SQL)
             conn.execute(self.CREATE_OUTDOOR_NODES_SQL)
