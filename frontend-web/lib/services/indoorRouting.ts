@@ -3,10 +3,12 @@ import { ROUTING_BASE } from '@/lib/services/api';
 
 export interface Poi {
   id: number;
+  label?: string;
   name: string;
   node_id: number;
   floor_id: number;
   category: string;
+  isOutdoor?: boolean;
 }
 
 export interface IndoorRouteResponse {
@@ -30,6 +32,36 @@ export interface GraphStatus {
   updated_at: string | null;
 }
 
+export interface OperationalEvent {
+  id: number;
+  event_type: string;
+  title: string;
+  description?: string | null;
+  severity: number;
+  status: string;
+  source: string;
+  floor_id?: number | null;
+  node_id?: number | null;
+  edge_id?: number | null;
+  poi_id?: number | null;
+  starts_at?: string | null;
+  ends_at?: string | null;
+  is_active: boolean;
+}
+
+export interface EdgeOverride {
+  id: number;
+  edge_id: number;
+  is_blocked: boolean;
+  cost_multiplier: number;
+  reason?: string | null;
+  source: string;
+  severity: number;
+  starts_at?: string | null;
+  ends_at?: string | null;
+  is_active: boolean;
+}
+
 export const indoorRoutingService = {
   async getPois(): Promise<Poi[]> {
     const response = await axios.get<Poi[]>(`${ROUTING_BASE}/pois`, {
@@ -49,10 +81,35 @@ export const indoorRoutingService = {
     return response.data;
   },
 
+  async getCombinedRoute(fromNode: number, toNode: number): Promise<IndoorRouteResponse> {
+    const response = await axios.get<IndoorRouteResponse>(`${ROUTING_BASE}/route/pgrouting/combined`, {
+      params: {
+        from_node: fromNode,
+        to_node: toNode,
+      },
+      timeout: 10000,
+    });
+    return response.data;
+  },
+
   async getGraphStatus(): Promise<GraphStatus> {
     const response = await axios.get<GraphStatus>(`${ROUTING_BASE}/graph/status`, {
       timeout: 8000,
     });
     return response.data;
+  },
+
+  async getEvents(): Promise<OperationalEvent[]> {
+    const response = await axios.get<OperationalEvent[]>(`${ROUTING_BASE}/graph/events`, {
+      timeout: 8000,
+    });
+    return response.data ?? [];
+  },
+
+  async getEdgeOverrides(): Promise<EdgeOverride[]> {
+    const response = await axios.get<EdgeOverride[]>(`${ROUTING_BASE}/graph/edge-overrides`, {
+      timeout: 8000,
+    });
+    return response.data ?? [];
   },
 };

@@ -34,7 +34,8 @@ export function PoiSelect({
         <option value="">Select a POI</option>
         {options.map((poi) => (
           <option key={poi.id} value={String(poi.id)}>
-            {poi.name} · Floor {poi.floor_id} · {poi.category}
+            {poi.label || poi.name}
+            {poi.isOutdoor ? ' · Outdoor' : ` · Floor ${poi.floor_id} · ${poi.category}`}
           </option>
         ))}
       </select>

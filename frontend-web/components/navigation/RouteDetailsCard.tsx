@@ -6,9 +6,17 @@ import { Surface } from '@/components/ui/Surface';
 
 interface RouteDetailsCardProps {
   route: IndoorRouteResponse | null;
+  routeAffected?: boolean;
+  onRecalculate?: () => void;
+  recalculating?: boolean;
 }
 
-export function RouteDetailsCard({ route }: RouteDetailsCardProps) {
+export function RouteDetailsCard({
+  route,
+  routeAffected = false,
+  onRecalculate,
+  recalculating = false,
+}: RouteDetailsCardProps) {
   if (!route) {
     return (
       <Surface className="border border-dashed border-gray-300 p-5 text-sm text-gray-500" elevation="none">
@@ -19,7 +27,30 @@ export function RouteDetailsCard({ route }: RouteDetailsCardProps) {
 
   return (
     <div className="space-y-4">
+      {routeAffected && (
+        <Surface className="border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800" elevation="none">
+          Current route may be affected by live conditions.
+        </Surface>
+      )}
+
       <Surface className="border border-gray-200 p-5" elevation="sm">
+        <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h3 className="text-lg font-semibold text-gray-900">Route Summary</h3>
+            <p className="text-sm text-gray-500">Latest route returned by the indoor routing backend.</p>
+          </div>
+          {onRecalculate && (
+            <button
+              type="button"
+              onClick={onRecalculate}
+              disabled={recalculating}
+              className="rounded-xl border border-gray-200 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {recalculating ? 'Recalculating...' : 'Recalculate Route'}
+            </button>
+          )}
+        </div>
+
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
           <div className="rounded-2xl bg-blue-50 p-4">
             <div className="mb-2 flex items-center gap-2 text-blue-700">

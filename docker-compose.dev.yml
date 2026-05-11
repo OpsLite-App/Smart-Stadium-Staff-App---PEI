@@ -35,7 +35,9 @@ services:
       start_period: 5s
 
   postgres_map:
-    image: postgres:15-alpine
+    build:
+      context: ./docker/postgres-map
+      dockerfile: Dockerfile
     container_name: postgres_map
     environment:
       POSTGRES_USER: postgres
@@ -45,6 +47,14 @@ services:
       - "5435:5432"
     volumes:
       - postgres_map_data:/var/lib/postgresql/data
+      - ./indoor_gis_backup.sql:/docker-entrypoint-initdb.d-data/indoor_gis_backup.sql:ro
+      - ./docker/postgres-map/load-indoor-gis.sh:/docker-entrypoint-initdb.d/20_load_indoor_gis.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d estadio_do_dragao -h localhost"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 10s
 
   postgres_chat:
     image: postgres:15-alpine
@@ -134,7 +144,8 @@ services:
       dockerfile: Dockerfile
     container_name: map-service
     depends_on:
-      - postgres_map
+      postgres_map:
+        condition: service_healthy
     environment:
       DATABASE_URI: postgresql://postgres:postgres@postgres_map:5432/estadio_do_dragao
     ports:
@@ -146,14 +157,14 @@ services:
       dockerfile: Dockerfile
     container_name: routing-service
     depends_on:
-      - map-service
-      - postgres_map
+      map-service:
+        condition: service_started
+      postgres_map:
+        condition: service_healthy
     environment:
       MAP_SERVICE_URL: http://map-service:8000
       DATABASE_URI: postgresql://postgres:postgres@postgres_map:5432/estadio_do_dragao
-      PGR_DATABASE_URI: postgresql://postgres:postgres@host.docker.internal:5432/indoor_map
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
+      PGR_DATABASE_URI: postgresql://postgres:postgres@postgres_map:5432/estadio_do_dragao?options=-csearch_path%3Dindoor,public
     ports:
       - "8002:8002"
 

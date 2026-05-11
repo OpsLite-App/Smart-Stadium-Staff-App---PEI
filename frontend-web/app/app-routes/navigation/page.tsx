@@ -6,22 +6,49 @@ import { AppButton } from '@/components/ui/AppButton';
 import { Surface } from '@/components/ui/Surface';
 import { PoiSelect } from '@/components/navigation/PoiSelect';
 import { RouteDetailsCard } from '@/components/navigation/RouteDetailsCard';
+import { AlertsPanel } from '@/components/navigation/AlertsPanel';
 import {
+  type EdgeOverride,
   indoorRoutingService,
   type GraphStatus,
   type IndoorRouteResponse,
+  type OperationalEvent,
   type Poi,
 } from '@/lib/services/indoorRouting';
+
+const OUTDOOR_OPTIONS: Poi[] = [
+  {
+    id: 1001,
+    label: 'Outside Entrance',
+    name: 'Outside Entrance',
+    node_id: 1001,
+    floor_id: 0,
+    category: 'outdoor',
+    isOutdoor: true,
+  },
+  {
+    id: 1003,
+    label: 'Parking Area',
+    name: 'Parking Area',
+    node_id: 1003,
+    floor_id: 0,
+    category: 'outdoor',
+    isOutdoor: true,
+  },
+];
 
 export default function NavigationPage() {
   const [pois, setPois] = useState<Poi[]>([]);
   const [graphStatus, setGraphStatus] = useState<GraphStatus | null>(null);
+  const [events, setEvents] = useState<OperationalEvent[]>([]);
+  const [edgeOverrides, setEdgeOverrides] = useState<EdgeOverride[]>([]);
   const [startPoiId, setStartPoiId] = useState('');
   const [destinationPoiId, setDestinationPoiId] = useState('');
   const [route, setRoute] = useState<IndoorRouteResponse | null>(null);
   const [loadingPois, setLoadingPois] = useState(true);
   const [loadingRoute, setLoadingRoute] = useState(false);
   const [refreshingStatus, setRefreshingStatus] = useState(false);
+  const [loadingLiveData, setLoadingLiveData] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const selectedStart = useMemo(
@@ -34,23 +61,51 @@ export default function NavigationPage() {
     [pois, destinationPoiId]
   );
 
+  const routingOptions = useMemo(
+    () => [
+      ...OUTDOOR_OPTIONS,
+      ...pois.map((poi) => ({
+        ...poi,
+        label: poi.name,
+        isOutdoor: false,
+      })),
+    ],
+    [pois]
+  );
+
+  const selectedStartOption = useMemo(
+    () => routingOptions.find((option) => String(option.id) === startPoiId) ?? null,
+    [routingOptions, startPoiId]
+  );
+
+  const selectedDestinationOption = useMemo(
+    () => routingOptions.find((option) => String(option.id) === destinationPoiId) ?? null,
+    [routingOptions, destinationPoiId]
+  );
+
   useEffect(() => {
     const loadInitialData = async () => {
       try {
         setLoadingPois(true);
+        setLoadingLiveData(true);
         setError(null);
 
-        const [poiData, status] = await Promise.all([
+        const [poiData, status, liveEvents, overrides] = await Promise.all([
           indoorRoutingService.getPois(),
           indoorRoutingService.getGraphStatus().catch(() => null),
+          indoorRoutingService.getEvents().catch(() => []),
+          indoorRoutingService.getEdgeOverrides().catch(() => []),
         ]);
 
         setPois(poiData);
         setGraphStatus(status);
+        setEvents(liveEvents);
+        setEdgeOverrides(overrides);
       } catch {
         setError('Unable to load indoor POIs right now.');
       } finally {
         setLoadingPois(false);
+        setLoadingLiveData(false);
       }
     };
 
@@ -60,14 +115,20 @@ export default function NavigationPage() {
   const handleRefreshStatus = async () => {
     try {
       setRefreshingStatus(true);
-      const status = await indoorRoutingService.getGraphStatus();
+      const [status, liveEvents, overrides] = await Promise.all([
+        indoorRoutingService.getGraphStatus(),
+        indoorRoutingService.getEvents().catch(() => []),
+        indoorRoutingService.getEdgeOverrides().catch(() => []),
+      ]);
       setGraphStatus(status);
+      setEvents(liveEvents);
+      setEdgeOverrides(overrides);
     } finally {
       setRefreshingStatus(false);
     }
   };
 
-  const handleCalculateRoute = async () => {
+  const handleCalculateRoute = async (recalculate = false) => {
     if (!startPoiId || !destinationPoiId) {
       setError('Please select both a start POI and a destination POI.');
       return;
@@ -82,15 +143,32 @@ export default function NavigationPage() {
       setLoadingRoute(true);
       setError(null);
 
-      const response = await indoorRoutingService.getRouteByPoi(
-        Number(startPoiId),
-        Number(destinationPoiId)
-      );
+      if (recalculate) {
+        await handleRefreshStatus();
+      }
+
+      if (!selectedStartOption || !selectedDestinationOption) {
+        throw new Error('Missing routing options');
+      }
+
+      const startIsOutdoor = selectedStartOption.isOutdoor || selectedStartOption.node_id >= 1000;
+      const destinationIsOutdoor =
+        selectedDestinationOption.isOutdoor || selectedDestinationOption.node_id >= 1000;
+
+      const response = startIsOutdoor || destinationIsOutdoor
+        ? await indoorRoutingService.getCombinedRoute(
+            selectedStartOption.node_id,
+            selectedDestinationOption.node_id
+          )
+        : await indoorRoutingService.getRouteByPoi(
+            Number(startPoiId),
+            Number(destinationPoiId)
+          );
 
       setRoute(response);
       await handleRefreshStatus();
     } catch {
-      setError('Could not calculate the indoor route. Please try again.');
+      setError('Unable to calculate route.');
       setRoute(null);
     } finally {
       setLoadingRoute(false);
@@ -102,6 +180,26 @@ export default function NavigationPage() {
     degraded: 'bg-amber-50 text-amber-700 border-amber-200',
     critical: 'bg-red-50 text-red-700 border-red-200',
   };
+
+  const blockedOverrides = useMemo(
+    () => edgeOverrides.filter((override) => override.is_blocked && override.is_active),
+    [edgeOverrides]
+  );
+
+  const activeEvents = useMemo(
+    () => events.filter((event) => event.is_active && event.status === 'active'),
+    [events]
+  );
+
+  const routeAffected = Boolean(
+    route &&
+      (
+        graphStatus?.status === 'degraded' ||
+        graphStatus?.status === 'critical' ||
+        blockedOverrides.length > 0 ||
+        activeEvents.length > 0
+      )
+  );
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
@@ -120,6 +218,9 @@ export default function NavigationPage() {
               <p className="font-semibold capitalize">{graphStatus.status}</p>
               <p className="mt-1 text-xs opacity-90">
                 {graphStatus.blocked_edges} blocked edges · {graphStatus.active_alerts} active alerts
+              </p>
+              <p className="mt-1 text-xs opacity-90">
+                {graphStatus.cost_overrides} cost overrides
               </p>
             </div>
           )}
@@ -156,7 +257,7 @@ export default function NavigationPage() {
             label="Start POI"
             value={startPoiId}
             onChange={setStartPoiId}
-            options={pois}
+            options={routingOptions}
             disabled={loadingPois}
           />
           <PoiSelect
@@ -164,20 +265,20 @@ export default function NavigationPage() {
             label="Destination POI"
             value={destinationPoiId}
             onChange={setDestinationPoiId}
-            options={pois}
+            options={routingOptions}
             disabled={loadingPois}
           />
         </div>
 
         <div className="mt-4 flex flex-wrap gap-3 text-xs text-gray-500">
-          {selectedStart && (
+          {selectedStartOption && (
             <span className="rounded-full bg-gray-100 px-3 py-1">
-              Start node: {selectedStart.node_id}
+              Start node: {selectedStartOption.node_id}
             </span>
           )}
-          {selectedDestination && (
+          {selectedDestinationOption && (
             <span className="rounded-full bg-gray-100 px-3 py-1">
-              Destination node: {selectedDestination.node_id}
+              Destination node: {selectedDestinationOption.node_id}
             </span>
           )}
         </div>
@@ -195,7 +296,61 @@ export default function NavigationPage() {
         </div>
       </Surface>
 
-      <RouteDetailsCard route={route} />
+      <RouteDetailsCard
+        route={route}
+        routeAffected={routeAffected}
+        onRecalculate={() => void handleCalculateRoute(true)}
+        recalculating={loadingRoute}
+      />
+
+      <div className="grid grid-cols-1 gap-6 xl:grid-cols-[1.3fr_0.9fr]">
+        <Surface className="border border-gray-200 p-5" elevation="sm">
+          <div className="mb-4">
+            <h3 className="text-lg font-semibold text-gray-900">Live Graph Conditions</h3>
+            <p className="text-sm text-gray-500">Current path availability and route-impacting overrides.</p>
+          </div>
+
+          {blockedOverrides.length > 0 ? (
+            <div className="space-y-4">
+              <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                Some paths are currently blocked. Routes may be affected.
+              </div>
+
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                <div className="rounded-2xl bg-gray-50 p-4">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Blocked edges</p>
+                  <p className="mt-2 text-2xl font-semibold text-gray-900">{blockedOverrides.length}</p>
+                </div>
+                <div className="rounded-2xl bg-gray-50 p-4">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Active alerts</p>
+                  <p className="mt-2 text-2xl font-semibold text-gray-900">{activeEvents.length}</p>
+                </div>
+                <div className="rounded-2xl bg-gray-50 p-4">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Status</p>
+                  <p className="mt-2 text-2xl font-semibold capitalize text-gray-900">{graphStatus?.status ?? 'unknown'}</p>
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                {blockedOverrides.map((override) => (
+                  <div key={override.id} className="rounded-2xl border border-gray-200 bg-gray-50 p-4">
+                    <p className="font-medium text-gray-900">Blocked path on edge {override.edge_id}</p>
+                    <p className="mt-1 text-sm text-gray-500">
+                      {override.reason || 'No reason provided'} · Severity {override.severity.toFixed(1)}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <div className="rounded-2xl border border-dashed border-gray-300 p-4 text-sm text-gray-500">
+              {loadingLiveData ? 'Loading blocked paths...' : 'No blocked paths right now.'}
+            </div>
+          )}
+        </Surface>
+
+        <AlertsPanel events={activeEvents} loading={loadingLiveData} />
+      </div>
 
       <Surface className="border border-gray-200 p-5" elevation="sm">
         <div className="mb-4 flex items-center gap-3">
