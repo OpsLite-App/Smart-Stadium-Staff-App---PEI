@@ -68,6 +68,42 @@ services:
     volumes:
       - postgres_chat_data:/var/lib/postgresql/data
 
+  postgres_emergency:
+    image: postgres:15-alpine
+    container_name: postgres_emergency
+    environment:
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: emergency
+    ports:
+      - "5438:5432"
+    volumes:
+      - postgres_emergency_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U admin -d emergency -h localhost"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 5s
+
+  postgres_maintenance:
+    image: postgres:15-alpine
+    container_name: postgres_maintenance
+    environment:
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: maintenance
+    ports:
+      - "5439:5432"
+    volumes:
+      - postgres_maintenance_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U admin -d maintenance -h localhost"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 5s
+
 
   auth-service:
     build:
@@ -166,15 +202,21 @@ services:
       dockerfile: Dockerfile
     container_name: maintenance-service
     depends_on:
-      - routing-service
-      - map-service
-      - mosquitto
+      postgres_maintenance:
+        condition: service_healthy
+      routing-service:
+        condition: service_started
+      map-service:
+        condition: service_started
+      mosquitto:
+        condition: service_healthy
     environment:
       ROUTING_SERVICE_URL: http://routing-service:8002
       MAP_SERVICE_URL: http://map-service:8000
       MQTT_HOST: mosquitto
       MQTT_BROKER: mosquitto
       MQTT_PORT: "1883"
+      DATABASE_URL: postgresql://admin:password@postgres_maintenance:5432/maintenance
     ports:
       - "8007:8007"
 
@@ -184,10 +226,16 @@ services:
       dockerfile: Dockerfile
     container_name: emergency-service
     depends_on:
-      - routing-service
-      - map-service
-      - mosquitto
-      - positioning-service
+      postgres_emergency:
+        condition: service_healthy
+      routing-service:
+        condition: service_started
+      map-service:
+        condition: service_started
+      mosquitto:
+        condition: service_healthy
+      positioning-service:
+        condition: service_started
     environment:
       ROUTING_SERVICE_URL: http://routing-service:8002
       MAP_SERVICE_URL: http://map-service:8000
@@ -195,6 +243,7 @@ services:
       MQTT_HOST: mosquitto
       MQTT_BROKER: mosquitto
       MQTT_PORT: "1883"
+      DATABASE_URL: postgresql://admin:password@postgres_emergency:5432/emergency
     ports:
       - "8006:8006"
 
@@ -282,3 +331,5 @@ volumes:
   postgres_map_data:
   postgres_chat_data:
   postgres_positioning_data:
+  postgres_emergency_data:
+  postgres_maintenance_data:

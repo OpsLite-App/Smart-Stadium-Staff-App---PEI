@@ -23,3 +23,4 @@ venv/
 backend/auth-service/target/
 ws-gateway/target/
 
+STM32N6-GettingStarted-ObjectDetection-main

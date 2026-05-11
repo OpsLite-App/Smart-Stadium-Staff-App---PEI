@@ -116,6 +116,18 @@ class ZIPCounter:
             return random.randint(10, 200)
         return self.count_from_frame(frame)
 
+    def count_from_camera(self, camera_index: int = 0) -> int:
+        """Captura um frame da câmara do PC e conta pessoas."""
+        cap = cv2.VideoCapture(camera_index)
+        if not cap.isOpened():
+            print(f"⚠️  Câmara {camera_index} não disponível")
+            return random.randint(10, 200)
+        ret, frame = cap.read()
+        cap.release()
+        if not ret:
+            return random.randint(10, 200)
+        return self.count_from_frame(frame)
+
     def get_count(self, area_node_id: str = None) -> int:
         """
         Retorna contagem de pessoas para uma zona do estádio.
@@ -132,8 +144,17 @@ class ZIPCounter:
         # Ex: camera_map = {"gate_A": "rtsp://...", "zone_1": "rtsp://..."}
 
         if self.session is None:
-            # Modelo não carregado — fallback aleatório
             return random.randint(10, 200)
+
+        # Tenta câmara do PC primeiro
+        cap = cv2.VideoCapture(0)
+        camera_available = cap.isOpened()
+        cap.release()
+
+        if camera_available:
+            count = self.count_from_camera(0)
+            print(f"   📷 ZIP [{area_node_id}]: {count} pessoas (câmara PC)")
+            return count
 
         if self.fallback_images:
             # Usa imagem aleatória da pasta resources/
