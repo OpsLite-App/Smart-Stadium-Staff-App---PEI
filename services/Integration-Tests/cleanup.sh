@@ -19,7 +19,7 @@ echo ""
 echo -e "${YELLOW}[1/3]${NC} Stopping and removing Docker containers/volumes..."
 if docker info > /dev/null 2>&1; then
     cd "$SCRIPT_DIR"
-    docker-compose -f docker-compose.test.yml down -v
+    docker compose -f docker-compose.test.yml down -v
     echo -e "${GREEN}✓ Docker services stopped and volumes removed${NC}"
 else
     echo -e "${RED}⚠ Docker is not running, skipping container cleanup${NC}"

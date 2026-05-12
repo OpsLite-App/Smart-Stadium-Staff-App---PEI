@@ -67,7 +67,7 @@ if [ "$SKIP_DOCKER" = false ]; then
     cd "$SCRIPT_DIR"
     
     # Start services
-    docker-compose -f docker-compose.test.yml up -d
+    docker compose -f docker-compose.test.yml up -d
     
     if [ "$START_ONLY" = false ]; then
         echo ""
