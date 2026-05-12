@@ -60,7 +60,7 @@ done
 if [ "$all_running" = false ]; then
     echo ""
     echo -e "${YELLOW}Some services are not running. Start them with:${NC}"
-    echo "  docker-compose up -d"
+    echo "  docker compose up -d"
     echo ""
     read -p "Continue anyway? (y/n) " -n 1 -r
     echo
