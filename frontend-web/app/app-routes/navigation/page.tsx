@@ -7,11 +7,13 @@ import { Surface } from '@/components/ui/Surface';
 import { PoiSelect } from '@/components/navigation/PoiSelect';
 import { RouteDetailsCard } from '@/components/navigation/RouteDetailsCard';
 import { AlertsPanel } from '@/components/navigation/AlertsPanel';
+import { IndoorGisMap } from '@/components/map/IndoorGisMap';
 import {
   type EdgeOverride,
   indoorRoutingService,
   type GraphStatus,
   type IndoorRouteResponse,
+  type IndoorRouteGeoJsonResponse,
   type OperationalEvent,
   type Poi,
 } from '@/lib/services/indoorRouting';
@@ -45,28 +47,20 @@ export default function NavigationPage() {
   const [startPoiId, setStartPoiId] = useState('');
   const [destinationPoiId, setDestinationPoiId] = useState('');
   const [route, setRoute] = useState<IndoorRouteResponse | null>(null);
+  const [routeGeoJson, setRouteGeoJson] = useState<IndoorRouteGeoJsonResponse | null>(null);
+  const [selectedRouteFloor, setSelectedRouteFloor] = useState(1);
   const [loadingPois, setLoadingPois] = useState(true);
   const [loadingRoute, setLoadingRoute] = useState(false);
   const [refreshingStatus, setRefreshingStatus] = useState(false);
   const [loadingLiveData, setLoadingLiveData] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const selectedStart = useMemo(
-    () => pois.find((poi) => String(poi.id) === startPoiId) ?? null,
-    [pois, startPoiId]
-  );
-
-  const selectedDestination = useMemo(
-    () => pois.find((poi) => String(poi.id) === destinationPoiId) ?? null,
-    [pois, destinationPoiId]
-  );
-
   const routingOptions = useMemo(
     () => [
       ...OUTDOOR_OPTIONS,
       ...pois.map((poi) => ({
         ...poi,
-        label: poi.name,
+        label: poi.room_name ? `${poi.room_name} · ${poi.name}` : poi.name,
         isOutdoor: false,
       })),
     ],
@@ -155,21 +149,32 @@ export default function NavigationPage() {
       const destinationIsOutdoor =
         selectedDestinationOption.isOutdoor || selectedDestinationOption.node_id >= 1000;
 
-      const response = startIsOutdoor || destinationIsOutdoor
-        ? await indoorRoutingService.getCombinedRoute(
+      if (startIsOutdoor || destinationIsOutdoor) {
+        const response = await indoorRoutingService.getCombinedRoute(
             selectedStartOption.node_id,
             selectedDestinationOption.node_id
-          )
-        : await indoorRoutingService.getRouteByPoi(
-            Number(startPoiId),
-            Number(destinationPoiId)
-          );
+        );
 
-      setRoute(response);
+        setRoute(response);
+        setRouteGeoJson(null);
+      } else {
+        const [response, geoJsonResponse] = await Promise.all([
+          indoorRoutingService.getRouteByPoi(Number(startPoiId), Number(destinationPoiId)),
+          indoorRoutingService.getRouteGeoJsonByPoi(Number(startPoiId), Number(destinationPoiId)),
+        ]);
+
+        setRoute(response);
+        setRouteGeoJson(geoJsonResponse);
+        if (geoJsonResponse.summary.floors.length > 0) {
+          setSelectedRouteFloor(geoJsonResponse.summary.floors[0]);
+        }
+      }
+
       await handleRefreshStatus();
     } catch {
       setError('Unable to calculate route.');
       setRoute(null);
+      setRouteGeoJson(null);
     } finally {
       setLoadingRoute(false);
     }
@@ -303,6 +308,42 @@ export default function NavigationPage() {
         recalculating={loadingRoute}
       />
 
+      <Surface className="border border-gray-200 p-5" elevation="sm">
+        <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <div>
+            <h3 className="text-lg font-semibold text-gray-900">Route Map</h3>
+            <p className="text-sm text-gray-500">
+              {routeGeoJson
+                ? `${routeGeoJson.summary.distance}m · ${routeGeoJson.summary.floors.length} floor segment(s) · ${routeGeoJson.summary.impacted_edge_count} impacted edge(s)`
+                : 'Calculate an indoor POI route to draw it over the GIS map.'}
+            </p>
+          </div>
+
+          {routeGeoJson && (
+            <div className="flex rounded-2xl bg-gray-100 p-1 text-sm">
+              {routeGeoJson.summary.floors.map((floor) => (
+                <button
+                  key={floor}
+                  type="button"
+                  onClick={() => setSelectedRouteFloor(floor)}
+                  className={`rounded-xl px-3 py-2 font-medium transition ${
+                    selectedRouteFloor === floor ? 'bg-white text-gray-950 shadow-sm' : 'text-gray-500 hover:text-gray-900'
+                  }`}
+                >
+                  Floor {floor}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <IndoorGisMap
+          floorId={selectedRouteFloor}
+          routeGeoJson={routeGeoJson?.route ?? null}
+          routeAffected={routeAffected}
+        />
+      </Surface>
+
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-[1.3fr_0.9fr]">
         <Surface className="border border-gray-200 p-5" elevation="sm">
           <div className="mb-4">
@@ -368,8 +409,11 @@ export default function NavigationPage() {
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
           {pois.map((poi) => (
             <div key={poi.id} className="rounded-2xl border border-gray-200 bg-gray-50 p-4">
-              <p className="font-medium text-gray-900">{poi.name}</p>
-              <p className="mt-1 text-sm text-gray-500">Category: {poi.category}</p>
+              <p className="font-medium text-gray-900">{poi.room_name || poi.name}</p>
+              {poi.room_name && poi.room_name !== poi.name ? (
+                <p className="mt-1 text-sm text-gray-500">POI: {poi.name}</p>
+              ) : null}
+              <p className="mt-1 text-sm text-gray-500">Category: {poi.room_type || poi.category}</p>
               <p className="mt-1 text-sm text-gray-500">Floor {poi.floor_id} · Node {poi.node_id}</p>
             </div>
           ))}

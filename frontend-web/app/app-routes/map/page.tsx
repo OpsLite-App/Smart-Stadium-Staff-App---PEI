@@ -12,6 +12,7 @@ import {
   Waves,
 } from 'lucide-react';
 import { AlertsPanel } from '@/components/navigation/AlertsPanel';
+import { IndoorGisMap } from '@/components/map/IndoorGisMap';
 import { Badge } from '@/components/ui/Badge';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { Surface } from '@/components/ui/Surface';
@@ -33,6 +34,7 @@ interface ResolvedZone extends FloorZone {
 }
 
 const FLOOR_OPTIONS = [
+  { value: '0', label: 'Floor 0' },
   { value: '1', label: 'Floor 1' },
   { value: '2', label: 'Floor 2' },
 ];
@@ -41,12 +43,6 @@ const levelStyles: Record<ZoneLevel, string> = {
   green: 'border-emerald-200 bg-emerald-50 text-emerald-800',
   yellow: 'border-amber-200 bg-amber-50 text-amber-800',
   red: 'border-red-200 bg-red-50 text-red-800',
-};
-
-const zoneStatusStyles: Record<ZoneStatus, string> = {
-  normal: 'border-emerald-200 bg-emerald-50/95 text-emerald-800 shadow-emerald-100',
-  warning: 'border-amber-200 bg-amber-50/95 text-amber-800 shadow-amber-100',
-  critical: 'border-red-200 bg-red-50/95 text-red-800 shadow-red-100',
 };
 
 function zoneStatusToLevel(status: ZoneStatus): ZoneLevel {
@@ -239,7 +235,7 @@ export default function MapPage() {
           (event.edge_id != null && zoneEdgeIds.has(event.edge_id))
       );
       const zoneBlockedOverrides = blockedOverrides.filter((override) => zoneEdgeIds.has(override.edge_id));
-      const routeActive = zone.nodeIds.some((nodeId) => activeRouteNodeIds.has(nodeId));
+      const routeActive = zone.nodeIds.some((nodeId) => activeRouteNodeIds.has(String(nodeId)));
 
       return {
         ...zone,
@@ -307,7 +303,7 @@ export default function MapPage() {
                   <div>
                     <h2 className="text-xl font-semibold text-gray-900">Building Floors</h2>
                     <p className="text-sm text-gray-500">
-                      Structured indoor zones with relative positioning, ready for future GIS upgrades.
+                      Real indoor GIS layers from QGIS/PostGIS with operational fallback.
                     </p>
                   </div>
                 </div>
@@ -347,50 +343,7 @@ export default function MapPage() {
                 </Badge>
               </div>
 
-              <div className="relative overflow-hidden rounded-[1.75rem] border border-slate-200 bg-[linear-gradient(160deg,#ffffff,#f8fafc)] p-4 md:p-6">
-                <div className="pointer-events-none absolute inset-0 opacity-70">
-                  <div className="absolute left-[8%] top-[18%] h-[32%] w-[28%] rounded-[2rem] border border-slate-200/80 bg-white/70" />
-                  <div className="absolute left-[38%] top-[12%] h-[52%] w-[24%] rounded-[2rem] border border-slate-200/80 bg-white/70" />
-                  <div className="absolute left-[67%] top-[20%] h-[30%] w-[22%] rounded-[2rem] border border-slate-200/80 bg-white/70" />
-                  <div className="absolute left-[24%] top-[68%] h-[16%] w-[54%] rounded-[999px] border border-dashed border-slate-300/90 bg-slate-100/60" />
-                </div>
-
-                <div className="relative h-[24rem] rounded-[1.5rem] border border-dashed border-slate-300/80 bg-[radial-gradient(circle_at_top,#eff6ff,#f8fafc)]">
-                  {visibleZones.map((zone) => (
-                    <div
-                      key={zone.id}
-                      className="group absolute -translate-x-1/2 -translate-y-1/2"
-                      style={{ left: `${zone.x}%`, top: `${zone.y}%` }}
-                    >
-                      <div
-                        title={`${zone.name} - ${zone.description}`}
-                        className={`min-w-[9rem] rounded-2xl border px-3 py-2 shadow-lg transition-transform duration-200 group-hover:-translate-y-1 ${zoneStatusStyles[zone.status]} ${zone.routeActive ? 'ring-2 ring-blue-300 ring-offset-2' : ''}`}
-                      >
-                        <div className="flex items-center gap-2">
-                          <span
-                            className={`h-3.5 w-3.5 rounded-full ${
-                              zone.status === 'normal'
-                                ? 'bg-emerald-500'
-                                : zone.status === 'warning'
-                                  ? 'bg-amber-500'
-                                  : 'bg-red-500'
-                            }`}
-                          />
-                          <p className="text-xs font-semibold uppercase tracking-wide">
-                            {zone.name}
-                          </p>
-                        </div>
-                        <p className="mt-2 text-xs opacity-90">{zone.description}</p>
-                        {zone.routeActive && (
-                          <p className="mt-2 text-[11px] font-semibold uppercase tracking-wide text-blue-700">
-                            Active route
-                          </p>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
+              <IndoorGisMap floorId={Number(selectedFloor)} />
 
               <div className="mt-5 grid grid-cols-1 gap-4 md:grid-cols-3">
                 {visibleZones.map((zone) => (

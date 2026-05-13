@@ -11,6 +11,16 @@ interface PoiSelectProps {
   disabled?: boolean;
 }
 
+function formatPoiOption(poi: Poi): string {
+  if (poi.isOutdoor) return `${poi.label || poi.name} · Outdoor`;
+
+  const mappedRoomName = poi.room_name && poi.room_name !== poi.name ? `${poi.room_name} · ` : '';
+  const roomCode = poi.room_code ? ` (${poi.room_code})` : '';
+  const roomType = poi.room_type || poi.category;
+
+  return `${mappedRoomName}${poi.name}${roomCode} · Floor ${poi.floor_id} · ${roomType}`;
+}
+
 export function PoiSelect({
   id,
   label,
@@ -34,8 +44,7 @@ export function PoiSelect({
         <option value="">Select a POI</option>
         {options.map((poi) => (
           <option key={poi.id} value={String(poi.id)}>
-            {poi.label || poi.name}
-            {poi.isOutdoor ? ' · Outdoor' : ` · Floor ${poi.floor_id} · ${poi.category}`}
+            {formatPoiOption(poi)}
           </option>
         ))}
       </select>

@@ -3,7 +3,7 @@ ROUTING SERVICE - Main Application
 Only responsible for calculating routes, no emergency management
 """
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import Depends, FastAPI, Header, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from typing import Optional, List
 import httpx
@@ -12,6 +12,7 @@ import os
 
 from astar import Graph, HazardMap, hazard_aware_astar, find_nearest_node, multi_destination_route
 from api_handlers import RouteAPIHandler, HazardAPIHandler
+from gis import CameraStatusUpdate, GisLayerService
 from pgrouting import (
     PgRoutingService,
     EdgeOverrideCreate,
@@ -37,6 +38,7 @@ app.add_middleware(
 # ========== CONFIGURATION ==========
 
 MAP_SERVICE_URL = os.getenv("MAP_SERVICE_URL", "http://localhost:8000")
+AUTH_SERVICE_URL = os.getenv("AUTH_SERVICE_URL", "http://auth-service:8081")
 
 
 # ========== GLOBAL STATE ==========
@@ -48,6 +50,7 @@ HAZARD_MAP: Optional[HazardMap] = None
 route_handler: Optional[RouteAPIHandler] = None
 hazard_handler: Optional[HazardAPIHandler] = None
 pgrouting_service: Optional[PgRoutingService] = None
+gis_layer_service: Optional[GisLayerService] = None
 
 
 def get_pgrouting_service() -> PgRoutingService:
@@ -57,6 +60,43 @@ def get_pgrouting_service() -> PgRoutingService:
         pgrouting_service = PgRoutingService()
         pgrouting_service.initialize_runtime_tables()
     return pgrouting_service
+
+
+def get_gis_layer_service() -> GisLayerService:
+    """Lazily initialize GeoJSON access for indoor GIS layers."""
+    global gis_layer_service
+    if gis_layer_service is None:
+        gis_layer_service = GisLayerService()
+        gis_layer_service.initialize_camera_status_table()
+    return gis_layer_service
+
+
+async def require_supervisor_role(authorization: Optional[str] = Header(None)) -> dict:
+    """Validate bearer token and allow only supervisor/admin users."""
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Missing bearer token")
+
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            response = await client.post(
+                f"{AUTH_SERVICE_URL}/auth/validate",
+                headers={"Authorization": authorization},
+            )
+    except httpx.HTTPError as exc:
+        raise HTTPException(status_code=503, detail="Auth service unavailable") from exc
+
+    if response.status_code == 401:
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
+
+    if response.status_code >= 400:
+        raise HTTPException(status_code=503, detail="Auth service rejected validation")
+
+    claims = response.json()
+    role = str(claims.get("role", "")).lower()
+    if role not in {"supervisor", "admin"}:
+        raise HTTPException(status_code=403, detail="Supervisor role required")
+
+    return claims
 
 
 # ========== STARTUP ==========
@@ -274,6 +314,17 @@ async def get_pgrouting_route_by_poi(
     return service.get_route_by_poi(from_poi_id, to_poi_id)
 
 
+@app.get("/api/route/pgrouting/by-poi/geojson")
+async def get_pgrouting_route_by_poi_geojson(
+    from_poi_id: int = Query(..., description="Start POI ID"),
+    to_poi_id: int = Query(..., description="End POI ID"),
+    srid: int = Query(4326, description="Output SRID for GeoJSON coordinates"),
+):
+    """Calculate an indoor route between two POIs and return route edges as GeoJSON."""
+    service = get_pgrouting_service()
+    return service.get_route_geojson_by_poi(from_poi_id, to_poi_id, output_srid=srid)
+
+
 @app.get("/api/graph/status")
 async def get_graph_status():
     """Return a minimal graph status payload for frontend use."""
@@ -307,6 +358,91 @@ async def create_operational_event(payload: OperationalEventCreate):
     """Create a minimal operational monitoring event."""
     service = get_pgrouting_service()
     return service.create_operational_event(payload)
+
+
+# ========== GIS LAYER ENDPOINTS ==========
+
+@app.get("/api/gis/rooms")
+async def get_gis_rooms(
+    floor_id: Optional[int] = Query(None, description="Optional floor filter"),
+    srid: int = Query(4326, description="Output SRID for GeoJSON coordinates"),
+):
+    """Return room polygons as GeoJSON."""
+    service = get_gis_layer_service()
+    return service.get_feature_collection("rooms", floor_id=floor_id, output_srid=srid)
+
+
+@app.get("/api/gis/corridors")
+async def get_gis_corridors(
+    floor_id: Optional[int] = Query(None, description="Optional floor filter"),
+    srid: int = Query(4326, description="Output SRID for GeoJSON coordinates"),
+):
+    """Return corridor polygons as GeoJSON."""
+    service = get_gis_layer_service()
+    return service.get_feature_collection("corridors", floor_id=floor_id, output_srid=srid)
+
+
+@app.get("/api/gis/cameras")
+async def get_gis_cameras(
+    floor_id: Optional[int] = Query(None, description="Optional floor filter"),
+    srid: int = Query(4326, description="Output SRID for GeoJSON coordinates"),
+):
+    """Return camera point infrastructure as GeoJSON."""
+    service = get_gis_layer_service()
+    return service.get_feature_collection("cameras", floor_id=floor_id, output_srid=srid)
+
+
+@app.get("/api/gis/camera-coverage")
+async def get_gis_camera_coverage(
+    floor_id: Optional[int] = Query(None, description="Optional floor filter"),
+    srid: int = Query(4326, description="Output SRID for GeoJSON coordinates"),
+):
+    """Return camera coverage polygons as GeoJSON."""
+    service = get_gis_layer_service()
+    return service.get_feature_collection("camera_coverage", floor_id=floor_id, output_srid=srid)
+
+
+@app.get("/api/gis/camera-status")
+async def get_gis_camera_status(
+    floor_id: Optional[int] = Query(None, description="Optional floor filter"),
+):
+    """Return live camera monitoring state keyed by real camera IDs."""
+    service = get_gis_layer_service()
+    return service.get_camera_status(floor_id=floor_id)
+
+
+@app.get("/api/gis/impacted-edges")
+async def get_gis_impacted_edges(
+    floor_id: Optional[int] = Query(None, description="Optional floor filter"),
+    srid: int = Query(4326, description="Output SRID for GeoJSON coordinates"),
+):
+    """Return active graph edge overrides as GeoJSON."""
+    service = get_gis_layer_service()
+    return service.get_impacted_edges(floor_id=floor_id, output_srid=srid)
+
+
+@app.put("/api/gis/camera-status/{camera_id}")
+async def update_gis_camera_status(
+    camera_id: int,
+    payload: CameraStatusUpdate,
+    _: dict = Depends(require_supervisor_role),
+):
+    """Update persisted monitoring state for one camera."""
+    service = get_gis_layer_service()
+    try:
+        return service.update_camera_status(camera_id, payload)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.get("/api/gis/vertical-transitions")
+async def get_gis_vertical_transitions(
+    floor_id: Optional[int] = Query(None, description="Optional floor filter"),
+    srid: int = Query(4326, description="Output SRID for GeoJSON coordinates"),
+):
+    """Return stairs/lifts/floor transitions as GeoJSON."""
+    service = get_gis_layer_service()
+    return service.get_feature_collection("vertical_transitions", floor_id=floor_id, output_srid=srid)
 
 
 @app.post("/api/route/multi")

@@ -5,7 +5,7 @@ import { useAuthStore } from '@/lib/stores/useAuthStore';
 import { api } from '@/lib/services/api';
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const { user, logout, checkStorage } = useAuthStore();
+  const { logout, checkStorage } = useAuthStore();
 
   const validateToken = useCallback(async () => {
     const currentUser = useAuthStore.getState().user;
@@ -18,9 +18,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     console.log('A validar token para utilizador:', currentUser.email);
     
     try {
-      const isValid = await api.validateToken(currentUser.token);
+      const claims = await api.validateTokenClaims(currentUser.token);
       
-      if (isValid) {
+      if (claims) {
+        useAuthStore.getState().syncRoleFromServer(claims.role);
         console.log('Token válido - sessão mantida');
         
       } else {

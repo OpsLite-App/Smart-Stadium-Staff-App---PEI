@@ -20,12 +20,20 @@ class PgRoutingRouteResponse(BaseModel):
     instructions: List[str]
 
 
+class PgRoutingRouteGeoJsonResponse(BaseModel):
+    route: Dict
+    summary: Dict
+
+
 class PoiResponse(BaseModel):
     id: int
     name: str
     node_id: int
     floor_id: int
     category: str
+    room_code: Optional[str] = None
+    room_name: Optional[str] = None
+    room_type: Optional[str] = None
 
 
 class GraphStatusResponse(BaseModel):
@@ -146,6 +154,83 @@ class PgRoutingService:
         ORDER BY ordered_route.seq
     """
 
+    ROUTE_GEOJSON_SQL = """
+        WITH route AS (
+            SELECT *
+            FROM pgr_dijkstra(
+                '
+                SELECT
+                    e.edge_id AS id,
+                    e.from_node AS source,
+                    e.to_node AS target,
+                    e.cost * COALESCE(ao.cost_multiplier, 1.0) AS cost,
+                    e.cost * COALESCE(ao.cost_multiplier, 1.0) AS reverse_cost
+                FROM edges e
+                LEFT JOIN (
+                    SELECT
+                        edge_id,
+                        BOOL_OR(is_blocked) AS is_blocked,
+                        MAX(cost_multiplier) AS cost_multiplier
+                    FROM graph_edge_overrides
+                    WHERE is_active = TRUE
+                      AND (starts_at IS NULL OR starts_at <= NOW())
+                      AND (ends_at IS NULL OR ends_at >= NOW())
+                    GROUP BY edge_id
+                ) ao ON ao.edge_id = e.edge_id
+                WHERE COALESCE(ao.is_blocked, FALSE) = FALSE
+                ',
+                %s,
+                %s,
+                directed := false
+            )
+        ),
+        ordered_route AS (
+            SELECT
+                route.*,
+                LEAD(route.node) OVER (ORDER BY route.seq) AS next_node
+            FROM route
+        ),
+        active_overrides AS (
+            SELECT DISTINCT ON (edge_id)
+                edge_id,
+                is_blocked,
+                cost_multiplier,
+                reason,
+                source,
+                severity
+            FROM graph_edge_overrides
+            WHERE is_active = TRUE
+              AND (starts_at IS NULL OR starts_at <= NOW())
+              AND (ends_at IS NULL OR ends_at >= NOW())
+            ORDER BY edge_id, severity DESC, cost_multiplier DESC, updated_at DESC
+        )
+        SELECT
+            ordered_route.seq,
+            ordered_route.node AS current_node,
+            ordered_route.next_node,
+            e.edge_id,
+            e.from_node,
+            e.to_node,
+            e.length,
+            e.type,
+            e.floor_id,
+            current_nodes.floor_id AS current_floor_id,
+            next_nodes.floor_id AS next_floor_id,
+            COALESCE(ao.cost_multiplier, 1.0) AS cost_multiplier,
+            ao.reason AS override_reason,
+            ao.source AS override_source,
+            ao.severity AS override_severity,
+            ST_AsGeoJSON(ST_Transform(e.geom, %s)) AS geometry
+        FROM ordered_route
+        JOIN edges e ON ordered_route.edge = e.edge_id
+        LEFT JOIN nodes current_nodes ON ordered_route.node = current_nodes.node_id
+        LEFT JOIN nodes next_nodes ON ordered_route.next_node = next_nodes.node_id
+        LEFT JOIN active_overrides ao ON ao.edge_id = e.edge_id
+        WHERE ordered_route.edge <> -1
+          AND e.geom IS NOT NULL
+        ORDER BY ordered_route.seq
+    """
+
     COMBINED_ROUTE_SQL = """
         WITH route AS (
             SELECT *
@@ -222,9 +307,30 @@ class PgRoutingService:
     """
 
     POIS_SQL = """
-        SELECT id, name, node_id, floor_id, category
-        FROM pois
-        ORDER BY floor_id, id
+        SELECT
+            p.id,
+            p.name,
+            p.node_id,
+            p.floor_id,
+            p.category,
+            room.room_code,
+            room.room_name,
+            room.room_type
+        FROM pois p
+        LEFT JOIN nodes n ON n.node_id = p.node_id
+        LEFT JOIN LATERAL (
+            SELECT
+                r.room_code,
+                r.room_name,
+                r.room_type
+            FROM rooms_polygons r
+            WHERE r.floor_id = p.floor_id
+            ORDER BY
+                CASE WHEN n.geom IS NOT NULL AND ST_Contains(r.geom, n.geom) THEN 0 ELSE 1 END,
+                CASE WHEN n.geom IS NOT NULL THEN ST_Distance(n.geom, r.geom) ELSE 999999 END
+            LIMIT 1
+        ) room ON TRUE
+        ORDER BY p.floor_id, p.id
     """
 
     POI_BY_IDS_SQL = """
@@ -534,6 +640,58 @@ class PgRoutingService:
             to_node = int(poi_lookup[to_poi_id]["node_id"])
             return self._build_route_response(conn, from_node, to_node)
 
+    def get_route_geojson_by_poi(
+        self,
+        from_poi_id: int,
+        to_poi_id: int,
+        output_srid: int = 4326,
+    ) -> PgRoutingRouteGeoJsonResponse:
+        """Resolve POIs to graph nodes and return the route edges as GeoJSON."""
+        with get_connection() as conn:
+            poi_rows = conn.execute(self.POI_BY_IDS_SQL, ([from_poi_id, to_poi_id],)).fetchall()
+            poi_lookup = {int(row["id"]): row for row in poi_rows}
+
+            if from_poi_id not in poi_lookup:
+                raise HTTPException(status_code=404, detail=f"Start POI {from_poi_id} not found")
+            if to_poi_id not in poi_lookup:
+                raise HTTPException(status_code=404, detail=f"End POI {to_poi_id} not found")
+
+            from_node = int(poi_lookup[from_poi_id]["node_id"])
+            to_node = int(poi_lookup[to_poi_id]["node_id"])
+            node_metadata = self._fetch_node_metadata(conn, [from_node, to_node], self.NODE_SQL)
+            self._validate_nodes(from_node, to_node, node_metadata)
+
+            rows = conn.execute(self.ROUTE_GEOJSON_SQL, (from_node, to_node, output_srid)).fetchall()
+
+        if not rows:
+            raise HTTPException(status_code=404, detail="No path found between the selected POIs")
+
+        features = [self._route_row_to_feature(row) for row in rows]
+        floors = sorted({int(row["floor_id"]) for row in rows if row.get("floor_id") is not None})
+        distance = round(sum(float(row["length"] or 0.0) for row in rows), 2)
+        impacted_edges = [
+            int(row["edge_id"])
+            for row in rows
+            if float(row.get("cost_multiplier") or 1.0) > 1.0
+        ]
+
+        return PgRoutingRouteGeoJsonResponse(
+            route={
+                "type": "FeatureCollection",
+                "features": features,
+            },
+            summary={
+                "start_node": from_node,
+                "end_node": to_node,
+                "distance": distance,
+                "eta_seconds": calculate_eta(distance),
+                "floors": floors,
+                "uses_vertical_transition": len(floors) > 1,
+                "impacted_edge_count": len(impacted_edges),
+                "impacted_edges": impacted_edges,
+            },
+        )
+
     def list_pois(self) -> List[PoiResponse]:
         """Return indoor POIs from the real PostGIS database."""
         with get_connection() as conn:
@@ -546,6 +704,9 @@ class PgRoutingService:
                 node_id=int(row["node_id"]),
                 floor_id=int(row["floor_id"]),
                 category=row["category"],
+                room_code=row.get("room_code"),
+                room_name=row.get("room_name"),
+                room_type=row.get("room_type"),
             )
             for row in rows
         ]
@@ -708,6 +869,33 @@ class PgRoutingService:
             if path[-1] != next_node:
                 path.append(next_node)
         return path
+
+    def _route_row_to_feature(self, row: Dict) -> Dict:
+        geometry = row["geometry"]
+        if isinstance(geometry, str):
+            import json
+            geometry = json.loads(geometry)
+
+        return {
+            "type": "Feature",
+            "id": int(row["edge_id"]),
+            "geometry": geometry,
+            "properties": {
+                "edge_id": int(row["edge_id"]),
+                "seq": int(row["seq"]),
+                "from_node": int(row["from_node"]),
+                "to_node": int(row["to_node"]),
+                "floor_id": row["floor_id"],
+                "current_floor_id": row["current_floor_id"],
+                "next_floor_id": row["next_floor_id"],
+                "length": float(row["length"] or 0.0),
+                "type": row["type"],
+                "cost_multiplier": float(row["cost_multiplier"] or 1.0),
+                "override_reason": row["override_reason"],
+                "override_source": row["override_source"],
+                "override_severity": row["override_severity"],
+            },
+        }
 
     def _build_instructions(self, start_floor: int | None, route_rows: List[Dict]) -> List[str]:
         instructions: List[str] = []
