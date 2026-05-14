@@ -7,6 +7,26 @@ import { api } from '../services/api';
 
 type Role = 'Security' | 'Cleaning' | 'Supervisor' | 'Medical';
 
+function toRole(value: string | undefined): Role {
+  const normalized = String(value ?? '').toLowerCase();
+  if (normalized === 'cleaning') return 'Cleaning';
+  if (normalized === 'supervisor') return 'Supervisor';
+  if (normalized === 'medical') return 'Medical';
+  return 'Security';
+}
+
+function permissionsForRole(role: Role) {
+  return {
+    canViewHeatmap: role === 'Security' || role === 'Supervisor' || role === 'Medical',
+    canViewBins: role === 'Cleaning' || role === 'Supervisor',
+    canViewAlerts: true,
+    canCreateIncidents: role === 'Supervisor',
+    canManageIncidents: role === 'Supervisor',
+    canDispatchIncidents: role === 'Supervisor',
+    canResolveIncidents: role === 'Supervisor' || role === 'Medical',
+  };
+}
+
 interface User {
   email: string;
   role: Role;
@@ -34,6 +54,7 @@ interface AuthState {
   checkStorage: () => void;
   setHydrated: () => void;
   clearError: () => void;
+  syncRoleFromServer: (role: string) => void;
 }
 
 export const useAuthStore = create<AuthState>()(
@@ -46,6 +67,20 @@ export const useAuthStore = create<AuthState>()(
 
       clearError: () => set({ error: null }),
 
+      syncRoleFromServer: (role) => {
+        const serverRole = toRole(role);
+        const currentUser = get().user;
+        if (!currentUser || currentUser.role === serverRole) return;
+
+        set({
+          user: {
+            ...currentUser,
+            role: serverRole,
+            permissions: permissionsForRole(serverRole),
+          },
+        });
+      },
+
       setHydrated: () => {
         set({ hydrated: true });
         const state = get();
@@ -57,32 +92,25 @@ export const useAuthStore = create<AuthState>()(
 
         try {
           const data = await api.login(email, password, role);
+          const serverRole = toRole(data.role);
 
           const userData = {
             email,
-            role,
+            role: serverRole,
             token: data.token,
             id: data.user_id,
-            permissions: {
-              canViewHeatmap: role === 'Security' || role === 'Supervisor' || role === 'Medical',
-              canViewBins: role === 'Cleaning' || role === 'Supervisor',
-              canViewAlerts: true,
-              canCreateIncidents: role === 'Supervisor',
-              canManageIncidents: role === 'Supervisor',
-              canDispatchIncidents: role === 'Supervisor',
-              canResolveIncidents: role === 'Supervisor' || role === 'Medical',
-            },
+            permissions: permissionsForRole(serverRole),
           };
 
           set({ user: userData, isLoading: false });
 
           // Register cleaning staff in Maintenance Service for task assignment
-          if (role === 'Cleaning') {
-            void api.registerStaffForMaintenance(String(data.user_id), email, role);
+          if (serverRole === 'Cleaning') {
+            void api.registerStaffForMaintenance(String(data.user_id), email, serverRole);
           }
 
-          if (role === 'Medical') {
-            void api.registerStaffForMaintenance(String(data.user_id), email, role);
+          if (serverRole === 'Medical') {
+            void api.registerStaffForMaintenance(String(data.user_id), email, serverRole);
           }
 
           return true;

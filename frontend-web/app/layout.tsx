@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import "leaflet/dist/leaflet.css";
 import "./globals.css";
 import { AuthProvider } from "@/components/providers/AuthProvider";
 import { I18nProvider } from "@/components/providers/I18nProvider";

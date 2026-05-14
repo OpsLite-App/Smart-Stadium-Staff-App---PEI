@@ -1,4 +1,4 @@
-export type FloorId = '1' | '2';
+export type FloorId = '0' | '1' | '2';
 
 export interface FloorZone {
   id: string;
@@ -16,6 +16,10 @@ export interface GraphEdgeRef {
 }
 
 export const FLOOR_ZONES: Record<FloorId, FloorZone[]> = {
+  '0': [
+    { id: 'f0-a', floor: '0', name: 'Ground Corridor', x: 34, y: 42, nodeIds: [] },
+    { id: 'f0-b', floor: '0', name: 'Entry Monitoring', x: 62, y: 56, nodeIds: [] },
+  ],
   '1': [
     { id: 'f1-a', floor: '1', name: 'Corridor A', x: 20, y: 28, nodeIds: [50, 51, 52] },
     { id: 'f1-b', floor: '1', name: 'Central Hall', x: 48, y: 44, nodeIds: [53, 58, 6] },

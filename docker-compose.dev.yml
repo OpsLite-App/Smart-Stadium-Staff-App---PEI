@@ -49,6 +49,8 @@ services:
       - postgres_map_data:/var/lib/postgresql/data
       - ./indoor_gis_backup.sql:/docker-entrypoint-initdb.d-data/indoor_gis_backup.sql:ro
       - ./docker/postgres-map/load-indoor-gis.sh:/docker-entrypoint-initdb.d/20_load_indoor_gis.sh:ro
+      - ./docker/postgres-map/21_floor0_camera_coverage.sql:/docker-entrypoint-initdb.d/21_floor0_camera_coverage.sql:ro
+      - ./docker/postgres-map/22_camera_status.sql:/docker-entrypoint-initdb.d/22_camera_status.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres -d estadio_do_dragao -h localhost"]
       interval: 5s
@@ -148,6 +150,7 @@ services:
         condition: service_healthy
     environment:
       DATABASE_URI: postgresql://postgres:postgres@postgres_map:5432/estadio_do_dragao
+      POSTGRES_USER: postgres
     ports:
       - "8001:8000"
 
@@ -163,8 +166,10 @@ services:
         condition: service_healthy
     environment:
       MAP_SERVICE_URL: http://map-service:8000
+      AUTH_SERVICE_URL: http://auth-service:8081
       DATABASE_URI: postgresql://postgres:postgres@postgres_map:5432/estadio_do_dragao
       PGR_DATABASE_URI: postgresql://postgres:postgres@postgres_map:5432/estadio_do_dragao?options=-csearch_path%3Dindoor,public
+      MAP_SERVICE_WAIT_ATTEMPTS: "3"
     ports:
       - "8002:8002"
 

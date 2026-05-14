@@ -76,6 +76,29 @@ body {
   border: none;
 }
 
+.gis-camera-marker,
+.gis-transition-marker {
+  background: transparent;
+  border: 0;
+}
+
+.gis-marker-dot {
+  display: block;
+  height: 18px;
+  width: 18px;
+  border: 2px solid #ffffff;
+  border-radius: 999px;
+  box-shadow: 0 8px 16px rgb(15 23 42 / 0.22);
+}
+
+.gis-marker-dot-camera {
+  background: #f97316;
+}
+
+.gis-marker-dot-transition {
+  background: #2563eb;
+}
+
 /* High contrast mode */
 .high-contrast {
   filter: contrast(1.5);

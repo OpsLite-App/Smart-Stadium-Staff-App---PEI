@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { ROUTING_BASE } from '@/lib/services/api';
+import type { GisFeatureCollection, RouteEdgeProperties } from '@/lib/services/gisApi';
 
 export interface Poi {
   id: number;
@@ -8,6 +9,9 @@ export interface Poi {
   node_id: number;
   floor_id: number;
   category: string;
+  room_code?: string | null;
+  room_name?: string | null;
+  room_type?: string | null;
   isOutdoor?: boolean;
 }
 
@@ -18,6 +22,20 @@ export interface IndoorRouteResponse {
   distance: number;
   eta_seconds: number;
   instructions: string[];
+}
+
+export interface IndoorRouteGeoJsonResponse {
+  route: GisFeatureCollection<RouteEdgeProperties>;
+  summary: {
+    start_node: number;
+    end_node: number;
+    distance: number;
+    eta_seconds: number;
+    floors: number[];
+    uses_vertical_transition: boolean;
+    impacted_edge_count: number;
+    impacted_edges: number[];
+  };
 }
 
 export interface GraphStatus {
@@ -72,6 +90,17 @@ export const indoorRoutingService = {
 
   async getRouteByPoi(fromPoiId: number, toPoiId: number): Promise<IndoorRouteResponse> {
     const response = await axios.get<IndoorRouteResponse>(`${ROUTING_BASE}/route/pgrouting/by-poi`, {
+      params: {
+        from_poi_id: fromPoiId,
+        to_poi_id: toPoiId,
+      },
+      timeout: 10000,
+    });
+    return response.data;
+  },
+
+  async getRouteGeoJsonByPoi(fromPoiId: number, toPoiId: number): Promise<IndoorRouteGeoJsonResponse> {
+    const response = await axios.get<IndoorRouteGeoJsonResponse>(`${ROUTING_BASE}/route/pgrouting/by-poi/geojson`, {
       params: {
         from_poi_id: fromPoiId,
         to_poi_id: toPoiId,

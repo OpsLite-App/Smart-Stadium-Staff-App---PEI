@@ -13,8 +13,16 @@ url="${MAP_SERVICE_URL:-http://$host:$port}"
 
 printf 'Waiting for Map Service at %s to be ready...\n' "$url"
 
-# Wait until the service responds
+# Wait for a short period; pgRouting/GIS endpoints can still work without Map Service.
+attempts=0
+max_attempts="${MAP_SERVICE_WAIT_ATTEMPTS:-15}"
 while ! curl -fsS "$url/health" >/dev/null 2>&1; do
+  attempts=$((attempts + 1))
+  if [ "$attempts" -ge "$max_attempts" ]; then
+    printf 'Map Service not ready after %s attempts - starting Routing Service in degraded mode.\n' "$max_attempts"
+    exec "$@"
+  fi
+
   printf 'Map Service %s not ready yet. Sleeping...\n' "$url"
   sleep 2
 done

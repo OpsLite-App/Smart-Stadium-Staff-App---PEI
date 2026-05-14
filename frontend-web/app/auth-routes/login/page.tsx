@@ -59,7 +59,8 @@ export default function LoginPage() {
     clearError();
     const success = await login(email, password, role);
     if (success) {
-      router.replace(getDefaultRoute(role));
+      const authenticatedRole = useAuthStore.getState().user?.role;
+      router.replace(getDefaultRoute(authenticatedRole));
     }
   };
 

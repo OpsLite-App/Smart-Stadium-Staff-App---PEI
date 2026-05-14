@@ -48,6 +48,13 @@ export interface LoginResponse {
   role: string;
 }
 
+export interface TokenClaims {
+  user_id: number;
+  username: string;
+  role: string;
+  exp: number;
+}
+
 export interface StaffPosition {
   staff_id: string;
   x: number;
@@ -136,6 +143,19 @@ export const api = {
       console.error("❌ Erro ao validar token:", error.message);
       if (error.response?.status === 401) return false;
       return false;
+    }
+  },
+
+  validateTokenClaims: async (token: string): Promise<TokenClaims | null> => {
+    try {
+      const response = await axios.post<TokenClaims>(
+        `${AUTH_SERVICE}/validate`,
+        {},
+        { headers: { Authorization: `Bearer ${token}` }, timeout: 5000 }
+      );
+      return response.data;
+    } catch {
+      return null;
     }
   },
 
