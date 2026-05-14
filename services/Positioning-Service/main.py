@@ -37,3 +37,8 @@ def get_position(staff_id: str, db: Session = Depends(get_db)):
     if not pos:
         raise HTTPException(status_code=404, detail="Position not found")
     return pos
+
+
+@app.get("/health")
+def health_check():
+    return {"status": "ok"}

@@ -99,29 +99,29 @@ def get_node(node_id: str, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Node not found")
     return node
 
-# @app.post("/api/nodes", response_model=NodeResponse, status_code=201)
-# def add_node(data: NodeCreate, db: Session = Depends(get_db)):
-#     """Create a new node."""
-#     existing = db.query(Node).filter(Node.id == data.id).first()
-#     if existing:
-#         raise HTTPException(status_code=400, detail="Node already exists")
+@app.post("/api/nodes", response_model=NodeResponse, status_code=201)
+def add_node(data: NodeCreate, db: Session = Depends(get_db)):
+    """Create a new node."""
+    existing = db.query(Node).filter(Node.id == data.id).first()
+    if existing:
+        raise HTTPException(status_code=400, detail="Node already exists")
     
-#     node = Node(
-#         id=data.id,
-#         x=data.x,
-#         y=data.y,
-#         level=data.level,
-#         type=data.type
-#     )
-#     db.add(node)
-#     try:
-#         db.commit()
-#         db.refresh(node)
-#     except Exception as e:
-#         db.rollback()
-#         raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+    node = Node(
+        id=data.id,
+        x=data.x,
+        y=data.y,
+        level=data.level,
+        type=data.type
+    )
+    db.add(node)
+    try:
+        db.commit()
+        db.refresh(node)
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
     
-#     return node
+    return node
 
 @app.put("/api/nodes/{node_id}", response_model=NodeResponse)
 def update_node(node_id: str, data: NodeUpdate, db: Session = Depends(get_db)):
@@ -179,37 +179,37 @@ def get_edge(edge_id: str, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Edge not found")
     return edge
 
-# @app.post("/api/edges", response_model=EdgeResponse, status_code=201)
-# def add_edge(data: EdgeCreate, db: Session = Depends(get_db)):
-#     """Create a new edge."""
-#     existing = db.query(Edge).filter(Edge.id == data.id).first()
-#     if existing:
-#         raise HTTPException(status_code=400, detail="Edge already exists")
+@app.post("/api/edges", response_model=EdgeResponse, status_code=201)
+def add_edge(data: EdgeCreate, db: Session = Depends(get_db)):
+    """Create a new edge."""
+    existing = db.query(Edge).filter(Edge.id == data.id).first()
+    if existing:
+        raise HTTPException(status_code=400, detail="Edge already exists")
     
-#     # Validate that both nodes exist
-#     from_node = db.query(Node).filter(Node.id == data.from_id).first()
-#     to_node = db.query(Node).filter(Node.id == data.to_id).first()
+    # Validate that both nodes exist
+    from_node = db.query(Node).filter(Node.id == data.from_id).first()
+    to_node = db.query(Node).filter(Node.id == data.to_id).first()
     
-#     if not from_node:
-#         raise HTTPException(status_code=400, detail=f"from_id node '{data.from_id}' does not exist")
-#     if not to_node:
-#         raise HTTPException(status_code=400, detail=f"to_id node '{data.to_id}' does not exist")
+    if not from_node:
+        raise HTTPException(status_code=400, detail=f"from_id node '{data.from_id}' does not exist")
+    if not to_node:
+        raise HTTPException(status_code=400, detail=f"to_id node '{data.to_id}' does not exist")
     
-#     edge = Edge(
-#         id=data.id,
-#         from_id=data.from_id,
-#         to_id=data.to_id,
-#         weight=data.weight
-#     )
-#     db.add(edge)
-#     try:
-#         db.commit()
-#         db.refresh(edge)
-#     except Exception as e:
-#         db.rollback()
-#         raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+    edge = Edge(
+        id=data.id,
+        from_id=data.from_id,
+        to_id=data.to_id,
+        weight=data.weight
+    )
+    db.add(edge)
+    try:
+        db.commit()
+        db.refresh(edge)
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
     
-#     return edge
+    return edge
 
 @app.put("/api/edges/{edge_id}", response_model=EdgeResponse)
 def update_edge(edge_id: str, data: EdgeUpdate, db: Session = Depends(get_db)):
@@ -402,30 +402,30 @@ def get_poi(poi_id: str, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="POI not found")
     return poi
 
-# @app.post("/api/pois", response_model=POIResponse, status_code=201)
-# def add_poi(data: POICreate, db: Session = Depends(get_db)):
-#     """Create a new POI."""
-#     existing = db.query(POI).filter(POI.id == data.id).first()
-#     if existing:
-#         raise HTTPException(status_code=400, detail="POI already exists")
+@app.post("/api/pois", response_model=POIResponse, status_code=201)
+def add_poi(data: POICreate, db: Session = Depends(get_db)):
+    """Create a new POI."""
+    existing = db.query(POI).filter(POI.id == data.id).first()
+    if existing:
+        raise HTTPException(status_code=400, detail="POI already exists")
     
-#     poi = POI(
-#         id=data.id,
-#         name=data.name,
-#         category=data.category,
-#         x=data.x,
-#         y=data.y,
-#         level=data.level
-#     )
-#     db.add(poi)
-#     try:
-#         db.commit()
-#         db.refresh(poi)
-#     except Exception as e:
-#         db.rollback()
-#         raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+    poi = POI(
+        id=data.id,
+        name=data.name,
+        category=data.category,
+        x=data.x,
+        y=data.y,
+        level=data.level
+    )
+    db.add(poi)
+    try:
+        db.commit()
+        db.refresh(poi)
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
     
-#     return poi
+    return poi
 
 @app.put("/api/pois/{poi_id}", response_model=POIResponse)
 def update_poi(poi_id: str, data: POIUpdate, db: Session = Depends(get_db)):
@@ -485,31 +485,31 @@ def get_seat(seat_id: str, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Seat not found")
     return seat
 
-# @app.post("/api/seats", response_model=SeatResponse, status_code=201)
-# def add_seat(data: SeatCreate, db: Session = Depends(get_db)):
-#     """Create a new seat."""
-#     existing = db.query(Seat).filter(Seat.id == data.id).first()
-#     if existing:
-#         raise HTTPException(status_code=400, detail="Seat already exists")
+@app.post("/api/seats", response_model=SeatResponse, status_code=201)
+def add_seat(data: SeatCreate, db: Session = Depends(get_db)):
+    """Create a new seat."""
+    existing = db.query(Seat).filter(Seat.id == data.id).first()
+    if existing:
+        raise HTTPException(status_code=400, detail="Seat already exists")
     
-#     seat = Seat(
-#         id=data.id,
-#         block=data.block,
-#         row=data.row,
-#         number=data.number,
-#         x=data.x,
-#         y=data.y,
-#         level=data.level
-#     )
-#     db.add(seat)
-#     try:
-#         db.commit()
-#         db.refresh(seat)
-#     except Exception as e:
-#         db.rollback()
-#         raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+    seat = Seat(
+        id=data.id,
+        block=data.block,
+        row=data.row,
+        number=data.number,
+        x=data.x,
+        y=data.y,
+        level=data.level
+    )
+    db.add(seat)
+    try:
+        db.commit()
+        db.refresh(seat)
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
     
-#     return seat
+    return seat
 
 @app.put("/api/seats/{seat_id}", response_model=SeatResponse)
 def update_seat(seat_id: str, data: SeatUpdate, db: Session = Depends(get_db)):
@@ -571,29 +571,29 @@ def get_gate(gate_id: str, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Gate not found")
     return gate
 
-# @app.post("/api/gates", response_model=GateResponse, status_code=201)
-# def add_gate(data: GateCreate, db: Session = Depends(get_db)):
-#     """Create a new gate."""
-#     existing = db.query(Gate).filter(Gate.id == data.id).first()
-#     if existing:
-#         raise HTTPException(status_code=400, detail="Gate already exists")
+@app.post("/api/gates", response_model=GateResponse, status_code=201)
+def add_gate(data: GateCreate, db: Session = Depends(get_db)):
+    """Create a new gate."""
+    existing = db.query(Gate).filter(Gate.id == data.id).first()
+    if existing:
+        raise HTTPException(status_code=400, detail="Gate already exists")
     
-#     gate = Gate(
-#         id=data.id,
-#         gate_number=data.gate_number,
-#         x=data.x,
-#         y=data.y,
-#         level=data.level
-#     )
-#     db.add(gate)
-#     try:
-#         db.commit()
-#         db.refresh(gate)
-#     except Exception as e:
-#         db.rollback()
-#         raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+    gate = Gate(
+        id=data.id,
+        gate_number=data.gate_number,
+        x=data.x,
+        y=data.y,
+        level=data.level
+    )
+    db.add(gate)
+    try:
+        db.commit()
+        db.refresh(gate)
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
     
-#     return gate
+    return gate
 
 @app.put("/api/gates/{gate_id}", response_model=GateResponse)
 def update_gate(gate_id: str, data: GateUpdate, db: Session = Depends(get_db)):

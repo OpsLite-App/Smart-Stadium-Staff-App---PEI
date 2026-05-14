@@ -146,6 +146,12 @@ def root():
     }
 
 
+@app.get("/health")
+def health_check():
+    """Health check for Docker"""
+    return {"status": "ok"}
+
+
 @app.get("/api/emergency/status")
 def get_service_status(db: Session = Depends(get_db)):
     """Get service status and active incidents summary"""

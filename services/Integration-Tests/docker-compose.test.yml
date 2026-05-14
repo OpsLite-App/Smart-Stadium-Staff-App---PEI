@@ -1,0 +1,250 @@
+version: '3.8'
+
+services:
+  # Message broker for event streaming
+  mosquitto:
+    image: eclipse-mosquitto:latest
+    container_name: mosquitto-test
+    ports:
+      - "1883:1883"
+      - "9001:9001"
+    volumes:
+      - ./mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+    networks:
+      - stadium-test-network
+    healthcheck:
+      test: [ "CMD", "mosquitto_sub", "-h", "localhost", "-t", "$$SYS/#", "-C", "1" ]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # PostgreSQL for Map Service and Chat Service
+  postgres:
+    image: postgres:14-alpine
+    container_name: postgres-test
+    environment:
+      POSTGRES_DB: stadium
+      POSTGRES_USER: stadium
+      POSTGRES_PASSWORD: stadium
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data-test:/var/lib/postgresql/data
+    networks:
+      - stadium-test-network
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U stadium" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Map Service - Stadium graph and location data
+  map-service:
+    build:
+      context: ../Map-Service
+      dockerfile: Dockerfile
+    container_name: map-service-test
+    command: ["/wait-for-postgres.sh", "postgres", "python", "-m", "uvicorn", "ApiHandler:app", "--host", "0.0.0.0", "--port", "8001"]
+    environment:
+      DATABASE_URI: postgresql://stadium:stadium@postgres:5432/stadium
+      MQTT_HOST: mosquitto
+      MQTT_PORT: 1883
+      PORT: 8001
+    ports:
+      - "8001:8001"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      mosquitto:
+        condition: service_healthy
+    networks:
+      - stadium-test-network
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8001/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Routing Service - A* pathfinding
+  routing-service:
+    build:
+      context: ../Routing-Service
+      dockerfile: Dockerfile
+    container_name: routing-service-test
+    environment:
+      MAP_SERVICE_URL: http://map-service:8001
+      PORT: 8002
+    ports:
+      - "8002:8002"
+    depends_on:
+      map-service:
+        condition: service_healthy
+    networks:
+      - stadium-test-network
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:8002/health" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Emergency Service - Incident management
+  emergency-service:
+    build:
+      context: ../Emergency-Service
+      dockerfile: Dockerfile
+    container_name: emergency-service-test
+    command: ["sh", "-c", "python /wait-for-mqtt.py && uvicorn main:app --host 0.0.0.0 --port 8003"]
+    environment:
+      DATABASE_URL: sqlite:///emergency.db
+      MQTT_HOST: mosquitto
+      MQTT_PORT: 1883
+      ROUTING_SERVICE_URL: http://routing-service:8002
+      MAP_SERVICE_URL: http://map-service:8001
+      CONGESTION_SERVICE_URL: http://congestion-service:8007
+      PORT: 8003
+    ports:
+      - "8003:8003"
+    depends_on:
+      routing-service:
+        condition: service_healthy
+      mosquitto:
+        condition: service_healthy
+    networks:
+      - stadium-test-network
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8003/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Maintenance Service - Task management
+  maintenance-service:
+    build:
+      context: ../Maintenance-Service
+      dockerfile: Dockerfile
+    container_name: maintenance-service-test
+    command: ["sh", "-c", "python /wait-for-mqtt.py && uvicorn main:app --host 0.0.0.0 --port 8004"]
+    environment:
+      DATABASE_URL: sqlite:///maintenance.db
+      MQTT_HOST: mosquitto
+      MQTT_PORT: 1883
+      ROUTING_SERVICE_URL: http://routing-service:8002
+      MAP_SERVICE_URL: http://map-service:8001
+      PORT: 8004
+    ports:
+      - "8004:8004"
+    depends_on:
+      routing-service:
+        condition: service_healthy
+      mosquitto:
+        condition: service_healthy
+    networks:
+      - stadium-test-network
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8004/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Positioning Service - WiFi-based localization
+  positioning-service:
+    build:
+      context: ../Positioning-Service
+      dockerfile: Dockerfile
+    container_name: positioning-service-test
+    command: ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8005"]
+    environment:
+      DATABASE_URL: sqlite:///positioning.db
+      PORT: 8005
+    ports:
+      - "8005:8005"
+    networks:
+      - stadium-test-network
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8005/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Queueing Service - Queue state management
+  queueing-service:
+    build:
+      context: ../Queueing-Service
+      dockerfile: Dockerfile
+    container_name: queueing-service-test
+    command: ["sh", "-c", "python /wait-for-mqtt.py && uvicorn service:app --host 0.0.0.0 --port 8006"]
+    environment:
+      MQTT_HOST: mosquitto
+      MQTT_PORT: 1883
+      PORT: 8006
+    ports:
+      - "8006:8006"
+    depends_on:
+      mosquitto:
+        condition: service_healthy
+    networks:
+      - stadium-test-network
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8006/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Congestion Service - Crowd density monitoring
+  congestion-service:
+    build:
+      context: ../Congestion-Service
+      dockerfile: Dockerfile
+    container_name: congestion-service-test
+    command: ["sh", "-c", "python /wait-for-mqtt.py && uvicorn congestion_service:app --host 0.0.0.0 --port 8007"]
+    environment:
+      MQTT_HOST: mosquitto
+      MQTT_PORT: 1883
+      PORT: 8007
+    ports:
+      - "8007:8007"
+    depends_on:
+      mosquitto:
+        condition: service_healthy
+    networks:
+      - stadium-test-network
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8007/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Chat Service - Message management
+  chat-service:
+    build:
+      context: ../Chat-Service
+      dockerfile: Dockerfile
+    container_name: chat-service-test
+    command: ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8008"]
+    environment:
+      DATABASE_URI: postgresql://stadium:stadium@postgres:5432/stadium
+      MQTT_HOST: mosquitto
+      MQTT_PORT: 1883
+      PORT: 8008
+    ports:
+      - "8008:8008"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      mosquitto:
+        condition: service_healthy
+    networks:
+      - stadium-test-network
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8008/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+networks:
+  stadium-test-network:
+    driver: bridge
+
+volumes:
+  postgres-data-test:
+    driver: local
