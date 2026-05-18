@@ -3,7 +3,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useAuthStore } from '@/lib/stores/useAuthStore';
-import { AUTH_SERVICE, CHAT_SERVICE } from '@/lib/services/api';
+import { AUTH_SERVICE, CHAT_SERVICE, api } from '@/lib/services/api';
 import axios from 'axios';
 import {
   MessageSquare,
@@ -218,16 +218,13 @@ export default function ChatPage() {
     try {
       console.log(`👥 Loading real contacts from ${AUTH_SERVICE}/staff...`);
 
-      const response = await axios.get<StaffApiUser[]>(`${AUTH_SERVICE}/staff`, {
-        timeout: 5000,
-        headers: user?.token ? { Authorization: `Bearer ${user.token}` } : undefined,
-      });
+      const response = await api.getStaff();
 
-      const contactList: Contact[] = response.data
+      const contactList: Contact[] = response
         .filter((staff) => typeof staff.id === 'number' && staff.id !== user?.id)
         .map((staff) => ({
           id: staff.id,
-          name: staff.name || staff.username || staff.email || `User ${staff.id}`,
+          name: staff.name || `User ${staff.id}`,
           role: staff.role || 'Staff',
           status: mapStaffStatusToContactStatus(staff.status),
           last_seen: new Date().toISOString(),

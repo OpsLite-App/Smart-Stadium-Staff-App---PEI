@@ -1,6 +1,5 @@
 package com.stadium.auth_service.controller;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.stadium.auth_service.dto.LoginRequest;
 import com.stadium.auth_service.dto.LoginResponse;
 import com.stadium.auth_service.entity.User;
@@ -35,12 +34,10 @@ class AuthControllerTest {
     private Authentication authentication;
     
     private AuthController authController;
-    private ObjectMapper objectMapper;
     
     @BeforeEach
     void setUp() {
         authController = new AuthController(userService, jwtUtil);
-        objectMapper = new ObjectMapper();
     }
     
     @Test
@@ -63,7 +60,7 @@ class AuthControllerTest {
         when(jwtUtil.generateToken(1, "test@example.com", "security")).thenReturn("mock.jwt.token");
         
         // Act
-        ResponseEntity<?> response = authController.login(request);
+        ResponseEntity<?> response = authController.login(request, null);
         
         // Assert
         assertEquals(HttpStatus.OK, response.getStatusCode());
@@ -94,7 +91,7 @@ class AuthControllerTest {
         when(userService.checkPassword(mockUser, "wrongpassword")).thenReturn(false);
         
         // Act
-        ResponseEntity<?> response = authController.login(request);
+        ResponseEntity<?> response = authController.login(request, null);
         
         // Assert
         assertEquals(HttpStatus.UNAUTHORIZED, response.getStatusCode());
@@ -122,7 +119,7 @@ class AuthControllerTest {
         when(userService.checkPassword(mockUser, "password123")).thenReturn(true);
         
         // Act
-        ResponseEntity<?> response = authController.login(request);
+        ResponseEntity<?> response = authController.login(request, null);
         
         // Assert
         assertEquals(HttpStatus.FORBIDDEN, response.getStatusCode());
@@ -157,7 +154,7 @@ class AuthControllerTest {
         when(authentication.getPrincipal()).thenReturn("123");
         
         // Act
-        ResponseEntity<?> response = authController.me(authentication);
+        ResponseEntity<?> response = authController.me(authentication, null);
         
         // Assert
         assertEquals(HttpStatus.OK, response.getStatusCode());

@@ -127,23 +127,7 @@ interface GisQueryParams {
   srid?: number;
 }
 
-function getToken(): string {
-  if (typeof window === "undefined") return "";
-
-  try {
-    const raw = localStorage.getItem("auth-storage");
-    if (!raw) return "";
-    const parsed = JSON.parse(raw);
-    return parsed?.state?.user?.token || "";
-  } catch {
-    return "";
-  }
-}
-
-function authHeaders() {
-  const token = getToken();
-  return token ? { Authorization: `Bearer ${token}` } : {};
-}
+const authAxios = axios.create({ withCredentials: true, timeout: 10000 });
 
 function toQueryParams(params: GisQueryParams = {}) {
   return {
@@ -182,8 +166,7 @@ export const gisApi = {
     cameraId: number,
     payload: CameraStatusUpdate,
   ): Promise<CameraStatus> => {
-    const response = await axios.put<CameraStatus>(`${GIS_BASE}/camera-status/${cameraId}`, payload, {
-      headers: authHeaders(),
+    const response = await authAxios.put<CameraStatus>(`${GIS_BASE}/camera-status/${cameraId}`, payload, {
       timeout: 10000,
     });
 

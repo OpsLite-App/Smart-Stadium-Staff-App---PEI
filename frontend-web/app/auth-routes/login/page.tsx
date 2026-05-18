@@ -29,7 +29,9 @@ export default function LoginPage() {
 
   // Se já estiver logado, redireciona
   useEffect(() => {
-    if (hydrated && user) {
+    // Only consider the user authenticated when a runtime token exists.
+    // We persist user metadata (no token) so redirecting on stored user causes false positives.
+    if (hydrated && user && (user as any).token) {
       router.replace(getDefaultRoute(user.role));
     }
   }, [user, hydrated, router]);
