@@ -85,18 +85,6 @@ interface RecentActivity {
   status: 'completed' | 'pending' | 'in-progress';
 }
 
-function getTokenFromStorage(): string {
-  if (typeof window === 'undefined') return '';
-  try {
-    const raw = localStorage.getItem('auth-storage');
-    if (!raw) return '';
-    const parsed = JSON.parse(raw);
-    return parsed?.state?.user?.token || '';
-  } catch {
-    return '';
-  }
-}
-
 function relativeTime(iso: string): string {
   const diffMs = Date.now() - new Date(iso).getTime();
   const min = Math.floor(diffMs / 60000);
@@ -181,8 +169,7 @@ export default function ProfilePage() {
       setLoading(true);
       setError('');
 
-      const token = user.token || getTokenFromStorage();
-      const headers = token ? { Authorization: `Bearer ${token}` } : undefined;
+const headers = user?.token ? { Authorization: `Bearer ${user.token}` } : undefined;
 
       try {
         const [staffRes, emergencyStatsRes, timelineRes, maintenanceStatsRes] = await Promise.allSettled([

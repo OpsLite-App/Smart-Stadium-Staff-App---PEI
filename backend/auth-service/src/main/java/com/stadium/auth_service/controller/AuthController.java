@@ -1,12 +1,14 @@
 package com.stadium.auth_service.controller;
 
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.ResponseCookie;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 import com.stadium.auth_service.dto.LoginRequest;
 import com.stadium.auth_service.dto.LoginResponse;
-import com.stadium.auth_service.entity.User;
 import com.stadium.auth_service.service.UserService;
 import com.stadium.auth_service.util.JwtUtil;
 
@@ -15,6 +17,7 @@ import java.util.Map;
 @RestController
 @RequestMapping("/auth")
 public class AuthController {
+  private static final String AUTH_COOKIE_NAME = "AUTH_TOKEN";
 
   private final UserService userService;
   private final JwtUtil jwtUtil;
@@ -25,7 +28,7 @@ public class AuthController {
   }
 
   @PostMapping("/login")
-  public ResponseEntity<?> login(@Valid @RequestBody LoginRequest request) {
+  public ResponseEntity<?> login(@Valid @RequestBody LoginRequest request, HttpServletRequest servletRequest) {
     return userService.findByUsername(request.getUsername())
         .filter(user -> userService.checkPassword(user, request.getPassword()))
         .map(user -> {
@@ -33,7 +36,10 @@ public class AuthController {
             return ResponseEntity.status(403).body(Map.of("error", "user_not_active"));
           }
           String token = jwtUtil.generateToken(user.getId(), user.getUsername(), user.getRole());
-          return ResponseEntity.ok(new LoginResponse(token, user.getId(), user.getRole()));
+          ResponseCookie cookie = createAuthCookie(servletRequest, token);
+          return ResponseEntity.ok()
+              .header(HttpHeaders.SET_COOKIE, cookie.toString())
+              .body(new LoginResponse(token, user.getId(), user.getRole()));
         })
         .orElseGet(() -> ResponseEntity.status(401).body(Map.of("error", "invalid_credentials")));
   }
@@ -58,8 +64,41 @@ public class AuthController {
   }
 
   @GetMapping("/me")
-  public ResponseEntity<?> me(Authentication authentication) {
-    return ResponseEntity.ok(Map.of("userId", authentication.getPrincipal()));
+  public ResponseEntity<?> me(Authentication authentication, HttpServletRequest servletRequest) {
+    if (authentication == null || !authentication.isAuthenticated()) {
+      return ResponseEntity.status(401).body(Map.of("error", "unauthenticated"));
+    }
+    String userId = authentication.getName();
+    var details = authentication.getDetails();
+    String username = details instanceof Map ? (String) ((Map<?, ?>) details).get("username") : null;
+    String role = details instanceof Map ? (String) ((Map<?, ?>) details).get("role") : null;
+    if (userId == null || role == null) {
+      return ResponseEntity.status(401).body(Map.of("error", "unauthenticated"));
+    }
+    String token = jwtUtil.generateToken(Integer.parseInt(userId), username, role);
+    ResponseCookie cookie = createAuthCookie(servletRequest, token);
+    return ResponseEntity.ok()
+        .header(HttpHeaders.SET_COOKIE, cookie.toString())
+        .body(Map.of(
+            "token", token,
+            "user_id", Long.parseLong(userId),
+            "username", username,
+            "role", role
+        ));
+  }
+
+  @PostMapping("/logout")
+  public ResponseEntity<?> logout(HttpServletRequest servletRequest) {
+    ResponseCookie cookie = ResponseCookie.from(AUTH_COOKIE_NAME, "")
+        .httpOnly(true)
+        .secure(servletRequest != null && isSecure(servletRequest))
+        .sameSite("Strict")
+        .path("/")
+        .maxAge(0)
+        .build();
+    return ResponseEntity.ok()
+        .header(HttpHeaders.SET_COOKIE, cookie.toString())
+        .body(Map.of("logged_out", true));
   }
 
   @GetMapping("/staff")
@@ -73,5 +112,23 @@ public class AuthController {
           ))
           .collect(java.util.stream.Collectors.toList());
       return ResponseEntity.ok(users);
+  }
+
+  private ResponseCookie createAuthCookie(HttpServletRequest request, String token) {
+    return ResponseCookie.from(AUTH_COOKIE_NAME, token)
+        .httpOnly(true)
+        .secure(request != null && isSecure(request))
+        .sameSite("Strict")
+        .path("/")
+        .maxAge(7 * 24 * 60 * 60)
+        .build();
+  }
+
+  private boolean isSecure(HttpServletRequest request) {
+    if (request.isSecure()) {
+      return true;
+    }
+    String forwardedProto = request.getHeader("X-Forwarded-Proto");
+    return "https".equalsIgnoreCase(forwardedProto);
   }
 }

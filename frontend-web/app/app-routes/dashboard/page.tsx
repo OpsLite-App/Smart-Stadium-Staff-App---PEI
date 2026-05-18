@@ -65,18 +65,6 @@ interface TimelineItem {
   timestamp: string;
 }
 
-function getStoredToken(): string {
-  if (typeof window === 'undefined') return '';
-  try {
-    const raw = localStorage.getItem('auth-storage');
-    if (!raw) return '';
-    const parsed = JSON.parse(raw);
-    return parsed?.state?.user?.token ?? '';
-  } catch {
-    return '';
-  }
-}
-
 function severityColor(severity: Severity): string {
   if (severity === 'critical') return 'bg-red-100 text-red-700 border-red-200';
   if (severity === 'high') return 'bg-orange-100 text-orange-700 border-orange-200';
@@ -118,7 +106,7 @@ export default function DashboardPage() {
   const [heatmapPoints, setHeatmapPoints] = useState<HeatmapPoint[]>([]);
 
   const fetchDashboardData = useCallback(async () => {
-    const token = user?.token || getStoredToken();
+    const token = user?.token;
     const headers = token ? { Authorization: `Bearer ${token}` } : undefined;
 
     const requests = await Promise.allSettled([

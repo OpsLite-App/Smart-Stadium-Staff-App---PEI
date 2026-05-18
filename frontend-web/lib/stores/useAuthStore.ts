@@ -3,7 +3,7 @@
 
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
-import { api } from '../services/api';
+import { api } from '../services/api'; // REMOVED: setAuthToken
 
 type Role = 'Security' | 'Cleaning' | 'Supervisor' | 'Medical';
 
@@ -30,7 +30,7 @@ function permissionsForRole(role: Role) {
 interface User {
   email: string;
   role: Role;
-  token?: string;
+  // REMOVED: token?: string; - Token is now in HttpOnly cookie only
   id?: number;
   permissions: {
     canViewHeatmap: boolean;
@@ -51,6 +51,7 @@ interface AuthState {
 
   login: (email: string, password: string, role: Role) => Promise<boolean>;
   logout: () => Promise<void>;
+  restoreUser: (user: User) => void;
   checkStorage: () => void;
   setHydrated: () => void;
   clearError: () => void;
@@ -94,14 +95,15 @@ export const useAuthStore = create<AuthState>()(
           const data = await api.login(email, password, role);
           const serverRole = toRole(data.role);
 
+          // ✅ REMOVED: token from userData (no longer stored)
           const userData = {
             email,
             role: serverRole,
-            token: data.token,
             id: data.user_id,
             permissions: permissionsForRole(serverRole),
           };
 
+          // ✅ REMOVED: setAuthToken(data.token); - Token is in cookie, not in JS memory
           set({ user: userData, isLoading: false });
 
           // Register cleaning staff in Maintenance Service for task assignment
@@ -142,8 +144,19 @@ export const useAuthStore = create<AuthState>()(
 
       logout: async () => {
         console.log('A fazer logout');
-        set({ user: null, error: null });
-        localStorage.removeItem('auth-storage');
+        try {
+          await api.logout();
+        } catch (error) {
+          console.warn('Falha ao limpar sessão no servidor', error);
+        } finally {
+          // ✅ REMOVED: setAuthToken(''); - No longer needed
+          set({ user: null, error: null });
+          localStorage.removeItem('auth-storage');
+        }
+      },
+
+      restoreUser: (user) => {
+        set({ user });
       },
 
       checkStorage: () => {
@@ -157,6 +170,7 @@ export const useAuthStore = create<AuthState>()(
             const parsed = JSON.parse(storage);
             console.log('Dados no localStorage:', parsed);
 
+            // ✅ Check if user exists (token no longer stored)
             if (parsed.state?.user?.email) {
               console.log('Email no storage:', parsed.state.user.email);
             } else {
@@ -173,7 +187,17 @@ export const useAuthStore = create<AuthState>()(
     {
       name: 'auth-storage',
       storage: createJSONStorage(() => localStorage),
-      partialize: (state) => ({ user: state.user }),
+      partialize: (state) => ({
+        user: state.user
+          ? {
+              email: state.user.email,
+              role: state.user.role,
+              id: state.user.id,
+              permissions: state.user.permissions,
+              // REMOVED: token - No longer persisted
+            }
+          : null,
+      }),
       onRehydrateStorage: () => (state) => {
         console.log('A hidratar store...');
         if (state) setTimeout(() => state.setHydrated(), 0);

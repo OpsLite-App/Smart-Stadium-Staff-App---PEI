@@ -25,27 +25,20 @@ export const WS_GATEWAY =
   process.env.NEXT_PUBLIC_WS_URL ||
   "ws://localhost:8089/ws";
 
-function getToken(): string {
-  try {
-    const raw = localStorage.getItem("auth-storage");
-    if (!raw) return "";
-    const parsed = JSON.parse(raw);
-    return parsed?.state?.user?.token || "";
-  } catch {
-    return "";
-  }
-}
+// ✅ REMOVED: authToken variable (no longer needed - cookie is used)
+// ✅ KEPT: authAxios with withCredentials: true (sends cookie automatically)
+const authAxios = axios.create({ withCredentials: true, timeout: 5000 });
 
-function bearerHeader() {
-  const token = getToken();
-  return token ? { Authorization: `Bearer ${token}` } : {};
-}
+// ✅ REMOVED: setAuthToken function
+// ✅ REMOVED: bearerHeader function - cookie is sent automatically via authAxios
 
 // --- Interfaces de Dados ---
 export interface LoginResponse {
-  token: string;
+  // ✅ REMOVED: token: string; - Token is now only in HttpOnly cookie
   user_id: number;
   role: string;
+  email?: string;
+  username?: string;
 }
 
 export interface TokenClaims {
@@ -111,22 +104,27 @@ interface HeatmapApiResponse {
 // --- Cliente API ---
 export const api = {
   // ---- AUTH ----
-  login: async (
-    email: string,
-    password: string,
-    role: string
-  ): Promise<LoginResponse> => {
-    const response = await axios.post<LoginResponse>(
+  login: async (email: string, password: string, role: string): Promise<LoginResponse> => {
+    const response = await authAxios.post<LoginResponse>(
       `${AUTH_SERVICE}/login`,
-      {
-        username: email,   // ou "email" se o backend usar email
-        password,
-        role,
-      },
-      { timeout: 5000 }
+      { username: email, password, role }
     );
-
+    // ✅ REMOVED: setAuthToken(response.data.token) - Token is in cookie only
     return response.data;
+  },
+
+  me: async (): Promise<LoginResponse> => {
+    const response = await authAxios.get<LoginResponse>(`${AUTH_SERVICE}/me`);
+    // ✅ REMOVED: setAuthToken(response.data.token) - Token is in cookie only
+    return response.data;
+  },
+
+  logout: async (): Promise<void> => {
+    try {
+      await authAxios.post(`${AUTH_SERVICE}/logout`, {});
+    } finally {
+      // ✅ REMOVED: setAuthToken("") - No longer needed
+    }
   },
 
   validateToken: async (token: string): Promise<boolean> => {
@@ -162,9 +160,9 @@ export const api = {
   getStaff: async (): Promise<StaffMember[]> => {
     try {
       console.log(`👥 Buscando staff de ${AUTH_SERVICE}/staff`);
-      const response = await axios.get<StaffMember[]>(`${AUTH_SERVICE}/staff`, {
+      // ✅ REMOVED: headers: { ...bearerHeader() } - cookie is sent automatically
+      const response = await authAxios.get<StaffMember[]>(`${AUTH_SERVICE}/staff`, {
         timeout: 5000,
-        headers: { ...bearerHeader() },
       });
       console.log(`✅ Staff carregado: ${response.data.length} pessoas`);
       return response.data;
@@ -181,15 +179,14 @@ export const api = {
   },
 
   // ---- CONGESTION ----
-  // ✅ rewrite já mete /api/ no destino, então aqui NÃO usamos /api/...
   getHeatmapPoints: async (): Promise<HeatmapPointsResponse> => {
     try {
       const url = `${CONGESTION_SERVICE}/heatmap/points`;
       console.log(`🔥 Buscando heatmap de: ${url}`);
 
-      const response = await axios.get<HeatmapPointsResponse>(url, {
+      // ✅ CHANGED: Use authAxios instead of axios to send cookie
+      const response = await authAxios.get<HeatmapPointsResponse>(url, {
         timeout: 10000,
-        headers: { ...bearerHeader() },
       });
 
       const validPoints = (response.data.points || []).filter(
@@ -224,9 +221,9 @@ export const api = {
   getHeatmap: async (): Promise<CrowdDensity[]> => {
     try {
       console.log(`📊 Buscando heatmap de ${CONGESTION_SERVICE}/heatmap`);
-      const response = await axios.get<HeatmapApiResponse>(`${CONGESTION_SERVICE}/heatmap`, {
+      // ✅ CHANGED: Use authAxios instead of axios
+      const response = await authAxios.get<HeatmapApiResponse>(`${CONGESTION_SERVICE}/heatmap`, {
         timeout: 5000,
-        headers: { ...bearerHeader() },
       });
       console.log(`✅ Heatmap carregado: ${response.data.areas?.length || 0} áreas`);
       return response.data.areas || [];
@@ -251,19 +248,20 @@ export const api = {
   // ---- EMERGENCY ----
   getIncidentDetails: async (incidentId: string) => {
     console.log(`📋 Buscando detalhes do incidente ${incidentId} em ${EMERGENCY_SERVICE}/incidents/${incidentId}`);
-    const response = await axios.get(`${EMERGENCY_SERVICE}/incidents/${incidentId}`, {
+    // ✅ CHANGED: Use authAxios instead of axios
+    const response = await authAxios.get(`${EMERGENCY_SERVICE}/incidents/${incidentId}`, {
       timeout: 5000,
-      headers: { ...bearerHeader() },
     });
     return response.data;
   },
 
   acceptIncident: async (incidentId: string, userId?: number) => {
     console.log(`✅ Aceitando incidente ${incidentId} em ${EMERGENCY_SERVICE}/incidents/${incidentId}/accept`);
-    const response = await axios.post(
+    // ✅ CHANGED: Use authAxios instead of axios
+    const response = await authAxios.post(
       `${EMERGENCY_SERVICE}/incidents/${incidentId}/accept`,
       { userId },
-      { timeout: 5000, headers: { ...bearerHeader() } }
+      { timeout: 5000 }
     );
     return response.data;
   },
@@ -271,9 +269,9 @@ export const api = {
   // ---- MAINTENANCE ----
   getTaskDetails: async (taskId: string) => {
     console.log(`📋 Buscando detalhes da tarefa ${taskId} em ${MAINTENANCE_SERVICE}/tasks/${taskId}`);
-    const response = await axios.get(`${MAINTENANCE_SERVICE}/tasks/${taskId}`, {
+    // ✅ CHANGED: Use authAxios instead of axios
+    const response = await authAxios.get(`${MAINTENANCE_SERVICE}/tasks/${taskId}`, {
       timeout: 5000,
-      headers: { ...bearerHeader() },
     });
     return response.data;
   },
@@ -283,44 +281,46 @@ export const api = {
     status: "pending" | "in-progress" | "completed" | "cancelled"
   ) => {
     console.log(`✅ Atualizando status da tarefa ${taskId} para ${status}`);
-    const response = await axios.put(
+    // ✅ CHANGED: Use authAxios instead of axios
+    const response = await authAxios.put(
       `${MAINTENANCE_SERVICE}/tasks/${taskId}/status`,
       { status },
-      { timeout: 5000, headers: { ...bearerHeader() } }
+      { timeout: 5000 }
     );
     return response.data;
   },
 
   updateTaskChecklist: async (taskId: string, checklist: any[]) => {
     console.log(`✅ Atualizando checklist da tarefa ${taskId}`);
-    const response = await axios.put(
+    // ✅ CHANGED: Use authAxios instead of axios
+    const response = await authAxios.put(
       `${MAINTENANCE_SERVICE}/tasks/${taskId}/checklist`,
       { checklist },
-      { timeout: 5000, headers: { ...bearerHeader() } }
+      { timeout: 5000 }
     );
     return response.data;
   },
 
   registerStaffForMaintenance: async (staffId: string, name: string, role: string, location = 'N1') => {
     try {
-      await axios.post(`${MAINTENANCE_BASE}/staff/register`, null, {
+      // ✅ CHANGED: Use authAxios instead of axios
+      await authAxios.post(`${MAINTENANCE_BASE}/staff/register`, null, {
         params: { staff_id: staffId, name, role: role.toLowerCase(), current_location: location },
         timeout: 5000,
-        headers: { ...bearerHeader() },
       });
       // Ensure staff is marked available after registration
-      await axios.patch(`${MAINTENANCE_BASE}/staff/${staffId}/availability`, null, {
+      await authAxios.patch(`${MAINTENANCE_BASE}/staff/${staffId}/availability`, null, {
         params: { is_available: true },
         timeout: 5000,
-        headers: { ...bearerHeader() },
       });
     } catch { /* non-critical */ }
   },
+
   getRoute: async (fromNode: string, toNode: string): Promise<{ path: string[]; waypoints: { node_id: string; x: number; y: number }[]; eta_seconds: number; distance: number }> => {
-    const response = await axios.get(`${ROUTING_BASE}/route`, {
+    // ✅ CHANGED: Use authAxios instead of axios
+    const response = await authAxios.get(`${ROUTING_BASE}/route`, {
       params: { from_node: fromNode, to_node: toNode },
       timeout: 8000,
-      headers: { ...bearerHeader() },
     });
     return response.data;
   },
@@ -330,10 +330,10 @@ export const api = {
     const statuses = ['pending', 'assigned', 'in_progress'];
     const results = await Promise.all(
       statuses.map((status) =>
-        axios.get(`${MAINTENANCE_BASE}/tasks`, {
+        // ✅ CHANGED: Use authAxios instead of axios
+        authAxios.get(`${MAINTENANCE_BASE}/tasks`, {
           params: { assigned_to: staffId, status },
           timeout: 6000,
-          headers: { ...bearerHeader() },
         }).then(r => r.data?.tasks ?? []).catch(() => [])
       )
     );
@@ -341,69 +341,75 @@ export const api = {
   },
 
   completeTask: async (taskId: string) => {
-    const response = await axios.post(`${MAINTENANCE_BASE}/tasks/${taskId}/complete`, {}, {
+    // ✅ CHANGED: Use authAxios instead of axios
+    const response = await authAxios.post(`${MAINTENANCE_BASE}/tasks/${taskId}/complete`, {}, {
       timeout: 6000,
-      headers: { ...bearerHeader() },
     });
     return response.data;
   },
 
   startTask: async (taskId: string) => {
-    const response = await axios.post(`${MAINTENANCE_BASE}/tasks/${taskId}/start`, {}, {
+    // ✅ CHANGED: Use authAxios instead of axios
+    const response = await authAxios.post(`${MAINTENANCE_BASE}/tasks/${taskId}/start`, {}, {
       timeout: 6000,
-      headers: { ...bearerHeader() },
     });
     return response.data;
   },
+
   getProfileStats: async (userId: number) => {
-    return axios.get(`${AUTH_SERVICE}/users/${userId}/stats`, {
-      headers: { ...bearerHeader() },
+    // ✅ CHANGED: Use authAxios instead of axios
+    return authAxios.get(`${AUTH_SERVICE}/users/${userId}/stats`, {
       timeout: 5000,
     });
   },
 
   getRecentActivity: async (userId: number) => {
-    return axios.get(`${AUTH_SERVICE}/users/${userId}/activity`, {
-      headers: { ...bearerHeader() },
+    // ✅ CHANGED: Use authAxios instead of axios
+    return authAxios.get(`${AUTH_SERVICE}/users/${userId}/activity`, {
       timeout: 5000,
     });
   },
 
   updateUserPreferences: async (userId: number, preferences: any) => {
-    return axios.put(`${AUTH_SERVICE}/users/${userId}/preferences`, preferences, {
-      headers: { ...bearerHeader() },
+    // ✅ CHANGED: Use authAxios instead of axios
+    return authAxios.put(`${AUTH_SERVICE}/users/${userId}/preferences`, preferences, {
       timeout: 5000,
     });
   },
 
   updateDutyStatus: async (userId: number, status: boolean) => {
-    return axios.put(
+    // ✅ CHANGED: Use authAxios instead of axios
+    return authAxios.put(
       `${AUTH_SERVICE}/users/${userId}/duty`,
       { onDuty: status },
-      { headers: { ...bearerHeader() }, timeout: 5000 }
+      { timeout: 5000 }
     );
   },
 
   // ---- CROWD & QUEUE ----
   getCrowdSummary: async () => {
-    const r = await axios.get(`${CONGESTION_BASE}/congestion/summary`, { timeout: 5000, headers: { ...bearerHeader() } });
+    // ✅ CHANGED: Use authAxios instead of axios
+    const r = await authAxios.get(`${CONGESTION_BASE}/congestion/summary`, { timeout: 5000 });
     return r.data;
   },
 
   getCrowdAreas: async () => {
-    const r = await axios.get(`${CONGESTION_BASE}/heatmap`, { timeout: 5000, headers: { ...bearerHeader() } });
+    // ✅ CHANGED: Use authAxios instead of axios
+    const r = await authAxios.get(`${CONGESTION_BASE}/heatmap`, { timeout: 5000 });
     return (r.data.areas ?? []) as any[];
   },
 
   getQueueStatus: async () => {
-    const r = await axios.get(`${QUEUEING_BASE}/status`, { timeout: 5000, headers: { ...bearerHeader() } });
+    // ✅ CHANGED: Use authAxios instead of axios
+    const r = await authAxios.get(`${QUEUEING_BASE}/status`, { timeout: 5000 });
     return (r.data.queues ?? []) as any[];
   },
 
   getStaffPositions: async (staffIds: string[]): Promise<StaffPosition[]> => {
     const results = await Promise.allSettled(
       staffIds.map((id) =>
-        axios.get<StaffPosition>(`${POSITIONING_BASE}/position/${id}`, { timeout: 3000 })
+        // ✅ CHANGED: Use authAxios instead of axios
+        authAxios.get<StaffPosition>(`${POSITIONING_BASE}/position/${id}`, { timeout: 3000 })
           .then((r) => r.data)
       )
     );
@@ -413,7 +419,8 @@ export const api = {
   },
 
   getGates: async (): Promise<{ id: string; gate_number: string; x: number; y: number }[]> => {
-    const r = await axios.get(`${MAP_BASE}/gates`, { timeout: 5000, headers: { ...bearerHeader() } });
+    // ✅ CHANGED: Use authAxios instead of axios
+    const r = await authAxios.get(`${MAP_BASE}/gates`, { timeout: 5000 });
     return r.data ?? [];
   },
 };
