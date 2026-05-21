@@ -1,6 +1,6 @@
 """
 EVENT PROCESSOR - Integration Layer
-Connects Simulator → Services (Routing, Queueing, Map)
+Connects Simulator → Services (Routing, Queueing, Congestion, Maintenance)
 
 Listens to MQTT events and updates services accordingly
 """
@@ -29,7 +29,6 @@ MQTT_BROKER = os.getenv("MQTT_HOST", os.getenv("MQTT_BROKER", "localhost"))
 MQTT_PORT = int(os.getenv("MQTT_PORT", "1883"))
 MQTT_TOPIC = "stadium/#"
 
-MAP_SERVICE_URL = os.getenv("MAP_SERVICE_URL", "http://map-service:8000")
 ROUTING_SERVICE_URL = os.getenv("ROUTING_SERVICE_URL", "http://routing-service:8002")
 QUEUEING_SERVICE_URL = os.getenv("QUEUEING_SERVICE_URL", "http://queueing-service:8003")
 WAIT_TIMES_SERVICE_URL = os.getenv("WAIT_TIMES_SERVICE_URL", "http://event-processor:8004")
@@ -160,7 +159,7 @@ class EventProcessor:
         {
             "event_type": "bin_alert",
             "bin_id": "B123",
-            "poi_node": "N5",
+            "poi_node": "65",
             "fill_percentage": 90,
             "priority": "high"
         }
@@ -170,7 +169,7 @@ class EventProcessor:
             return  # Only process high fill levels
 
         bin_id = event.get("bin_id")
-        location_node = event.get("poi_node", "N5")
+        location_node = event.get("poi_node", "65")
         priority = event.get("priority", "medium")
 
         payload = {
@@ -203,7 +202,7 @@ class EventProcessor:
     
     def handle_sos_event(self, event: Dict):
         sos_id = event.get("sos_id")
-        location_node = event.get("location_node", "N10")
+        location_node = event.get("location_node", "66")
         priority = event.get("priority", "high")
         details = event.get("details", "").lower()
 
@@ -271,7 +270,7 @@ class EventProcessor:
         
         Event: {
             "event_type": "crowd_density",
-            "area_id": "N42",
+            "area_id": "62",
             "current_count": 150,
             "capacity": 200,
             "occupancy_rate": 75.0,
@@ -312,9 +311,9 @@ class EventProcessor:
         {
             "event_type": "evac_update",
             "closure": {
-                "edge": "N23-N24",
-                "from_node": "N23",
-                "to_node": "N24",
+                "edge": "63-70",
+                "from_node": "63",
+                "to_node": "70",
                 "reason": "smoke",
                 "closed": true
             }
@@ -339,29 +338,6 @@ class EventProcessor:
                 self.processed["evac_update"] += 1
                 print(f"🚧 EVACUATION: Closed {from_node} ↔ {to_node} ({reason})", flush=True)
 
-            # 2️⃣ Find the edge ID for Map Service
-            # This assumes your edges have IDs like "N23-N24" or you can query DB/API
-            edge_id = f"{from_node}-{to_node}"  # Implement a lookup in DB or routing service
-            if not edge_id:
-                print(f"⚠️ Could not find edge_id for {from_node}-{to_node}")
-                return
-
-            # 3️⃣ Add closure to Map Service
-            map_payload = {
-                "id": f"CL-{from_node}-{to_node}",
-                "reason": reason,
-                "edge_id": edge_id,
-                "node_id": None
-            }
-            map_resp = requests.post(
-                f"{MAP_SERVICE_URL}/api/closures",
-                json=map_payload,
-                timeout=2
-            )
-            if map_resp.status_code == 200:
-                print(f"✅ Map closure added for {from_node}-{to_node}",flush=True)
-            else:
-                print(f"⚠️ Map closure failed: {map_resp.status_code}, {map_resp.text}",flush=True)
         except Exception as e:
             print(f"⚠️ Failed to add closure {from_node}-{to_node}: {e}", flush=True)
     
@@ -425,7 +401,6 @@ if MQTT_AVAILABLE:
         print("="*60)
         print(f"MQTT Broker: {MQTT_BROKER}:{MQTT_PORT}")
         print(f"MQTT Topic: {MQTT_TOPIC}")
-        print(f"Map Service: {MAP_SERVICE_URL}")
         print(f"Routing Service: {ROUTING_SERVICE_URL}")
         print(f"Queueing Service: {QUEUEING_SERVICE_URL}")
         print(f"Wait Times Service: {WAIT_TIMES_SERVICE_URL}")
@@ -435,17 +410,6 @@ if MQTT_AVAILABLE:
         # Check services are running
         print("🏥 Checking services...")
         services_ok = True
-        
-        try:
-            r = requests.get(f"{MAP_SERVICE_URL}/health", timeout=2)
-            if r.status_code == 200:
-                print("✅ Map Service")
-            else:
-                print("⚠️  Map Service not responding")
-                services_ok = False
-        except:
-            print("❌ Map Service not available")
-            services_ok = False
         
         try:
             r = requests.get(f"{ROUTING_SERVICE_URL}/health", timeout=2)

@@ -38,7 +38,7 @@ app.add_middleware(
 import os
 MQTT_BROKER = os.getenv("MQTT_HOST", os.getenv("MQTT_BROKER", "localhost"))
 MQTT_PORT = int(os.getenv("MQTT_PORT", "1883"))
-MAP_SERVICE_URL = os.getenv("MAP_SERVICE_URL", "http://map-service:8000")
+MAP_SERVICE_URL = os.getenv("MAP_SERVICE_URL", "")
 # Subscribe to crowd-specific topics
 MQTT_TOPICS = [
     "stadium/crowd/gate-updates",

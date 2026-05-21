@@ -37,7 +37,7 @@ app.add_middleware(
 
 # ========== CONFIGURATION ==========
 
-MAP_SERVICE_URL = os.getenv("MAP_SERVICE_URL", "http://localhost:8000")
+MAP_SERVICE_URL = os.getenv("MAP_SERVICE_URL")
 AUTH_SERVICE_URL = os.getenv("AUTH_SERVICE_URL", "http://auth-service:8081")
 
 
@@ -71,22 +71,65 @@ def get_gis_layer_service() -> GisLayerService:
     return gis_layer_service
 
 
-async def require_supervisor_role(authorization: Optional[str] = Header(None)) -> dict:
-    """Validate bearer token and allow only supervisor/admin users."""
-    if not authorization or not authorization.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="Missing bearer token")
+def _parse_node_id(node_id: str) -> int:
+    """Accept numeric pgRouting IDs and tolerate old prefixed labels."""
+    value = str(node_id).strip()
+    if value.upper().startswith("N"):
+        value = value[1:]
+    if not value.isdigit():
+        raise HTTPException(status_code=400, detail=f"Invalid node id: {node_id}")
+    return int(value)
+
+
+def _pgrouting_response_to_legacy_route(route) -> dict:
+    """Keep old /api/route consumers working without the legacy Map Service."""
+    path = [str(node) for node in route.path]
+    return {
+        "path": path,
+        "distance": route.distance,
+        "eta_seconds": route.eta_seconds,
+        "instructions": route.instructions,
+        "waypoints": [
+            {"node_id": node_id, "x": 0, "y": 0}
+            for node_id in path
+        ],
+        "source": "pgrouting",
+    }
+
+
+async def require_supervisor_role(
+    authorization: Optional[str] = Header(None),
+    cookie: Optional[str] = Header(None),
+) -> dict:
+    """Validate the current session and allow only supervisor/admin users.
+
+    The web frontend uses an HttpOnly AUTH_TOKEN cookie, while API tools may use
+    a Bearer token. Supporting both keeps browser and CLI flows aligned.
+    """
+    headers = {}
+    endpoint = f"{AUTH_SERVICE_URL}/auth/me"
+    method = "GET"
+
+    if authorization and authorization.startswith("Bearer "):
+        headers["Authorization"] = authorization
+        endpoint = f"{AUTH_SERVICE_URL}/auth/validate"
+        method = "POST"
+    elif cookie and "AUTH_TOKEN=" in cookie:
+        headers["Cookie"] = cookie
+    else:
+        raise HTTPException(status_code=401, detail="Missing authentication")
 
     try:
         async with httpx.AsyncClient(timeout=5.0) as client:
-            response = await client.post(
-                f"{AUTH_SERVICE_URL}/auth/validate",
-                headers={"Authorization": authorization},
-            )
+            if method == "POST":
+                response = await client.post(endpoint, headers=headers)
+            else:
+                response = await client.get(endpoint, headers=headers)
     except httpx.HTTPError as exc:
         raise HTTPException(status_code=503, detail="Auth service unavailable") from exc
 
     if response.status_code == 401:
-        raise HTTPException(status_code=401, detail="Invalid or expired token")
+        raise HTTPException(status_code=401, detail="Invalid or expired session")
 
     if response.status_code >= 400:
         raise HTTPException(status_code=503, detail="Auth service rejected validation")
@@ -114,15 +157,13 @@ async def startup():
     HAZARD_MAP = HazardMap()
     print("✅ Hazard map initialized")
     
-    # Load graph from Map Service
-    success = await load_graph_from_map_service()
     try:
         get_pgrouting_service()
         print("✅ pgRouting runtime tables ready")
     except Exception as e:
         print(f"⚠️  pgRouting runtime tables unavailable: {e}")
     
-    if success and GRAPH:
+    if GRAPH:
         # Initialize API handlers (ONLY route and hazard)
         route_handler = RouteAPIHandler(GRAPH, HAZARD_MAP)
         hazard_handler = HazardAPIHandler(HAZARD_MAP)
@@ -132,17 +173,22 @@ async def startup():
         print("✅ ROUTING SERVICE READY")
         print(f"   - Nodes: {len(GRAPH.nodes)}")
         print(f"   - Edges: {sum(len(v) for v in GRAPH.adjacency.values())}")
-        print(f"   - Map Service: {MAP_SERVICE_URL}")
+        print(f"   - Legacy Map Service: {MAP_SERVICE_URL or 'disabled'}")
         print("="*60 + "\n")
     else:
-        print("\n⚠️  WARNING: Could not load graph from Map Service")
-        print(f"   Make sure Map Service is running at {MAP_SERVICE_URL}")
-        print("   Service will retry on first request\n")
+        print("\n✅ ROUTING SERVICE READY")
+        print("   - Active mode: PostGIS/pgRouting + GIS layers")
+        print("   - Legacy Map Service graph disabled")
+        print("="*60 + "\n")
 
 
 async def load_graph_from_map_service():
     """Fetch graph data from Map Service"""
     global GRAPH
+
+    if not MAP_SERVICE_URL:
+        print("ℹ️ Legacy Map Service disabled; skipping graph load")
+        return False
     
     try:
         print(f"📥 Fetching graph from {MAP_SERVICE_URL}/api/map ...")
@@ -180,28 +226,62 @@ async def load_graph_from_map_service():
 @app.get("/")
 async def root():
     """Health check"""
+    pgrouting_ready = False
+    try:
+        get_pgrouting_service()
+        pgrouting_ready = True
+    except Exception:
+        pgrouting_ready = False
+
     return {
         "service": "Routing Service",
         "version": "2.0.0",
-        "status": "running" if GRAPH else "no_graph_loaded",
+        "status": "running" if GRAPH else ("pgrouting_ready" if pgrouting_ready else "no_graph_loaded"),
+        "mode": "legacy_graph_and_pgrouting" if GRAPH else "pgrouting_gis",
         "nodes": len(GRAPH.nodes) if GRAPH else 0,
         "closures": len(HAZARD_MAP.closures) // 2 if HAZARD_MAP else 0,
-        "map_service": MAP_SERVICE_URL
+        "legacy_map_service": MAP_SERVICE_URL or "disabled",
+        "pgrouting_ready": pgrouting_ready,
     }
 
 
 @app.get("/health")
 async def health():
     """Detailed health check"""
+    pgrouting_ready = False
+    pgrouting_error = None
+    try:
+        get_pgrouting_service()
+        pgrouting_ready = True
+    except Exception as exc:
+        pgrouting_error = str(exc)
+
     if not GRAPH:
+        if pgrouting_ready:
+            return {
+                "status": "healthy",
+                "mode": "pgrouting_gis",
+                "message": "Legacy Map Service graph not loaded, but PostGIS/pgRouting endpoints are ready",
+                "graph": {
+                    "legacy_loaded": False,
+                    "nodes": 0,
+                    "adjacency_entries": 0,
+                },
+                "pgrouting_ready": True,
+                "legacy_map_service": MAP_SERVICE_URL or "disabled",
+            }
+
         return {
             "status": "degraded",
             "message": "Graph not loaded",
-            "suggestion": "Call POST /api/reload to load graph"
+            "suggestion": "Call POST /api/reload to load graph",
+            "pgrouting_ready": False,
+            "pgrouting_error": pgrouting_error,
         }
     
     return {
         "status": "healthy",
+        "mode": "legacy_graph_and_pgrouting" if pgrouting_ready else "legacy_graph",
         "graph": {
             "nodes": len(GRAPH.nodes),
             "adjacency_entries": len(GRAPH.adjacency)
@@ -210,13 +290,17 @@ async def health():
             "closures": len(HAZARD_MAP.closures) // 2,
             "node_hazards": len(HAZARD_MAP.node_hazards),
             "edge_hazards": len(HAZARD_MAP.edge_hazards) // 2
-        }
+        },
+        "pgrouting_ready": pgrouting_ready,
     }
 
 
 @app.post("/api/reload")
 async def reload_graph():
     """Reload graph from Map Service"""
+    if not MAP_SERVICE_URL:
+        raise HTTPException(status_code=410, detail="Legacy Map Service graph is disabled")
+
     success = await load_graph_from_map_service()
     
     if not success:
@@ -247,12 +331,12 @@ async def get_route(
     """
     Calculate shortest path between two nodes
     
-    Example: /api/route?from_node=N1&to_node=N10&avoid_crowds=true
+    Example: /api/route?from_node=62&to_node=70&avoid_crowds=true
     """
     if not GRAPH:
-        await load_graph_from_map_service()
-        if not GRAPH:
-            raise HTTPException(status_code=503, detail="Graph not loaded")
+        service = get_pgrouting_service()
+        route = service.get_route(_parse_node_id(from_node), _parse_node_id(to_node))
+        return _pgrouting_response_to_legacy_route(route)
     
     from api_handlers import RouteRequest
     
@@ -277,6 +361,17 @@ async def get_pgrouting_route(
     """
     service = get_pgrouting_service()
     return service.get_route(from_node, to_node)
+
+
+@app.get("/api/route/pgrouting/geojson")
+async def get_pgrouting_route_geojson(
+    from_node: int = Query(..., description="Start node ID from PostGIS/pgRouting graph"),
+    to_node: int = Query(..., description="End node ID from PostGIS/pgRouting graph"),
+    srid: int = Query(4326, description="Output SRID for GeoJSON coordinates"),
+):
+    """Calculate an indoor route between two pgRouting nodes and return route edges as GeoJSON."""
+    service = get_pgrouting_service()
+    return service.get_route_geojson(from_node, to_node, output_srid=srid)
 
 
 @app.get("/api/route/pgrouting/combined")
@@ -450,10 +545,10 @@ async def multi_destination_route(from_node: str = Query(...), to_nodes: List[st
     """
     Calculate route visiting multiple destinations
     
-    Example: POST /api/route/multi?from_node=N1&to_nodes=N5&to_nodes=N10
+    Example: POST /api/route/multi?from_node=62&to_nodes=65&to_nodes=70
     """
     if not GRAPH:
-        await load_graph_from_map_service()
+        raise HTTPException(status_code=410, detail="Legacy multi-destination routing is disabled; use pgRouting endpoints")
     
     from api_handlers import MultiDestinationRequest
     
@@ -469,9 +564,7 @@ async def multi_destination_route(from_node: str = Query(...), to_nodes: List[st
 async def nearest_node_to_coords(x: float, y: float):
     """Find the nearest graph node to given (x, y) coordinates"""
     if not GRAPH:
-        await load_graph_from_map_service()
-        if not GRAPH:
-            raise HTTPException(status_code=503, detail="Graph not loaded")
+        raise HTTPException(status_code=410, detail="Legacy coordinate lookup is disabled; use GIS/pgRouting endpoints")
 
     best_node = min(
         GRAPH.nodes.items(),
@@ -485,10 +578,10 @@ async def find_nearest(target: str = Query(...), candidates: List[str] = Query(.
     """
     Find nearest node from a list of candidates
     
-    Example: POST /api/route/nearest?target=N42&candidates=N10&candidates=N15
+    Example: POST /api/route/nearest?target=62&candidates=65&candidates=70
     """
     if not GRAPH:
-        await load_graph_from_map_service()
+        raise HTTPException(status_code=410, detail="Legacy nearest-node routing is disabled; use pgRouting endpoints")
     
     from api_handlers import NearestRequest
     
@@ -505,35 +598,23 @@ async def evacuation_route(from_node: str = Query(..., description="Current posi
     """
     Find safest evacuation route to nearest exit
     
-    Example: /api/route/evacuation?from_node=N42
+    Example: /api/route/evacuation?from_node=62
     """
     if not GRAPH:
-        await load_graph_from_map_service()
-    
-    # Get gates as exit nodes from Map Service
-    async with httpx.AsyncClient() as client:
-        try:
-            response = await client.get(f"{MAP_SERVICE_URL}/api/gates", timeout=5)
-            gates = response.json()
-            
-            # Find nodes near gates (within 20m)
-            exit_nodes = []
-            for gate in gates:
-                min_dist = float('inf')
-                closest = None
-                for node_id, node in GRAPH.nodes.items():
-                    dist = ((node.x - gate['x'])**2 + (node.y - gate['y'])**2)**0.5
-                    if dist < min_dist and dist < 20.0:
-                        min_dist = dist
-                        closest = node_id
-                if closest and closest not in exit_nodes:
-                    exit_nodes.append(closest)
-            
-            if not exit_nodes:
-                exit_nodes = ['N1', 'N21']
-            
-        except:
-            exit_nodes = ['N1', 'N21', 'N20']
+        service = get_pgrouting_service()
+        start_node = _parse_node_id(from_node)
+        for exit_node in (1, 21, 20):
+            try:
+                route = service.get_route(start_node, exit_node)
+                response = _pgrouting_response_to_legacy_route(route)
+                response["exit_node"] = str(exit_node)
+                response["route_type"] = "evacuation"
+                return response
+            except HTTPException:
+                continue
+        raise HTTPException(status_code=404, detail="No evacuation route found")
+
+    exit_nodes = ['1', '21', '20']
     
     return route_handler.get_evacuation_route(from_node, exit_nodes)
 
@@ -545,14 +626,29 @@ async def add_closure(from_node: str = Query(...), to_node: str = Query(...)):
     """
     Add corridor closure (e.g., during evacuation)
     
-    Example: POST /api/hazards/closure?from_node=N2&to_node=N3
+    Example: POST /api/hazards/closure?from_node=63&to_node=70
     """
+    if not hazard_handler:
+        return {
+            "status": "ignored",
+            "mode": "pgrouting_gis",
+            "message": "Legacy in-memory hazard graph is disabled; use /api/graph/edge-overrides for pgRouting impacts",
+            "from_node": from_node,
+            "to_node": to_node,
+        }
     return hazard_handler.add_closure(from_node, to_node)
 
 
 @app.delete("/api/hazards/closure")
 async def remove_closure(from_node: str = Query(...), to_node: str = Query(...)):
     """Remove corridor closure"""
+    if not hazard_handler:
+        return {
+            "status": "ignored",
+            "mode": "pgrouting_gis",
+            "from_node": from_node,
+            "to_node": to_node,
+        }
     return hazard_handler.remove_closure(from_node, to_node)
 
 
@@ -561,11 +657,21 @@ async def update_hazard(node_id: str = Query(...), hazard_type: str = Query(...)
     """
     Update hazard penalty for a node
     
-    Example: POST /api/hazards/update?node_id=N42&hazard_type=smoke&severity=0.8
+    Example: POST /api/hazards/update?node_id=62&hazard_type=smoke&severity=0.8
     
     Hazard types: smoke, crowd, fire, spill, structural
     """
     from api_handlers import HazardUpdate
+
+    if not hazard_handler:
+        return {
+            "status": "ignored",
+            "mode": "pgrouting_gis",
+            "message": "Legacy in-memory hazard graph is disabled; use operational events or edge overrides",
+            "node_id": node_id,
+            "hazard_type": hazard_type,
+            "severity": severity,
+        }
     
     update = HazardUpdate(
         node_id=node_id,
@@ -584,20 +690,41 @@ async def update_crowd(
     """
     Update crowd penalty based on occupancy rate
     
-    Example: POST /api/hazards/crowd?node_id=N42&occupancy_rate=85
+    Example: POST /api/hazards/crowd?node_id=62&occupancy_rate=85
     """
+    if not hazard_handler:
+        return {
+            "status": "ignored",
+            "mode": "pgrouting_gis",
+            "node_id": node_id,
+            "occupancy_rate": occupancy_rate,
+        }
     return hazard_handler.update_crowd_penalty(node_id, occupancy_rate)
 
 
 @app.delete("/api/hazards/clear")
 async def clear_hazards(node_id: str = Query(...)):
     """Clear all hazards from a node"""
+    if not hazard_handler:
+        return {
+            "status": "ignored",
+            "mode": "pgrouting_gis",
+            "node_id": node_id,
+        }
     return hazard_handler.clear_hazards(node_id)
 
 
 @app.get("/api/hazards/status")
 async def hazard_status():
     """Get summary of current hazards"""
+    if not hazard_handler:
+        return {
+            "mode": "pgrouting_gis",
+            "closures": 0,
+            "node_hazards": 0,
+            "edge_hazards": 0,
+            "message": "Legacy in-memory hazard graph is disabled",
+        }
     return hazard_handler.get_hazard_status()
 
 

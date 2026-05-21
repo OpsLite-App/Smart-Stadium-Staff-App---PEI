@@ -625,6 +625,23 @@ class PgRoutingService:
                 instruction_mode="combined",
             )
 
+    def get_route_geojson(
+        self,
+        from_node: int,
+        to_node: int,
+        output_srid: int = 4326,
+    ) -> PgRoutingRouteGeoJsonResponse:
+        """Return route edges as GeoJSON for two real pgRouting node IDs."""
+        with get_connection() as conn:
+            node_metadata = self._fetch_node_metadata(conn, [from_node, to_node], self.NODE_SQL)
+            self._validate_nodes(from_node, to_node, node_metadata)
+            rows = conn.execute(self.ROUTE_GEOJSON_SQL, (from_node, to_node, output_srid)).fetchall()
+
+        if not rows:
+            raise HTTPException(status_code=404, detail="No path found between the selected nodes")
+
+        return self._build_geojson_response(from_node, to_node, rows)
+
     def get_route_by_poi(self, from_poi_id: int, to_poi_id: int) -> PgRoutingRouteResponse:
         """Resolve POIs to graph nodes and calculate a route between them."""
         with get_connection() as conn:
@@ -666,6 +683,14 @@ class PgRoutingService:
         if not rows:
             raise HTTPException(status_code=404, detail="No path found between the selected POIs")
 
+        return self._build_geojson_response(from_node, to_node, rows)
+
+    def _build_geojson_response(
+        self,
+        from_node: int,
+        to_node: int,
+        rows: List[Dict],
+    ) -> PgRoutingRouteGeoJsonResponse:
         features = [self._route_row_to_feature(row) for row in rows]
         floors = sorted({int(row["floor_id"]) for row in rows if row.get("floor_id") is not None})
         distance = round(sum(float(row["length"] or 0.0) for row in rows), 2)

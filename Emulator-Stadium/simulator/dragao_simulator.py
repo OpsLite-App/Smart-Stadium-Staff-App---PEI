@@ -63,7 +63,7 @@ except Exception as e:
 
 # ========== CONFIGURATION ==========
    
-MAP_SERVICE_URL = os.getenv("MAP_SERVICE_URL", "http://localhost:8000")
+MAP_SERVICE_URL = os.getenv("MAP_SERVICE_URL", "")
 ROUTING_SERVICE_URL = os.getenv("ROUTING_SERVICE_URL", "http://localhost:8002")
 MQTT_BROKER = os.getenv("MQTT_BROKER", "localhost")
 MQTT_PORT = int(os.getenv("MQTT_PORT", 1883))
@@ -121,7 +121,7 @@ class IntegratedEventGenerator:
         self.zone_counters = defaultdict(int)
         self.bin_fill_levels = {}
         
-        # Load data from Map Service
+        # Load lightweight simulation data. Map Service is now legacy/optional.
         self.nodes = []
         self.edges = []
         self.gates = []
@@ -131,7 +131,11 @@ class IntegratedEventGenerator:
         self.load_map_data()
     
     def load_map_data(self):
-        """Fetch stadium data from Map Service"""
+        """Fetch stadium data from Map Service when available, otherwise use local fallback."""
+        if not MAP_SERVICE_URL:
+            self._load_fallback_data()
+            return True
+
         try:
             print(f"📥 Fetching data from {MAP_SERVICE_URL}...")
             
@@ -163,8 +167,28 @@ class IntegratedEventGenerator:
             
         except Exception as e:
             print(f"❌ Error loading map data: {e}")
-            print(f"   Make sure Map Service is running at {MAP_SERVICE_URL}")
-            return False
+            print("   Using local simulator fallback data")
+            self._load_fallback_data()
+            return True
+
+    def _load_fallback_data(self):
+        """Small node/POI set for MQTT simulation without Map Service."""
+        self.nodes = [
+            {"id": f"N{i}", "x": float(i * 10), "y": float((i % 5) * 12), "type": "corridor"}
+            for i in range(1, 22)
+        ]
+        self.edges = []
+        self.closures = []
+        self.gates = [
+            {"id": "GATE_NORTH", "gate_number": "Norte", "x": 10.0, "y": 0.0},
+            {"id": "GATE_SOUTH", "gate_number": "Sul", "x": 180.0, "y": 30.0},
+        ]
+        self.pois = [
+            {"id": "BIN_1", "category": "bin", "x": 60.0, "y": 12.0},
+            {"id": "WC_1", "category": "restroom", "x": 120.0, "y": 24.0},
+        ]
+        self.bin_fill_levels = {poi["id"]: random.uniform(10, 30) for poi in self.pois}
+        print(f"✅ Loaded fallback simulator data: {len(self.nodes)} nodes, {len(self.gates)} gates, {len(self.pois)} POIs")
     
     def get_random_node(self, node_type=None):
         """Get random node, optionally filtered by type"""

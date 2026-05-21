@@ -44,7 +44,6 @@ app.add_middleware(
 
 # ========== CONFIGURATION ==========
 
-MAP_SERVICE_URL = os.getenv("MAP_SERVICE_URL", "http://map-service:8000")
 ROUTING_SERVICE_URL = os.getenv("ROUTING_SERVICE_URL", "http://routing-service:8002")
 AUTH_SERVICE_URL = os.getenv("AUTH_SERVICE_URL", "http://auth-service:8081")
 
@@ -73,7 +72,7 @@ async def startup():
     print("✅ Staff coordinator initialized")
     
     # Initialize task manager
-    task_manager = TaskManager(ROUTING_SERVICE_URL, MAP_SERVICE_URL)
+    task_manager = TaskManager(ROUTING_SERVICE_URL)
     print("✅ Task manager initialized")
 
     # Load cleaning staff from auth service
@@ -94,7 +93,7 @@ async def startup():
                                 staff_id=sid,
                                 name=member.get("name") or f"staff-{sid}",
                                 role="cleaning",
-                                current_location=member.get("location", "N1")
+                                current_location=member.get("location") or member.get("current_location") or "70"
                             )
                             # If staff already has an active task, mark as unavailable
                             active = db_check.query(MaintenanceTask).filter(
@@ -121,7 +120,6 @@ async def startup():
     print("\n" + "="*60)
     print("✅ MAINTENANCE SERVICE READY")
     print(f"   - Routing Service: {ROUTING_SERVICE_URL}")
-    print(f"   - Map Service: {MAP_SERVICE_URL}")
     print(f"   - Staff Coordinator: Active")
     print("="*60 + "\n")
 
@@ -171,7 +169,6 @@ def root():
         "version": "1.0.0",
         "status": "running",
         "routing_service": ROUTING_SERVICE_URL,
-        "map_service": MAP_SERVICE_URL,
         "staff_registered": len(staff_coordinator.staff_locations)
     }
 

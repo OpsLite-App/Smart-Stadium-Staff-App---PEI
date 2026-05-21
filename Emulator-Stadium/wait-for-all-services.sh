@@ -7,7 +7,6 @@ set -e
 declare -A services=(
   ["mosquitto"]="tcp://mosquitto:1883"
   ["auth-service"]="http://auth-service:8081/actuator/health"
-  ["map-service"]="http://map-service:8000/health"
   ["routing-service"]="http://routing-service:8002/health"
   ["queueing-service"]="http://queueing-service:8003/health"
   ["congestion-service"]="http://congestion-service:8005/health"
@@ -42,11 +41,6 @@ for service in "${!services[@]}"; do
 done
 
 echo "All services are up!"
-
-# Map-service initialization
-echo "Initializing map-service..."
-curl -X POST "http://map-service:8000/api/reset"
-curl "http://map-service:8000/api/map"
 
 echo "Initialization done - starting emulator..."
 exec python simulator/dragao_simulator.py

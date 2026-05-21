@@ -110,6 +110,17 @@ export const indoorRoutingService = {
     return response.data;
   },
 
+  async getRouteGeoJson(fromNode: number, toNode: number): Promise<IndoorRouteGeoJsonResponse> {
+    const response = await axios.get<IndoorRouteGeoJsonResponse>(`${ROUTING_BASE}/route/pgrouting/geojson`, {
+      params: {
+        from_node: fromNode,
+        to_node: toNode,
+      },
+      timeout: 10000,
+    });
+    return response.data;
+  },
+
   async getCombinedRoute(fromNode: number, toNode: number): Promise<IndoorRouteResponse> {
     const response = await axios.get<IndoorRouteResponse>(`${ROUTING_BASE}/route/pgrouting/combined`, {
       params: {

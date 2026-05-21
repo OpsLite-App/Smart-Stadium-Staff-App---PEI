@@ -8,6 +8,7 @@ import {
   type CameraDensityLevel,
   type CameraProperties,
   type CameraStatus,
+  type GisFeature,
   type GisFeatureCollection,
   type ImpactedEdgeProperties,
   type RoomProperties,
@@ -20,26 +21,6 @@ interface IndoorGisMapProps {
   routeGeoJson?: GisFeatureCollection<RouteEdgeProperties> | null;
   routeAffected?: boolean;
 }
-
-interface LayerStats {
-  rooms: number;
-  corridors: number;
-  cameras: number;
-  coverage: number;
-  transitions: number;
-  criticalAreas: number;
-  impactedEdges: number;
-}
-
-const emptyStats: LayerStats = {
-  rooms: 0,
-  corridors: 0,
-  cameras: 0,
-  coverage: 0,
-  transitions: 0,
-  criticalAreas: 0,
-  impactedEdges: 0,
-};
 
 const coverageStyles: Record<CameraDensityLevel, { color: string; fillColor: string; fillOpacity: number }> = {
   normal: { color: '#10b981', fillColor: '#6ee7b7', fillOpacity: 0.18 },
@@ -82,6 +63,82 @@ function getBestFitLayer(...layers: import('leaflet').GeoJSON[]) {
   return layers.find((layer) => layer.getLayers().length > 0);
 }
 
+type RouteEndpointKind = 'start' | 'end';
+
+interface RouteEndpointMarker {
+  kind: RouteEndpointKind;
+  latLng: [number, number];
+}
+
+function getLineStringCoordinates(feature?: GisFeature<RouteEdgeProperties>) {
+  if (!feature || feature.geometry.type !== 'LineString') return [];
+
+  return (feature.geometry.coordinates as Array<[number, number]>).filter(
+    ([lng, lat]) => Number.isFinite(lng) && Number.isFinite(lat)
+  );
+}
+
+function featureFloorId(feature?: GisFeature<RouteEdgeProperties>) {
+  return feature?.properties.floor_id ?? feature?.properties.current_floor_id ?? null;
+}
+
+function getRouteEndpointMarkers(
+  routeGeoJson: GisFeatureCollection<RouteEdgeProperties> | null,
+  floorId: number
+): RouteEndpointMarker[] {
+  const routeFeatures = routeGeoJson?.features.filter((feature) => feature.geometry.type === 'LineString') ?? [];
+  const firstFeature = routeFeatures[0];
+  const lastFeature = routeFeatures.at(-1);
+  const markers: RouteEndpointMarker[] = [];
+
+  if (featureFloorId(firstFeature) === floorId) {
+    const coords = getLineStringCoordinates(firstFeature);
+    const start = coords[0];
+    if (start) markers.push({ kind: 'start', latLng: [start[1], start[0]] });
+  }
+
+  if (lastFeature && featureFloorId(lastFeature) === floorId) {
+    const coords = getLineStringCoordinates(lastFeature);
+    const end = coords.at(-1);
+    if (end) markers.push({ kind: 'end', latLng: [end[1], end[0]] });
+  }
+
+  return markers;
+}
+
+function routeEndpointIconHtml(kind: RouteEndpointKind) {
+  const isStart = kind === 'start';
+  const background = isStart ? '#2563eb' : '#f97316';
+  const label = isStart ? 'Partida' : 'Chegada';
+
+  return `
+    <span style="
+      display:inline-flex;
+      align-items:center;
+      gap:6px;
+      padding:6px 10px;
+      border-radius:999px;
+      background:${background};
+      color:white;
+      border:2px solid white;
+      box-shadow:0 10px 24px rgba(15,23,42,0.22);
+      font-size:11px;
+      font-weight:800;
+      line-height:1;
+      white-space:nowrap;
+    ">
+      <span style="
+        width:8px;
+        height:8px;
+        border-radius:999px;
+        background:white;
+        display:inline-block;
+      "></span>
+      ${label}
+    </span>
+  `;
+}
+
 export function IndoorGisMap({ floorId, routeGeoJson = null, routeAffected = false }: IndoorGisMapProps) {
   const { user } = useAuthStore();
   const containerRef = useRef<HTMLDivElement>(null);
@@ -91,22 +148,21 @@ export function IndoorGisMap({ floorId, routeGeoJson = null, routeAffected = fal
   const [mapReady, setMapReady] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [stats, setStats] = useState<LayerStats>(emptyStats);
   const [cameraStatuses, setCameraStatuses] = useState<CameraStatus[]>([]);
   const [selectedCamera, setSelectedCamera] = useState<CameraStatus | null>(null);
   const [refreshToken, setRefreshToken] = useState(0);
   const [updatingLevel, setUpdatingLevel] = useState<CameraDensityLevel | null>(null);
-  const isSupervisor = user?.role === 'Supervisor';
+  const canManageCameraDensity = Boolean(user?.permissions.canManageCameraDensity);
 
   const selectCamera = useCallback((status: CameraStatus) => {
-    if (!isSupervisor) return;
+    if (!canManageCameraDensity) return;
 
     selectedCameraIdRef.current = status.camera_id;
     setSelectedCamera(status);
-  }, [isSupervisor]);
+  }, [canManageCameraDensity]);
 
   async function updateSelectedCamera(level: CameraDensityLevel, peopleCount: number) {
-    if (!selectedCamera || !isSupervisor) return;
+    if (!selectedCamera || !canManageCameraDensity) return;
 
     setUpdatingLevel(level);
     setError(null);
@@ -172,7 +228,7 @@ export function IndoorGisMap({ floorId, routeGeoJson = null, routeAffected = fal
   useEffect(() => {
     selectedCameraIdRef.current = null;
     setSelectedCamera(null);
-  }, [floorId, isSupervisor]);
+  }, [floorId, canManageCameraDensity]);
 
   useEffect(() => {
     let cancelled = false;
@@ -267,7 +323,7 @@ export function IndoorGisMap({ floorId, routeGeoJson = null, routeAffected = fal
               sticky: true,
             });
 
-            if (status && isSupervisor) {
+            if (status && canManageCameraDensity) {
               layer.on('click', () => selectCamera(status));
             }
           },
@@ -327,6 +383,23 @@ export function IndoorGisMap({ floorId, routeGeoJson = null, routeAffected = fal
           },
         }).addTo(layerGroupRef.current);
 
+        const layerGroup = layerGroupRef.current;
+        getRouteEndpointMarkers(routeGeoJson, floorId).forEach((marker) => {
+          const label = marker.kind === 'start' ? 'Ponto de partida' : 'Ponto de chegada';
+
+          L.marker(marker.latLng, {
+            zIndexOffset: 900,
+            icon: L.divIcon({
+              className: 'gis-route-endpoint-marker',
+              html: routeEndpointIconHtml(marker.kind),
+              iconSize: [86, 28],
+              iconAnchor: [43, 14],
+            }),
+          })
+            .bindTooltip(label, { sticky: true })
+            .addTo(layerGroup);
+        });
+
         const cameraLayer = L.geoJSON(cameras as unknown as GeoJSON.GeoJsonObject, {
           pointToLayer: (feature, latlng) => {
             const properties = feature.properties as CameraProperties;
@@ -341,7 +414,7 @@ export function IndoorGisMap({ floorId, routeGeoJson = null, routeAffected = fal
             })
               .bindTooltip(properties.camera_name ?? `Camera ${properties.id}`, { sticky: true })
               .on('click', () => {
-                if (status && isSupervisor) selectCamera(status);
+                if (status && canManageCameraDensity) selectCamera(status);
               });
           },
         }).addTo(layerGroupRef.current);
@@ -370,19 +443,9 @@ export function IndoorGisMap({ floorId, routeGeoJson = null, routeAffected = fal
           }
         }
 
-        setStats({
-          rooms: rooms.features.length,
-          corridors: corridors.features.length,
-          cameras: cameras.features.length,
-          coverage: coverage.features.length,
-          transitions: transitions.features.length,
-          criticalAreas: cameraStatusResponse.statuses.filter((status) => status.density_level === 'critical').length,
-          impactedEdges: impactedEdges.features.length,
-        });
       } catch {
         setCameraStatuses([]);
         setSelectedCamera(null);
-        setStats(emptyStats);
         setError('GIS layers unavailable. Showing operational fallback below.');
       } finally {
         if (!cancelled) setLoading(false);
@@ -394,27 +457,11 @@ export function IndoorGisMap({ floorId, routeGeoJson = null, routeAffected = fal
     return () => {
       cancelled = true;
     };
-  }, [floorId, isSupervisor, mapReady, refreshToken, routeAffected, routeGeoJson, selectCamera]);
+  }, [floorId, canManageCameraDensity, mapReady, refreshToken, routeAffected, routeGeoJson, selectCamera]);
 
   return (
     <div className="overflow-hidden rounded-[1.5rem] border border-slate-200 bg-slate-50">
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-white px-4 py-3">
-        <div>
-          <p className="text-xs uppercase tracking-[0.18em] text-slate-500">PostGIS layers</p>
-          <p className="text-sm font-semibold text-slate-900">
-            Floor {floorId} · {stats.rooms} rooms · {stats.cameras} cameras
-          </p>
-        </div>
-        <div className="flex flex-wrap gap-2 text-xs text-slate-600">
-          <span>{stats.corridors} corridors</span>
-          <span>{stats.coverage} coverage areas</span>
-          <span>{stats.transitions} transitions</span>
-          <span>{stats.impactedEdges} impacted edges</span>
-          <span>{stats.criticalAreas} critical</span>
-        </div>
-      </div>
-
-      <div className="relative h-[28rem] bg-[linear-gradient(135deg,#f8fafc,#eef2f7)]">
+      <div className="relative h-[34rem] bg-[linear-gradient(135deg,#f8fafc,#eef2f7)] md:h-[38rem]">
         <div ref={containerRef} className="h-full w-full" />
         {loading && (
           <div className="absolute inset-0 z-[500] flex items-center justify-center bg-white/65 text-sm font-medium text-slate-600 backdrop-blur-sm">
@@ -426,7 +473,7 @@ export function IndoorGisMap({ floorId, routeGeoJson = null, routeAffected = fal
             {error}
           </div>
         )}
-        {isSupervisor && (
+        {canManageCameraDensity && (
         <div className="absolute right-4 top-4 z-[500] w-[20rem] max-w-[calc(100%-2rem)] rounded-2xl border border-slate-200 bg-white/95 p-4 shadow-xl backdrop-blur">
           <div className="mb-3 flex items-start justify-between gap-3">
             <div>

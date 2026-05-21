@@ -1,39 +1,40 @@
 // app/auth-routes/login/page.tsx
 'use client';
 
-import { useEffect, useState } from 'react';
+import { type FormEvent, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuthStore } from '@/lib/stores/useAuthStore';
 import { Shield, Brush, UserCog, Eye, EyeOff, HeartPulse } from 'lucide-react'; // ✅ Adicionar HeartPulse
 import { AppButton } from '@/components/ui/AppButton';
+import { api } from '@/lib/services/api';
+import { defaultRouteForRole, normalizeRole, type Role } from '@/lib/auth/rbac';
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [errors, setErrors] = useState<{ email?: string; password?: string }>({});
-  const [role, setRole] = useState<'Security' | 'Cleaning' | 'Supervisor' | 'Medical'>('Security');
+  const [role, setRole] = useState<Role>('Security');
   const { login, isLoading, user, hydrated, error, clearError } = useAuthStore();
   const router = useRouter();
 
-  const getDefaultRoute = (userRole?: 'Security' | 'Cleaning' | 'Supervisor' | 'Medical') => {
-    if (userRole === 'Supervisor') {
-      return '/app-routes/dashboard';
-    }
-    // Médicos vão para o dashboard (ou pode ser mapa, como preferir)
-    if (userRole === 'Medical') {
-      return '/app-routes/dashboard'; // ou '/app-routes/map'
-    }
-    return '/app-routes/map';
-  };
-
-  // Se já estiver logado, redireciona
+  // Se já existir uma sessão válida no cookie, redireciona.
   useEffect(() => {
-    // Only consider the user authenticated when a runtime token exists.
-    // We persist user metadata (no token) so redirecting on stored user causes false positives.
-    if (hydrated && user && (user as any).token) {
-      router.replace(getDefaultRoute(user.role));
-    }
+    if (!hydrated || !user) return;
+
+    let cancelled = false;
+    void api.me()
+      .then((session) => {
+        if (cancelled) return;
+        router.replace(defaultRouteForRole(normalizeRole(session.role)));
+      })
+      .catch(() => {
+        // Persisted profile data without a valid cookie is ignored on login.
+      });
+
+    return () => {
+      cancelled = true;
+    };
   }, [user, hydrated, router]);
 
   // Se ainda está a hidratar, mostra loading
@@ -52,7 +53,8 @@ export default function LoginPage() {
     );
   }
 
-  const handleLogin = async () => {
+  const handleLogin = async (event?: FormEvent<HTMLFormElement>) => {
+    event?.preventDefault();
     const newErrors: { email?: string; password?: string } = {};
     if (!email) newErrors.email = 'O email é obrigatório.';
     if (!password) newErrors.password = 'A palavra-passe é obrigatória.';
@@ -62,7 +64,7 @@ export default function LoginPage() {
     const success = await login(email, password, role);
     if (success) {
       const authenticatedRole = useAuthStore.getState().user?.role;
-      router.replace(getDefaultRoute(authenticatedRole));
+      router.replace(defaultRouteForRole(authenticatedRole));
     }
   };
 
@@ -77,7 +79,7 @@ export default function LoginPage() {
           <p className="text-sm text-[#6B7280] mt-1">Smart Stadium Staff App</p>
         </div>
 
-        <div className="space-y-6">
+        <form className="space-y-6" onSubmit={handleLogin}>
           {/* Role Selection */}
           <div>
             <label className="block text-xs font-bold text-[#6B7280] mb-3 tracking-wider">
@@ -86,6 +88,7 @@ export default function LoginPage() {
             {/* Mudar grid para 4 colunas */}
             <div className="grid grid-cols-4 gap-2">
               <button
+                type="button"
                 onClick={() => setRole('Security')}
                 className={`
                   flex flex-col items-center gap-2 p-3 rounded-lg border-2 transition-all
@@ -102,6 +105,7 @@ export default function LoginPage() {
               </button>
 
               <button
+                type="button"
                 onClick={() => setRole('Cleaning')}
                 className={`
                   flex flex-col items-center gap-2 p-3 rounded-lg border-2 transition-all
@@ -118,6 +122,7 @@ export default function LoginPage() {
               </button>
 
               <button
+                type="button"
                 onClick={() => setRole('Supervisor')}
                 className={`
                   flex flex-col items-center gap-2 p-3 rounded-lg border-2 transition-all
@@ -135,6 +140,7 @@ export default function LoginPage() {
 
               {/*  botão Medical */}
               <button
+                type="button"
                 onClick={() => setRole('Medical')}
                 className={`
                   flex flex-col items-center gap-2 p-3 rounded-lg border-2 transition-all
@@ -191,7 +197,7 @@ export default function LoginPage() {
               </button>
             </div>
             <div className="mt-1 text-right">
-              <button className="text-xs text-[#4F46E5] hover:underline">
+              <button type="button" className="text-xs text-[#4F46E5] hover:underline">
                 Esqueceu-se da password?
               </button>
             </div>
@@ -207,8 +213,8 @@ export default function LoginPage() {
 
           {/* Login Button */}
           <AppButton
+            type="submit"
             title="ENTRAR NO SISTEMA"
-            onClick={handleLogin}
             loading={isLoading}
             fullWidth
             className="mt-4"
@@ -218,7 +224,7 @@ export default function LoginPage() {
           <p className="text-center text-xs text-[#9CA3AF] mt-6">
             © 2026 FC Porto - Stadium Security System
           </p>
-        </div>
+        </form>
       </div>
     </div>
   );

@@ -120,6 +120,8 @@ services:
       SPRING_DATASOURCE_USERNAME: admin
       SPRING_DATASOURCE_PASSWORD: password
       SPRING_JPA_HIBERNATE_DDL_AUTO: validate
+      OPSLITE_SEED_USERS: "true"
+      OPSLITE_SEED_USERS_RESET: "true"
     ports:
       - "8081:8081"
 
@@ -141,6 +143,7 @@ services:
       - "8089:8089"
 
   map-service:
+    profiles: ["legacy"]
     build:
       context: ./services/Map-Service
       dockerfile: Dockerfile
@@ -160,16 +163,12 @@ services:
       dockerfile: Dockerfile
     container_name: routing-service
     depends_on:
-      map-service:
-        condition: service_started
       postgres_map:
         condition: service_healthy
     environment:
-      MAP_SERVICE_URL: http://map-service:8000
       AUTH_SERVICE_URL: http://auth-service:8081
       DATABASE_URI: postgresql://postgres:postgres@postgres_map:5432/estadio_do_dragao
       PGR_DATABASE_URI: postgresql://postgres:postgres@postgres_map:5432/estadio_do_dragao?options=-csearch_path%3Dindoor,public
-      MAP_SERVICE_WAIT_ATTEMPTS: "3"
     ports:
       - "8002:8002"
 
@@ -211,13 +210,10 @@ services:
         condition: service_healthy
       routing-service:
         condition: service_started
-      map-service:
-        condition: service_started
       mosquitto:
         condition: service_healthy
     environment:
       ROUTING_SERVICE_URL: http://routing-service:8002
-      MAP_SERVICE_URL: http://map-service:8000
       MQTT_HOST: mosquitto
       MQTT_BROKER: mosquitto
       MQTT_PORT: "1883"
@@ -235,15 +231,12 @@ services:
         condition: service_healthy
       routing-service:
         condition: service_started
-      map-service:
-        condition: service_started
       mosquitto:
         condition: service_healthy
       positioning-service:
         condition: service_started
     environment:
       ROUTING_SERVICE_URL: http://routing-service:8002
-      MAP_SERVICE_URL: http://map-service:8000
       POSITIONING_SERVICE_URL: http://positioning-service:8004
       MQTT_HOST: mosquitto
       MQTT_BROKER: mosquitto
@@ -305,7 +298,6 @@ services:
     depends_on:
       - mosquitto
       - routing-service
-      - map-service
       - queueing-service
     environment:
       MQTT_HOST: mosquitto
@@ -319,10 +311,8 @@ services:
     container_name: dragao-emulator
     depends_on:
       - mosquitto
-      - map-service
       - routing-service
     environment:
-      MAP_SERVICE_URL: http://map-service:8000
       ROUTING_SERVICE_URL: http://routing-service:8002
       MQTT_HOST: mosquitto
       MQTT_BROKER: mosquitto

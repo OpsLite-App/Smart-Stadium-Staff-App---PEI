@@ -3,28 +3,7 @@
 import { useEffect, useCallback } from 'react';
 import { useAuthStore } from '@/lib/stores/useAuthStore';
 import { api } from '@/lib/services/api';
-
-type Role = 'Security' | 'Cleaning' | 'Supervisor' | 'Medical';
-
-function toRole(value: string | undefined): Role {
-  const normalized = String(value ?? '').toLowerCase();
-  if (normalized === 'cleaning') return 'Cleaning';
-  if (normalized === 'supervisor') return 'Supervisor';
-  if (normalized === 'medical') return 'Medical';
-  return 'Security';
-}
-
-function permissionsForRole(role: Role) {
-  return {
-    canViewHeatmap: role === 'Security' || role === 'Supervisor' || role === 'Medical',
-    canViewBins: role === 'Cleaning' || role === 'Supervisor',
-    canViewAlerts: true,
-    canCreateIncidents: role === 'Supervisor',
-    canManageIncidents: role === 'Supervisor',
-    canDispatchIncidents: role === 'Supervisor',
-    canResolveIncidents: role === 'Supervisor' || role === 'Medical',
-  };
-}
+import { mergePermissions, normalizeRole } from '@/lib/auth/rbac';
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const { logout, checkStorage, restoreUser } = useAuthStore();
@@ -44,7 +23,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     try {
       const data = await api.me();
-      const serverRole = toRole(data.role);
+      const serverRole = normalizeRole(data.role);
       
       // ✅ CORRIGIDO: Use email from data or fallback
       // ✅ REMOVED: token from restoreUser (no longer stored)
@@ -52,7 +31,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         email: data.email ?? data.username ?? currentUser?.email ?? '',
         role: serverRole,
         id: data.user_id,
-        permissions: permissionsForRole(serverRole),
+        permissions: mergePermissions(serverRole, data.permissions),
       });
       console.log('Sessão restaurada com sucesso');
     } catch (error) {

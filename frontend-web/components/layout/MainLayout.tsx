@@ -22,7 +22,9 @@ import {
   LayoutDashboard,
   ClipboardList
 } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 import { useState } from 'react';
+import { canAccessRoute, defaultRouteForRole, NAV_ITEMS } from '@/lib/auth/rbac';
 
 interface MainLayoutProps {
   children: ReactNode;
@@ -34,14 +36,6 @@ export function MainLayout({ children }: MainLayoutProps) {
   const router = useRouter();
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
-  const getDefaultRoute = (role?: string) => {
-    if (role === 'Supervisor') {
-      return '/app-routes/dashboard';
-    }
-
-    return '/app-routes/map';
-  };
-
   useEffect(() => {
     if (!user && pathname !== '/auth-routes/login') {
       router.replace('/auth-routes/login');
@@ -51,17 +45,8 @@ export function MainLayout({ children }: MainLayoutProps) {
   useEffect(() => {
     if (!user) return;
 
-    if (user.role === 'Supervisor') {
-      const blockedMobileOpsRoutes = ['/app-routes/chat', '/app-routes/emergency'];
-      if (blockedMobileOpsRoutes.includes(pathname)) {
-        router.replace('/app-routes/dashboard');
-      }
-      return;
-    }
-
-    const webOnlySupervisorRoutes = ['/app-routes/analytics', '/app-routes/team'];
-    if (webOnlySupervisorRoutes.includes(pathname)) {
-      router.replace(getDefaultRoute(user.role));
+    if (!canAccessRoute(pathname, user.role, user.permissions)) {
+      router.replace(defaultRouteForRole(user.role));
     }
   }, [user, pathname, router]);
 
@@ -69,62 +54,28 @@ export function MainLayout({ children }: MainLayoutProps) {
     return null;
   }
 
-  // Navegação baseada no role
-  const getNavigation = () => {
-    const baseNav = [
-      { name: 'Mapa', href: '/app-routes/map', icon: Map, current: pathname === '/app-routes/map' },
-      { name: 'Navegação', href: '/app-routes/navigation', icon: Navigation, current: pathname === '/app-routes/navigation' },
-      { name: 'Dashboard', href: '/app-routes/dashboard', icon: BarChart3, current: pathname === '/app-routes/dashboard' },
-    ];
-
-    switch (user.role) {
-      case 'Security':
-        return [
-          ...baseNav,
-          { name: 'Tarefas', href: '/app-routes/tasks', icon: ClipboardList, current: pathname === '/app-routes/tasks' },
-          { name: 'Alertas', href: '/app-routes/alerts', icon: Bell, current: pathname === '/app-routes/alerts' },
-          { name: 'Chat', href: '/app-routes/chat', icon: MessageCircle, current: pathname === '/app-routes/chat' },
-          { name: 'Emergência', href: '/app-routes/emergency', icon: AlertOctagon, current: pathname === '/app-routes/emergency' },
-          { name: 'Perfil', href: '/app-routes/profile', icon: User, current: pathname === '/app-routes/profile' },
-        ];
-      
-      case 'Cleaning':
-        return [
-          ...baseNav,
-          { name: 'Tarefas', href: '/app-routes/tasks', icon: ClipboardList, current: pathname === '/app-routes/tasks' },
-          { name: 'Alertas', href: '/app-routes/alerts', icon: Bell, current: pathname === '/app-routes/alerts' },
-          { name: 'Chat', href: '/app-routes/chat', icon: MessageCircle, current: pathname === '/app-routes/chat' },
-          { name: 'Perfil', href: '/app-routes/profile', icon: User, current: pathname === '/app-routes/profile' },
-        ];
-      
-      case 'Supervisor':
-        return [
-          { name: 'Dashboard', href: '/app-routes/dashboard', icon: LayoutDashboard, current: pathname === '/app-routes/dashboard' },
-          { name: 'Analytics', href: '/app-routes/analytics', icon: BarChart3, current: pathname === '/app-routes/analytics' },
-          { name: 'Equipa', href: '/app-routes/team', icon: Users, current: pathname === '/app-routes/team' },
-          { name: 'Tarefas', href: '/app-routes/tasks', icon: ClipboardList, current: pathname === '/app-routes/tasks' },
-          { name: 'Alertas', href: '/app-routes/alerts', icon: Bell, current: pathname === '/app-routes/alerts' },
-          { name: 'Mapa', href: '/app-routes/map', icon: Map, current: pathname === '/app-routes/map' },
-          { name: 'Perfil', href: '/app-routes/profile', icon: User, current: pathname === '/app-routes/profile' },
-        ];
-
-    case 'Medical':
-    return [
-      { name: 'Dashboard', href: '/app-routes/dashboard', icon: LayoutDashboard, current: pathname === '/app-routes/dashboard' },
-      { name: 'Tarefas', href: '/app-routes/tasks', icon: ClipboardList, current: pathname === '/app-routes/tasks' },
-      { name: 'Incidentes', href: '/app-routes/medical/incidents', icon: HeartPulse, current: pathname.includes('/medical/incidents') },
-      { name: 'Alertas', href: '/app-routes/alerts', icon: Bell, current: pathname === '/app-routes/alerts' },
-      { name: 'Mapa', href: '/app-routes/map', icon: Map, current: pathname === '/app-routes/map' },
-      { name: 'Chat', href: '/app-routes/chat', icon: MessageCircle, current: pathname === '/app-routes/chat' },
-      { name: 'Perfil', href: '/app-routes/profile', icon: User, current: pathname === '/app-routes/profile' },
-    ];
-      
-      default:
-        return baseNav;
-    }
+  const iconByHref: Record<string, LucideIcon> = {
+    '/app-routes/dashboard': LayoutDashboard,
+    '/app-routes/analytics': BarChart3,
+    '/app-routes/team': Users,
+    '/app-routes/map': Map,
+    '/app-routes/navigation': Navigation,
+    '/app-routes/tasks': ClipboardList,
+    '/app-routes/medical/incidents': HeartPulse,
+    '/app-routes/alerts': Bell,
+    '/app-routes/chat': MessageCircle,
+    '/app-routes/emergency': AlertOctagon,
+    '/app-routes/profile': User,
   };
 
-  const navigation = getNavigation();
+  const navigation = NAV_ITEMS
+    .filter((item) => user.permissions[item.permission])
+    .filter((item) => !item.roles || item.roles.includes(user.role))
+    .map((item) => ({
+      ...item,
+      icon: iconByHref[item.href] ?? Map,
+      current: pathname === item.href || pathname.startsWith(`${item.href}/`),
+    }));
   const isSupervisorWeb = user.role === 'Supervisor';
 
   const handleNavigation = (href: string) => {

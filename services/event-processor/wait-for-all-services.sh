@@ -11,7 +11,6 @@ echo "MQTT broker is ready!"
 # List of other services and their health check URLs
 declare -A services=(
   ["auth-service"]="http://auth-service:8081/actuator/health"
-  ["map-service"]="http://map-service:8000/health"
   ["routing-service"]="http://routing-service:8002/health"
   ["queueing-service"]="http://queueing-service:8003/health"
   ["congestion-service"]="http://congestion-service:8005/health"
@@ -34,4 +33,3 @@ done
 
 echo "All services are up! Starting event-processor..."
 exec python event_processor.py
-

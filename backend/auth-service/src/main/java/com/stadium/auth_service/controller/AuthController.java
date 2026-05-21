@@ -9,6 +9,7 @@ import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 import com.stadium.auth_service.dto.LoginRequest;
 import com.stadium.auth_service.dto.LoginResponse;
+import com.stadium.auth_service.security.RoleAccess;
 import com.stadium.auth_service.service.UserService;
 import com.stadium.auth_service.util.JwtUtil;
 
@@ -35,11 +36,19 @@ public class AuthController {
           if (!"active".equalsIgnoreCase(user.getStatus())) {
             return ResponseEntity.status(403).body(Map.of("error", "user_not_active"));
           }
-          String token = jwtUtil.generateToken(user.getId(), user.getUsername(), user.getRole());
+          String normalizedRole = RoleAccess.normalizeRole(user.getRole());
+          String token = jwtUtil.generateToken(user.getId(), user.getUsername(), normalizedRole);
           ResponseCookie cookie = createAuthCookie(servletRequest, token);
           return ResponseEntity.ok()
               .header(HttpHeaders.SET_COOKIE, cookie.toString())
-              .body(new LoginResponse(token, user.getId(), user.getRole()));
+              .body(new LoginResponse(
+                  token,
+                  user.getId(),
+                  user.getUsername(),
+                  user.getUsername(),
+                  normalizedRole,
+                  RoleAccess.permissionsForRole(normalizedRole)
+              ));
         })
         .orElseGet(() -> ResponseEntity.status(401).body(Map.of("error", "invalid_credentials")));
   }
@@ -52,10 +61,14 @@ public class AuthController {
     String token = authHeader.substring(7);
     try {
       var claims = jwtUtil.getClaims(token);
+      String username = (String) claims.get("username");
+      String role = RoleAccess.normalizeRole((String) claims.get("role"));
       return ResponseEntity.ok(Map.of(
           "user_id", Long.parseLong(claims.getSubject()),
-          "username", claims.get("username"),
-          "role", claims.get("role"),
+          "username", username != null ? username : "",
+          "email", username != null ? username : "",
+          "role", role,
+          "permissions", RoleAccess.permissionsForRole(role),
           "exp", claims.getExpiration().getTime()
       ));
     } catch (Exception e) {
@@ -71,10 +84,11 @@ public class AuthController {
     String userId = authentication.getName();
     var details = authentication.getDetails();
     String username = details instanceof Map ? (String) ((Map<?, ?>) details).get("username") : null;
-    String role = details instanceof Map ? (String) ((Map<?, ?>) details).get("role") : null;
-    if (userId == null || role == null) {
+    String rawRole = details instanceof Map ? (String) ((Map<?, ?>) details).get("role") : null;
+    if (userId == null || username == null || rawRole == null) {
       return ResponseEntity.status(401).body(Map.of("error", "unauthenticated"));
     }
+    String role = RoleAccess.normalizeRole(rawRole);
     String token = jwtUtil.generateToken(Integer.parseInt(userId), username, role);
     ResponseCookie cookie = createAuthCookie(servletRequest, token);
     return ResponseEntity.ok()
@@ -83,7 +97,9 @@ public class AuthController {
             "token", token,
             "user_id", Long.parseLong(userId),
             "username", username,
-            "role", role
+            "email", username,
+            "role", role,
+            "permissions", RoleAccess.permissionsForRole(role)
         ));
   }
 
@@ -107,7 +123,7 @@ public class AuthController {
           .map(u -> java.util.Map.of(
               "id", u.getId(),
               "name", u.getName(),
-              "role", u.getRole(),
+              "role", RoleAccess.normalizeRole(u.getRole()),
               "location", u.getCurrentLocation() != null ? u.getCurrentLocation() : "Unknown"
           ))
           .collect(java.util.stream.Collectors.toList());

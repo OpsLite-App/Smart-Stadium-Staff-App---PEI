@@ -16,9 +16,8 @@ from schemas import EvacuationRequest, EvacuationResponse
 class EvacuationCoordinator:
     """Coordinates evacuation procedures"""
     
-    def __init__(self, routing_service_url: str, map_service_url: str, congestion_service_url: str):
+    def __init__(self, routing_service_url: str, congestion_service_url: str):
         self.routing_service_url = routing_service_url
-        self.map_service_url = map_service_url
         self.congestion_service_url = congestion_service_url
     
     async def initiate_evacuation(
@@ -74,8 +73,8 @@ class EvacuationCoordinator:
         # Simplified: return empty dict, would calculate per zone
         for zone in zones:
             routes[zone] = {
-                "primary_exit": "N21",
-                "alternative_exits": ["N1", "N20"],
+                "primary_exit": "21",
+                "alternative_exits": ["1", "20"],
                 "status": "calculated"
             }
         

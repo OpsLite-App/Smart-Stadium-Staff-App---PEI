@@ -22,9 +22,8 @@ from schemas import (
 class TaskManager:
     """Manages maintenance tasks and assignments"""
     
-    def __init__(self, routing_service_url: str, map_service_url: str):
+    def __init__(self, routing_service_url: str):
         self.routing_service_url = routing_service_url
-        self.map_service_url = map_service_url
     
     # ========== TASK CREATION ==========
     

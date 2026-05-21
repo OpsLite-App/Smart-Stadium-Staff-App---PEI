@@ -3,8 +3,7 @@
 
 import { useState, useEffect } from 'react';
 import { useAuthStore } from '@/lib/stores/useAuthStore';
-import { api, AUTH_SERVICE } from '@/lib/services/api';
-import axios from 'axios';
+import { api } from '@/lib/services/api';
 import {
   User,
   Users,
@@ -199,12 +198,12 @@ export default function TeamPage() {
       let teamMembers: TeamMember[] = [];
 
       try {
-        const response = await axios.get<ApiStaffMember[]>(`${AUTH_SERVICE}/auth/staff`, { timeout: 5000 });
-        if (response.data && Array.isArray(response.data)) {
-          console.log(`✅ API respondeu com ${response.data.length} membros`);
+        const staffList = await api.getStaff() as ApiStaffMember[];
+        if (Array.isArray(staffList)) {
+          console.log(`✅ API respondeu com ${staffList.length} membros`);
           
           // Mapear resposta da API para o formato TeamMember
-          teamMembers = response.data.map((staff, index) => ({
+          teamMembers = staffList.map((staff, index) => ({
             id: staff.id ?? 10000 + index,
             name: staff.name || `Staff ${staff.id || 'N/A'}`,
             email: staff.email || `${(staff.name || 'staff').toLowerCase().replace(' ', '.')}@fcp.pt`,
@@ -282,7 +281,7 @@ export default function TeamPage() {
 
     const locations = [
       'Setor A - Entrada', 'Setor B - Bancada', 'Setor VIP - Camarotes',
-      'Corredor N1', 'Corredor N2', 'Zona Mista', 'Balneários',
+      'Corredor 1', 'Corredor 2', 'Zona Mista', 'Balneários',
       'Sala de Controlo', 'Portão 1', 'Portão 2', 'Estacionamento'
     ];
 

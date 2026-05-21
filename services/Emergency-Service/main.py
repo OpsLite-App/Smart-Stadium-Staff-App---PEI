@@ -4,12 +4,13 @@ Manages emergencies, incidents, evacuations, and responder dispatch
 Calls Routing Service for route calculations
 """
 
-from fastapi import FastAPI, HTTPException, Query, Depends
+from fastapi import FastAPI, HTTPException, Query, Depends, Request
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
-from typing import List, Optional
+from typing import Callable, List, Optional
 from datetime import datetime
 import asyncio
+import httpx
 import os
 
 from models import IncidentStatus, IncidentSeverity, IncidentType
@@ -40,9 +41,9 @@ app.add_middleware(
 
 # ========== CONFIGURATION ==========
 
-MAP_SERVICE_URL = os.getenv("MAP_SERVICE_URL", "http://map-service:8000")
 ROUTING_SERVICE_URL = os.getenv("ROUTING_SERVICE_URL", "http://routing-service:8002")
 CONGESTION_SERVICE_URL = os.getenv("CONGESTION_SERVICE_URL", "http://congestion-service:8003")
+AUTH_SERVICE_URL = os.getenv("AUTH_SERVICE_URL", "http://auth-service:8081")
 
 EMERGENCY_CONTACTS = {
     "fire_brigade": "112",
@@ -55,6 +56,61 @@ EMERGENCY_CONTACTS = {
 
 incident_manager: Optional[IncidentManager] = None
 evacuation_coordinator: Optional[EvacuationCoordinator] = None
+
+
+# ========== AUTH/RBAC ==========
+
+def normalize_role(value: object) -> str:
+    role = str(value or "").strip().lower()
+    if role in {"cleaning", "cleaner", "maintenance"}:
+        return "cleaning"
+    if role in {"medical", "medic", "doctor"}:
+        return "medical"
+    if role in {"supervisor", "admin"}:
+        return "supervisor"
+    return "security"
+
+
+def require_roles(*allowed_roles: str) -> Callable:
+    allowed = {normalize_role(role) for role in allowed_roles}
+
+    async def dependency(request: Request) -> dict:
+        authorization = request.headers.get("authorization")
+        cookie = request.headers.get("cookie")
+
+        headers = {}
+        endpoint = f"{AUTH_SERVICE_URL}/auth/me"
+        method = "GET"
+
+        if authorization and authorization.lower().startswith("bearer "):
+            headers["Authorization"] = authorization
+            endpoint = f"{AUTH_SERVICE_URL}/auth/validate"
+            method = "POST"
+        elif cookie and "AUTH_TOKEN=" in cookie:
+            headers["Cookie"] = cookie
+        else:
+            raise HTTPException(status_code=401, detail="Authentication required")
+
+        try:
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                if method == "POST":
+                    response = await client.post(endpoint, headers=headers)
+                else:
+                    response = await client.get(endpoint, headers=headers)
+        except httpx.HTTPError:
+            raise HTTPException(status_code=503, detail="Authentication service unavailable")
+
+        if response.status_code != 200:
+            raise HTTPException(status_code=401, detail="Invalid authentication")
+
+        claims = response.json()
+        role = normalize_role(claims.get("role"))
+        if role not in allowed:
+            raise HTTPException(status_code=403, detail=f"Required role: {', '.join(sorted(allowed))}")
+
+        return claims
+
+    return dependency
 
 
 # ========== STARTUP ==========
@@ -73,10 +129,9 @@ async def startup():
     print("✅ Database initialized")
     
     # Initialize managers (they will call Routing Service)
-    incident_manager = IncidentManager(ROUTING_SERVICE_URL, MAP_SERVICE_URL)
+    incident_manager = IncidentManager(ROUTING_SERVICE_URL)
     evacuation_coordinator = EvacuationCoordinator(
         ROUTING_SERVICE_URL,
-        MAP_SERVICE_URL,
         CONGESTION_SERVICE_URL
     )
     print("✅ Incident manager initialized")
@@ -90,7 +145,6 @@ async def startup():
     print("\n" + "="*60)
     print("✅ EMERGENCY SERVICE READY")
     print(f"   - Routing Service: {ROUTING_SERVICE_URL}")
-    print(f"   - Map Service: {MAP_SERVICE_URL}")
     print(f"   - Congestion Service: {CONGESTION_SERVICE_URL}")
     print("="*60 + "\n")
 
@@ -193,6 +247,7 @@ def _determine_emergency_level(incidents: List) -> str:
 async def create_incident(
     incident: IncidentCreate,
     auto_dispatch: bool = Query(True, description="Automatically dispatch responders"),
+    _auth: dict = Depends(require_roles("supervisor")),
     db: Session = Depends(get_db)
 ):
     """Create new emergency incident"""
@@ -260,9 +315,17 @@ def get_incident(incident_id: str, db: Session = Depends(get_db)):
 
 
 @app.patch("/api/emergency/incidents/{incident_id}", response_model=IncidentResponse)
-def update_incident(incident_id: str, update: IncidentUpdate, db: Session = Depends(get_db)):
+def update_incident(
+    incident_id: str,
+    update: IncidentUpdate,
+    _auth: dict = Depends(require_roles("supervisor")),
+    db: Session = Depends(get_db)
+):
     """Update incident details"""
-    incident = incident_manager.update_incident(db, incident_id, update)
+    try:
+        incident = incident_manager.update_incident(db, incident_id, update)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
     
     if not incident:
         raise HTTPException(status_code=404, detail=f"Incident {incident_id} not found")
@@ -271,7 +334,11 @@ def update_incident(incident_id: str, update: IncidentUpdate, db: Session = Depe
 
 
 @app.post("/api/emergency/incidents/{incident_id}/escalate")
-def escalate_incident(incident_id: str, db: Session = Depends(get_db)):
+def escalate_incident(
+    incident_id: str,
+    _auth: dict = Depends(require_roles("supervisor")),
+    db: Session = Depends(get_db)
+):
     """Manually escalate incident severity"""
     incident = incident_manager.escalate_incident(db, incident_id)
     
@@ -287,10 +354,18 @@ def escalate_incident(incident_id: str, db: Session = Depends(get_db)):
 
 
 @app.post("/api/emergency/incidents/{incident_id}/resolve")
-def resolve_incident(incident_id: str, notes: Optional[str] = Query(None), db: Session = Depends(get_db)):
+def resolve_incident(
+    incident_id: str,
+    notes: Optional[str] = Query(None),
+    _auth: dict = Depends(require_roles("supervisor", "medical")),
+    db: Session = Depends(get_db)
+):
     """Mark incident as resolved"""
     update = IncidentUpdate(status="resolved", notes=notes)
-    incident = incident_manager.update_incident(db, incident_id, update)
+    try:
+        incident = incident_manager.update_incident(db, incident_id, update)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
     
     if not incident:
         raise HTTPException(status_code=404, detail=f"Incident {incident_id} not found")
@@ -334,15 +409,22 @@ def get_sensor_alerts(
 # ========== RESPONDER DISPATCH ==========
 
 @app.post("/api/emergency/dispatch", response_model=List[DispatchResponse])
-async def dispatch_responders(request: DispatchRequest, db: Session = Depends(get_db)):
+async def dispatch_responders(
+    request: DispatchRequest,
+    _auth: dict = Depends(require_roles("supervisor")),
+    db: Session = Depends(get_db)
+):
     """Dispatch responders to incident"""
     
-    dispatches = await incident_manager.dispatch_responders(
-        db,
-        request.incident_id,
-        request.responder_role,
-        request.num_responders
-    )
+    try:
+        dispatches = await incident_manager.dispatch_responders(
+            db,
+            request.incident_id,
+            request.responder_role,
+            request.num_responders
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
     
     if not dispatches:
         raise HTTPException(status_code=400, detail="No available responders or dispatch failed")
@@ -351,10 +433,25 @@ async def dispatch_responders(request: DispatchRequest, db: Session = Depends(ge
 
 
 @app.post("/api/emergency/dispatch/manual", response_model=DispatchResponse)
-async def dispatch_specific_responder(request: ManualDispatchRequest, db: Session = Depends(get_db)):
-    """Dispatch a specific responder selected manually by a supervisor"""
+async def dispatch_specific_responder(
+    request: ManualDispatchRequest,
+    _auth: dict = Depends(require_roles("supervisor", "medical")),
+    db: Session = Depends(get_db)
+):
+    """Dispatch a specific responder selected manually by a supervisor.
 
-    dispatch = await incident_manager.dispatch_specific_responder(db, request)
+    Medical users may only self-assign medical incidents to themselves.
+    """
+    auth_role = normalize_role(_auth.get("role"))
+    if auth_role == "medical":
+        auth_user_id = str(_auth.get("user_id") or _auth.get("id") or "")
+        if request.responder_role.lower() != "medical" or request.responder_id != auth_user_id:
+            raise HTTPException(status_code=403, detail="Medical users can only self-assign medical dispatches")
+
+    try:
+        dispatch = await incident_manager.dispatch_specific_responder(db, request)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
 
     if not dispatch:
         raise HTTPException(status_code=400, detail="Manual dispatch failed")
@@ -366,6 +463,61 @@ async def dispatch_specific_responder(request: ManualDispatchRequest, db: Sessio
 def get_active_dispatches(db: Session = Depends(get_db)):
     """Get all active responder dispatches"""
     return incident_manager.get_active_dispatches(db)
+
+
+@app.get("/api/emergency/dispatch/incident/{incident_id}", response_model=List[DispatchResponse])
+def get_incident_dispatches(incident_id: str, db: Session = Depends(get_db)):
+    """Get dispatch status history for one incident"""
+    return incident_manager.get_dispatches_for_incident(db, incident_id)
+
+
+@app.post("/api/emergency/dispatch/{dispatch_id}/accept")
+def accept_responder_dispatch(dispatch_id: str, db: Session = Depends(get_db)):
+    """Mark a dispatch as accepted by the assigned responder"""
+    dispatch = incident_manager.accept_responder_dispatch(db, dispatch_id)
+
+    if not dispatch:
+        raise HTTPException(status_code=404, detail=f"Dispatch {dispatch_id} not found")
+
+    return {
+        "status": "en_route",
+        "dispatch_id": dispatch_id,
+        "en_route_at": dispatch.en_route_at,
+    }
+
+
+@app.post("/api/emergency/dispatch/{dispatch_id}/refuse")
+def refuse_responder_dispatch(dispatch_id: str, db: Session = Depends(get_db)):
+    """Mark a dispatch as refused by the assigned responder"""
+    dispatch = incident_manager.refuse_responder_dispatch(db, dispatch_id)
+
+    if not dispatch:
+        raise HTTPException(status_code=404, detail=f"Dispatch {dispatch_id} not found")
+
+    return {
+        "status": "declined",
+        "dispatch_id": dispatch_id,
+        "completed_at": dispatch.completed_at,
+    }
+
+
+@app.post("/api/emergency/dispatch/{dispatch_id}/complete")
+def complete_responder_dispatch(
+    dispatch_id: str,
+    notes: Optional[str] = Query(None),
+    db: Session = Depends(get_db)
+):
+    """Mark this responder's dispatch as completed"""
+    dispatch = incident_manager.complete_responder_dispatch(db, dispatch_id, notes)
+
+    if not dispatch:
+        raise HTTPException(status_code=404, detail=f"Dispatch {dispatch_id} not found")
+
+    return {
+        "status": "completed",
+        "dispatch_id": dispatch_id,
+        "completed_at": dispatch.completed_at,
+    }
 
 
 @app.post("/api/emergency/dispatch/{dispatch_id}/arrived")

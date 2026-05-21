@@ -365,7 +365,7 @@ def create_mock_staff_tracker(num_per_role: int = 3) -> StaffTracker:
     tracker = StaffTracker()
     
     # Mock entrance positions
-    entrance_nodes = ["N1", "N5", "N10", "N15", "N20", "N21"]
+    entrance_nodes = ["1", "5", "10", "15", "20", "21"]
     
     staff_id = 1
     
@@ -401,7 +401,7 @@ async def example_usage():
     # Create incident REQUEST (not the DB model!)
     incident = IncidentRequest(
         id="inc-001",
-        location="N42",
+        location="62",
         type="medical",
         priority="high",
         required_role=StaffRole.SECURITY,

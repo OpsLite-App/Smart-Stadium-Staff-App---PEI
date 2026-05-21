@@ -28,10 +28,12 @@ from nearest_responder import (
 
 class IncidentManager:
     """Manages emergency incidents lifecycle"""
+
+    TERMINAL_INCIDENT_STATUSES = {IncidentStatus.RESOLVED, IncidentStatus.FALSE_ALARM}
+    OPEN_DISPATCH_STATUSES = {"dispatched", "en_route", "arrived"}
     
-    def __init__(self, routing_service_url: str, map_service_url: str):
+    def __init__(self, routing_service_url: str):
         self.routing_service_url = routing_service_url
-        self.map_service_url = map_service_url
         
         # Initialize staff tracker
         self.staff_tracker = create_mock_staff_tracker(num_per_role=3)
@@ -188,13 +190,49 @@ class IncidentManager:
         # Update fields
         if update.status:
             new_status = IncidentStatus(update.status)
+
+            if incident.status in self.TERMINAL_INCIDENT_STATUSES and new_status != incident.status:
+                raise ValueError("Incident is already closed and cannot be updated")
+
+            dispatches = self._get_dispatches_for_incident(db, incident_id)
+
+            if new_status == IncidentStatus.RESOLVED:
+                if not dispatches:
+                    raise ValueError("Cannot resolve incident without assigned team")
+
+                completed_dispatches = [d for d in dispatches if d.status == "completed"]
+                if not completed_dispatches:
+                    raise ValueError("At least one assigned responder must complete the incident before supervisor resolution")
+
+                self._close_open_dispatches(
+                    db,
+                    incident_id,
+                    "completed",
+                    {
+                        "closed_by_supervisor": True,
+                        "supervisor_notes": update.notes,
+                    },
+                )
+
+            elif new_status == IncidentStatus.FALSE_ALARM:
+                self._close_open_dispatches(
+                    db,
+                    incident_id,
+                    "false_alarm",
+                    {
+                        "false_alarm": True,
+                        "cancelled_by_supervisor": True,
+                        "supervisor_notes": update.notes,
+                    },
+                )
+
             incident.status = new_status
             
             if new_status == IncidentStatus.RESPONDING and not incident.responded_at:
                 incident.responded_at = datetime.now()
             elif new_status == IncidentStatus.CONTAINED and not incident.contained_at:
                 incident.contained_at = datetime.now()
-            elif new_status == IncidentStatus.RESOLVED and not incident.resolved_at:
+            elif new_status in self.TERMINAL_INCIDENT_STATUSES and not incident.resolved_at:
                 incident.resolved_at = datetime.now()
         
         if update.severity:
@@ -298,6 +336,9 @@ class IncidentManager:
         if not incident_db:
             print(f"❌ Incident {incident_id} not found")
             return []
+
+        if incident_db.status in self.TERMINAL_INCIDENT_STATUSES:
+            raise ValueError("Cannot dispatch responders to a closed incident")
         
         # Convert to IncidentRequest for nearest_responder
         incident_request = IncidentRequest(
@@ -390,6 +431,9 @@ class IncidentManager:
             print(f"❌ Incident {request.incident_id} not found")
             return None
 
+        if incident_db.status in self.TERMINAL_INCIDENT_STATUSES:
+            raise ValueError("Cannot dispatch responders to a closed incident")
+
         route_data = {"path": [], "distance": 0, "eta_seconds": 0}
         try:
             async with httpx.AsyncClient(timeout=5.0) as client:
@@ -415,7 +459,11 @@ class IncidentManager:
             responder_role=request.responder_role,
             route_nodes=route_data.get("path", []),
             route_distance=route_data.get("distance", 0),
-            eta_seconds=route_data.get("eta_seconds", 0)
+            eta_seconds=route_data.get("eta_seconds", 0),
+            incident_metadata={
+                "responder_name": request.responder_name,
+                "assigned_from": request.current_position,
+            }
         )
 
         db.add(dispatch)
@@ -439,12 +487,127 @@ class IncidentManager:
         return self._dispatch_to_response(dispatch)
     
     def get_active_dispatches(self, db: Session) -> List[DispatchResponse]:
-        """Get all active responder dispatches"""
+        """Get active responder dispatches and supervisor cancellations still visible to staff."""
         dispatches = db.query(ResponderDispatch).filter(
-            ResponderDispatch.status.in_(["dispatched", "en_route"])
+            ResponderDispatch.status.in_(["dispatched", "en_route", "arrived", "false_alarm"])
         ).all()
         
         return [self._dispatch_to_response(d) for d in dispatches]
+
+    def _get_dispatches_for_incident(self, db: Session, incident_id: str) -> List[ResponderDispatch]:
+        return db.query(ResponderDispatch).filter(
+            ResponderDispatch.incident_id == incident_id
+        ).all()
+
+    def _close_open_dispatches(
+        self,
+        db: Session,
+        incident_id: str,
+        status: str,
+        metadata_updates: Optional[Dict[str, Any]] = None
+    ) -> None:
+        """Close still-active dispatches when a supervisor closes the incident."""
+        for dispatch in self._get_dispatches_for_incident(db, incident_id):
+            if dispatch.status not in self.OPEN_DISPATCH_STATUSES:
+                continue
+
+            dispatch.status = status
+            dispatch.completed_at = datetime.now()
+
+            metadata = dispatch.incident_metadata or {}
+            if metadata_updates:
+                metadata.update({k: v for k, v in metadata_updates.items() if v is not None})
+            dispatch.incident_metadata = metadata
+
+    def get_dispatches_for_incident(self, db: Session, incident_id: str) -> List[DispatchResponse]:
+        """Get all responder dispatches for one incident, including completed/refused."""
+        dispatches = db.query(ResponderDispatch).filter(
+            ResponderDispatch.incident_id == incident_id
+        ).order_by(ResponderDispatch.dispatched_at.desc()).all()
+
+        return [self._dispatch_to_response(d) for d in dispatches]
+
+    def accept_responder_dispatch(self, db: Session, dispatch_id: str) -> Optional[DispatchResponse]:
+        """Mark a responder dispatch as accepted and en route."""
+        dispatch = db.query(ResponderDispatch).filter(
+            ResponderDispatch.id == dispatch_id
+        ).first()
+
+        if not dispatch:
+            return None
+
+        if dispatch.status == "dispatched":
+            dispatch.status = "en_route"
+            dispatch.en_route_at = datetime.now()
+            db.commit()
+            db.refresh(dispatch)
+
+            self._log_event(
+                db,
+                dispatch.incident_id,
+                "dispatch_accepted",
+                f"Responder {dispatch.responder_id} accepted dispatch"
+            )
+
+        return self._dispatch_to_response(dispatch)
+
+    def refuse_responder_dispatch(self, db: Session, dispatch_id: str) -> Optional[DispatchResponse]:
+        """Mark a responder dispatch as refused so it is no longer active."""
+        dispatch = db.query(ResponderDispatch).filter(
+            ResponderDispatch.id == dispatch_id
+        ).first()
+
+        if not dispatch:
+            return None
+
+        dispatch.status = "declined"
+        dispatch.completed_at = datetime.now()
+
+        db.commit()
+        db.refresh(dispatch)
+
+        self._log_event(
+            db,
+            dispatch.incident_id,
+            "dispatch_declined",
+            f"Responder {dispatch.responder_id} declined dispatch"
+        )
+
+        return self._dispatch_to_response(dispatch)
+
+    def complete_responder_dispatch(
+        self,
+        db: Session,
+        dispatch_id: str,
+        notes: Optional[str] = None
+    ) -> Optional[DispatchResponse]:
+        """Mark a responder dispatch as completed without resolving the whole incident."""
+        dispatch = db.query(ResponderDispatch).filter(
+            ResponderDispatch.id == dispatch_id
+        ).first()
+
+        if not dispatch:
+            return None
+
+        dispatch.status = "completed"
+        dispatch.completed_at = datetime.now()
+
+        metadata = dispatch.incident_metadata or {}
+        if notes:
+            metadata["completion_notes"] = notes
+        dispatch.incident_metadata = metadata
+
+        db.commit()
+        db.refresh(dispatch)
+
+        self._log_event(
+            db,
+            dispatch.incident_id,
+            "dispatch_completed",
+            f"Responder {dispatch.responder_id} completed dispatch"
+        )
+
+        return self._dispatch_to_response(dispatch)
     
     def mark_responder_arrived(self, db: Session, dispatch_id: str) -> Optional[DispatchResponse]:
         """Mark responder as arrived at incident"""
@@ -614,7 +777,8 @@ class IncidentManager:
             dispatched_at=dispatch.dispatched_at.isoformat(),
             en_route_at=dispatch.en_route_at.isoformat() if dispatch.en_route_at else None,
             arrived_at=dispatch.arrived_at.isoformat() if dispatch.arrived_at else None,
-            completed_at=dispatch.completed_at.isoformat() if dispatch.completed_at else None
+            completed_at=dispatch.completed_at.isoformat() if dispatch.completed_at else None,
+            incident_metadata=dispatch.incident_metadata or {}
         )
     
     def _sensor_alert_to_response(self, alert: SensorAlert) -> SensorAlertResponse:

@@ -137,6 +137,7 @@ class DispatchResponse(BaseModel):
     en_route_at: Optional[str]
     arrived_at: Optional[str]
     completed_at: Optional[str]
+    incident_metadata: Dict[str, Any] = Field(default_factory=dict)
     
     class Config:
         from_attributes = True

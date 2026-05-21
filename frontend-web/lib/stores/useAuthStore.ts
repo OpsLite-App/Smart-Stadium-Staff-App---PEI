@@ -4,43 +4,14 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import { api } from '../services/api'; // REMOVED: setAuthToken
-
-type Role = 'Security' | 'Cleaning' | 'Supervisor' | 'Medical';
-
-function toRole(value: string | undefined): Role {
-  const normalized = String(value ?? '').toLowerCase();
-  if (normalized === 'cleaning') return 'Cleaning';
-  if (normalized === 'supervisor') return 'Supervisor';
-  if (normalized === 'medical') return 'Medical';
-  return 'Security';
-}
-
-function permissionsForRole(role: Role) {
-  return {
-    canViewHeatmap: role === 'Security' || role === 'Supervisor' || role === 'Medical',
-    canViewBins: role === 'Cleaning' || role === 'Supervisor',
-    canViewAlerts: true,
-    canCreateIncidents: role === 'Supervisor',
-    canManageIncidents: role === 'Supervisor',
-    canDispatchIncidents: role === 'Supervisor',
-    canResolveIncidents: role === 'Supervisor' || role === 'Medical',
-  };
-}
+import { mergePermissions, normalizeRole, type PermissionSet, type Role } from '@/lib/auth/rbac';
 
 interface User {
   email: string;
   role: Role;
   // REMOVED: token?: string; - Token is now in HttpOnly cookie only
   id?: number;
-  permissions: {
-    canViewHeatmap: boolean;
-    canViewBins: boolean;
-    canViewAlerts: boolean;
-    canCreateIncidents: boolean;
-    canManageIncidents: boolean;
-    canDispatchIncidents: boolean;
-    canResolveIncidents: boolean;
-  };
+  permissions: PermissionSet;
 }
 
 interface AuthState {
@@ -69,7 +40,7 @@ export const useAuthStore = create<AuthState>()(
       clearError: () => set({ error: null }),
 
       syncRoleFromServer: (role) => {
-        const serverRole = toRole(role);
+        const serverRole = normalizeRole(role);
         const currentUser = get().user;
         if (!currentUser || currentUser.role === serverRole) return;
 
@@ -77,7 +48,7 @@ export const useAuthStore = create<AuthState>()(
           user: {
             ...currentUser,
             role: serverRole,
-            permissions: permissionsForRole(serverRole),
+            permissions: mergePermissions(serverRole),
           },
         });
       },
@@ -93,14 +64,14 @@ export const useAuthStore = create<AuthState>()(
 
         try {
           const data = await api.login(email, password, role);
-          const serverRole = toRole(data.role);
+          const serverRole = normalizeRole(data.role);
 
           // ✅ REMOVED: token from userData (no longer stored)
           const userData = {
             email,
             role: serverRole,
             id: data.user_id,
-            permissions: permissionsForRole(serverRole),
+            permissions: mergePermissions(serverRole, data.permissions),
           };
 
           // ✅ REMOVED: setAuthToken(data.token); - Token is in cookie, not in JS memory

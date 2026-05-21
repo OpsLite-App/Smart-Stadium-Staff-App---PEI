@@ -51,7 +51,7 @@ public class AuthServiceIntegrationTest {
                 .username("active@example.com")
                 .password(passwordEncoder.encode("password123"))
                 .name("Active User")
-                .role("USER")
+                .role("security")
                 .status("active")
                 .build();
 
@@ -59,7 +59,7 @@ public class AuthServiceIntegrationTest {
                 .username("inactive@example.com")
                 .password(passwordEncoder.encode("password123"))
                 .name("Inactive User")
-                .role("USER")
+                .role("security")
                 .status("inactive")
                 .build();
 
@@ -80,7 +80,8 @@ public class AuthServiceIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.token").exists())
                 .andExpect(jsonPath("$.user_id").value(activeUser.getId()))
-                .andExpect(jsonPath("$.role").value("USER"));
+                .andExpect(jsonPath("$.role").value("Security"))
+                .andExpect(jsonPath("$.permissions.canViewMap").value(true));
     }
 
     @Test
@@ -118,7 +119,8 @@ public class AuthServiceIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.user_id").value(activeUser.getId()))
                 .andExpect(jsonPath("$.username").value(activeUser.getUsername()))
-                .andExpect(jsonPath("$.role").value(activeUser.getRole()))
+                .andExpect(jsonPath("$.role").value("Security"))
+                .andExpect(jsonPath("$.permissions.canViewMap").value(true))
                 .andExpect(jsonPath("$.exp").exists());
     }
 
@@ -136,8 +138,10 @@ public class AuthServiceIntegrationTest {
         String token = jwtUtil.generateToken(activeUser.getId(), activeUser.getUsername(), activeUser.getRole());
 
         mockMvc.perform(get("/auth/me")
-                        .header("Authorization", "Bearer " + token))
+                .header("Authorization", "Bearer " + token))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.userId").value(activeUser.getId().toString()));
+                .andExpect(jsonPath("$.user_id").value(activeUser.getId()))
+                .andExpect(jsonPath("$.role").value("Security"))
+                .andExpect(jsonPath("$.permissions.canViewMap").value(true));
     }
 }
