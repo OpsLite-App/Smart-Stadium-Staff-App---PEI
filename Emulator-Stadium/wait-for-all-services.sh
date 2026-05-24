@@ -1,46 +1,65 @@
 #!/bin/bash
-# wait-for-all-services.sh
 
 set -e
 
-# List of services and their health check URLs
-declare -A services=(
+declare -A required_services=(
   ["mosquitto"]="tcp://mosquitto:1883"
-  ["auth-service"]="http://auth-service:8081/actuator/health"
   ["routing-service"]="http://routing-service:8002/health"
   ["queueing-service"]="http://queueing-service:8003/health"
   ["congestion-service"]="http://congestion-service:8005/health"
   ["emergency-service"]="http://emergency-service:8006/health"
   ["maintenance-service"]="http://maintenance-service:8007/health"
-  ["ws-gateway"]="http://ws-gateway:8089/health"
-  ["event-processor"]="http://event-processor:8004/health"
 )
 
-echo "Waiting for all services to be ready..."
+declare -A optional_services=(
+  ["event-processor"]="http://event-processor:8004/health"
+  ["ws-gateway"]="http://ws-gateway:8089/health"
+)
 
-for service in "${!services[@]}"; do
-  url="${services[$service]}"
+wait_for_service() {
+  local service="$1"
+  local url="$2"
+  local required="$3"
+
   echo "Waiting for $service at $url..."
-  
-  # TCP check for mosquitto
+
   if [[ $url == tcp://* ]]; then
-    host_port="${url#tcp://}"
-    host="${host_port%%:*}"
-    port="${host_port##*:}"
+    local host_port="${url#tcp://}"
+    local host="${host_port%%:*}"
+    local port="${host_port##*:}"
     until nc -z "$host" "$port"; do
       echo "$service ($host:$port) not ready yet. Sleeping..."
       sleep 2
     done
-  else
-    # HTTP health check
-    until curl -s "$url" >/dev/null; do
+    return
+  fi
+
+  if [[ "$required" == "required" ]]; then
+    until curl -fsS "$url" >/dev/null; do
       echo "$service ($url) not ready yet. Sleeping..."
       sleep 2
     done
+  elif ! curl -fsS "$url" >/dev/null; then
+    echo "$service is not ready; continuing because it is optional."
   fi
+}
+
+echo "Waiting for OpsLite services used by the emulator..."
+
+for service in "${!required_services[@]}"; do
+  wait_for_service "$service" "${required_services[$service]}" "required"
 done
 
-echo "All services are up!"
+if [[ "${WAIT_FOR_OPTIONAL_SERVICES:-false}" == "true" ]]; then
+  for service in "${!optional_services[@]}"; do
+    wait_for_service "$service" "${optional_services[$service]}" "optional"
+  done
+fi
 
-echo "Initialization done - starting emulator..."
+echo "Required services are up. Starting emulator..."
+
+if [[ "$#" -gt 0 ]]; then
+  exec "$@"
+fi
+
 exec python simulator/dragao_simulator.py

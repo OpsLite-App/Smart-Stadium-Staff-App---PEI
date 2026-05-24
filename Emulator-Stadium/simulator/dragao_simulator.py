@@ -1,516 +1,537 @@
 """
-SIMULATOR INTEGRATED - Connects to Map Service & Routing Service
-Generates realistic stadium events with proper node IDs from database
+OpsLite stadium emulator.
+
+Generates realistic operational events for the current stack:
+MQTT -> event_processor -> FastAPI services -> frontend-web.
+
+The emulator uses routing-service GIS/pgRouting data when available and falls
+back to a small numeric-node scenario that mirrors the current seeded flow.
 """
 
+from __future__ import annotations
+
 import json
+import os
+import random
 import time
 import uuid
-import requests
-from datetime import datetime
 from collections import defaultdict
-import random
-import os
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any
+
+import requests
 
 try:
     import paho.mqtt.client as mqtt
+
     MQTT_AVAILABLE = True
 except ImportError:
     MQTT_AVAILABLE = False
-    print("⚠️  paho-mqtt not installed. Install: pip install paho-mqtt")
+    print("paho-mqtt not installed. Events will be stored locally only.")
 
 
-# ===== INTEGRAÇÃO ZIP =====
-# ===== INTEGRAÇÃO ZIP =====
-print("🔍 A tentar carregar modelo ZIP...")
-try:
-    import sys
-    print(f"📂 Diretório atual: {__file__}")
-    print(f"📂 Python path: {sys.path}")
-    
-    from zip_counter import get_counter
-    print("✅ zip_counter importado com sucesso")
-    
-    model_path = "simulator/model/zip_n_model_quant.onnx"
-    print(f"📁 A procurar modelo em: {model_path}")
-    
-    zip_counter = get_counter(model_path)
-    ZIP_AVAILABLE = True
-    print("✅ ZIP crowd model loaded com sucesso!")
-except ImportError as e:
-    ZIP_AVAILABLE = False
-    print(f"❌ Erro de import: {e}")
-    print("⚠️  zip_counter.py não encontrado ou erro no módulo")
-except FileNotFoundError as e:
-    ZIP_AVAILABLE = False
-    print(f"❌ Ficheiro não encontrado: {e}")
-    print("⚠️  Modelo ONNX não encontrado")
-except Exception as e:
-    ZIP_AVAILABLE = False
-    print(f"❌ Erro inesperado: {type(e).__name__}: {e}")
-    print("⚠️  Usando contagens aleatórias")
+ROUTING_SERVICE_URL = os.getenv("ROUTING_SERVICE_URL", "http://localhost:8002").rstrip("/")
+MQTT_BROKER = os.getenv("MQTT_HOST", os.getenv("MQTT_BROKER", "localhost"))
+MQTT_PORT = int(os.getenv("MQTT_PORT", "1883"))
+SIM_SCENARIO = os.getenv("SIM_SCENARIO", "matchday")
+SIM_TICK_SECONDS = float(os.getenv("SIM_TICK_SECONDS", "1"))
+SIM_OUTPUT_FILE = os.getenv("SIM_OUTPUT_FILE", "stadium_events_integrated.json")
+USE_CROWD_MODELS = os.getenv("EMULATOR_USE_MODELS", "false").lower() in {"1", "true", "yes"}
 
-# ===== INTEGRAÇÃO CNN =====
-print("🔍 A tentar carregar modelo CNN (YOLO)...")
-try:
-    from cnn_counter import get_counter as get_cnn_counter
-    cnn_counter = get_cnn_counter()
-    CNN_AVAILABLE = True
-    print("✅ CNN crowd model loaded!")
-except Exception as e:
-    CNN_AVAILABLE = False
-    print(f"⚠️  CNN não disponível: {e} — usando contagens aleatórias nos portões")
+if os.getenv("SIM_SEED"):
+    random.seed(int(os.environ["SIM_SEED"]))
 
-# ========== CONFIGURATION ==========
-   
-MAP_SERVICE_URL = os.getenv("MAP_SERVICE_URL", "")
-ROUTING_SERVICE_URL = os.getenv("ROUTING_SERVICE_URL", "http://localhost:8002")
-MQTT_BROKER = os.getenv("MQTT_BROKER", "localhost")
-MQTT_PORT = int(os.getenv("MQTT_PORT", 1883))
-
-# Hierarchical MQTT Topics
 MQTT_TOPICS = {
     "gate_updates": "stadium/crowd/gate-updates",
+    "queue_update": "stadium/crowd/gate-updates",
     "bin_alerts": "stadium/maintenance/bin-alerts",
     "sos_events": "stadium/emergency/sos-events",
-    "crowd_density": "stadium/crowd/density-updates" 
-
+    "crowd_density": "stadium/crowd/density-updates",
+    "evac_update": "stadium/emergency/evacuation-updates",
 }
 
-# ========== MQTT PUBLISHER ==========
+
+def utc_now() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def load_optional_counter(module_name: str, factory_name: str = "get_counter"):
+    if not USE_CROWD_MODELS:
+        return None
+
+    try:
+        module = __import__(module_name, fromlist=[factory_name])
+        factory = getattr(module, factory_name)
+        return factory()
+    except Exception as exc:
+        print(f"Optional model {module_name} unavailable: {exc}")
+        return None
+
+
+CNN_COUNTER = load_optional_counter("cnn_counter")
+ZIP_COUNTER = load_optional_counter("zip_counter")
+
 
 class MQTTPublisher:
-    def __init__(self, broker, port):
+    def __init__(self, broker: str, port: int):
         self.broker = broker
         self.port = port
         self.client = None
         self.connected = False
-        
-        if MQTT_AVAILABLE:
-            self.client = mqtt.Client(protocol=mqtt.MQTTv5)
+
+        if not MQTT_AVAILABLE:
+            return
+
+        try:
+            if hasattr(mqtt, "CallbackAPIVersion"):
+                self.client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, protocol=mqtt.MQTTv5)
+            else:
+                self.client = mqtt.Client(protocol=mqtt.MQTTv5)
             self.client.on_connect = self._on_connect
-            try:
-                self.client.connect(self.broker, self.port, 60)
-                self.client.loop_start()
-                time.sleep(1)
-            except Exception as e:
-                print(f"⚠️  MQTT not available: {e}")
-    
+            self.client.connect(self.broker, self.port, 60)
+            self.client.loop_start()
+            time.sleep(0.5)
+        except Exception as exc:
+            print(f"MQTT broker unavailable at {self.broker}:{self.port}: {exc}")
+
     def _on_connect(self, client, userdata, flags, rc, properties=None):
         if rc == 0:
             self.connected = True
-            print("✅ Connected to MQTT broker")
-    
-    def publish_event(self, event_type, event):
-        """Publish event to appropriate hierarchical topic"""
+            print(f"Connected to MQTT broker at {self.broker}:{self.port}")
+
+    def publish_event(self, event_type: str, event: dict[str, Any]):
+        topic = MQTT_TOPICS.get(event_type, "stadium/events")
         if self.connected and self.client:
-            topic = MQTT_TOPICS.get(event_type, "stadium/events")
             self.client.publish(topic, json.dumps(event))
-            print(f"📡 Published to {topic}: {event.get('event_type', event_type)}")
+        print(f"published {event.get('event_type', event_type)} -> {topic}")
 
-# ========== EVENT GENERATOR ==========
 
-class IntegratedEventGenerator:
-    def __init__(self, mqtt_publisher):
+class OpsLiteEventGenerator:
+    def __init__(self, mqtt_publisher: MQTTPublisher):
         self.mqtt = mqtt_publisher
-        self.events = []
+        self.events: list[dict[str, Any]] = []
         self.event_count = 0
-        
-        # Counters
-        self.gate_counters = defaultdict(int)
-        self.zone_counters = defaultdict(int)
-        self.bin_fill_levels = {}
-        
-        # Load lightweight simulation data. Map Service is now legacy/optional.
-        self.nodes = []
-        self.edges = []
-        self.gates = []
-        self.pois = []
-        self.closures = []
-        
-        self.load_map_data()
-    
-    def load_map_data(self):
-        """Fetch stadium data from Map Service when available, otherwise use local fallback."""
-        if not MAP_SERVICE_URL:
-            self._load_fallback_data()
-            return True
+        self.gate_counters: defaultdict[str, int] = defaultdict(int)
+        self.zone_counters: defaultdict[int, int] = defaultdict(int)
+        self.bin_fill_levels: dict[str, float] = {}
+        self.active_closures: set[int] = set()
 
-        try:
-            print(f"📥 Fetching data from {MAP_SERVICE_URL}...")
-            
-            # Get complete map
-            response = requests.get(f"{MAP_SERVICE_URL}/api/map", timeout=5)
-            map_data = response.json()
-            
-            self.nodes = map_data.get('nodes', [])
-            self.edges = map_data.get('edges', [])
-            self.closures = map_data.get('closures', [])
-            
-            # Get gates
-            response = requests.get(f"{MAP_SERVICE_URL}/api/gates", timeout=5)
-            self.gates = response.json()
-            
-            # Get POIs
-            response = requests.get(f"{MAP_SERVICE_URL}/api/pois", timeout=5)
-            self.pois = response.json()
-            
-            print(f"✅ Loaded: {len(self.nodes)} nodes, {len(self.edges)} edges, "
-                  f"{len(self.gates)} gates, {len(self.pois)} POIs")
-            
-            # Initialize bin levels for POI bins
-            for poi in self.pois:
-                if 'bin' in poi['category'].lower() or poi['category'] == 'restroom':
-                    self.bin_fill_levels[poi['id']] = random.uniform(10, 30)
-            
-            return True
-            
-        except Exception as e:
-            print(f"❌ Error loading map data: {e}")
-            print("   Using local simulator fallback data")
+        self.nodes: list[dict[str, Any]] = []
+        self.nodes_by_id: dict[int, dict[str, Any]] = {}
+        self.pois: list[dict[str, Any]] = []
+        self.gates: list[dict[str, Any]] = []
+        self.bins: list[dict[str, Any]] = []
+        self.crowd_areas: list[dict[str, Any]] = []
+
+        self.load_operational_data()
+
+    def load_operational_data(self):
+        if self._load_from_routing_service():
+            print(
+                f"Loaded GIS data from routing-service: {len(self.nodes)} nodes, "
+                f"{len(self.pois)} POIs"
+            )
+        else:
             self._load_fallback_data()
+            print("Loaded local OpsLite fallback scenario")
+
+        self._derive_operational_assets()
+
+    def _load_from_routing_service(self) -> bool:
+        try:
+            nodes_resp = requests.get(f"{ROUTING_SERVICE_URL}/api/gis/nodes", timeout=5)
+            pois_resp = requests.get(f"{ROUTING_SERVICE_URL}/api/pois", timeout=5)
+            if nodes_resp.status_code != 200:
+                return False
+
+            features = nodes_resp.json().get("features", [])
+            nodes = []
+            for feature in features:
+                props = feature.get("properties") or {}
+                coords = (feature.get("geometry") or {}).get("coordinates") or [0, 0]
+                node_id = props.get("node_id") or props.get("id")
+                if node_id is None:
+                    continue
+                try:
+                    numeric_id = int(str(node_id).removeprefix("N"))
+                except ValueError:
+                    continue
+
+                nodes.append(
+                    {
+                        "id": numeric_id,
+                        "floor_id": props.get("floor_id") or props.get("floor") or 1,
+                        "type": props.get("type") or props.get("node_type") or "corridor",
+                        "x": float(coords[0]),
+                        "y": float(coords[1]),
+                        "name": props.get("name") or f"Node {numeric_id}",
+                    }
+                )
+
+            pois = []
+            if pois_resp.status_code == 200:
+                for poi in pois_resp.json():
+                    node_id = poi.get("node_id")
+                    if node_id is None:
+                        continue
+                    try:
+                        numeric_node = int(str(node_id).removeprefix("N"))
+                    except ValueError:
+                        continue
+                    pois.append(
+                        {
+                            "id": str(poi.get("id") or poi.get("name") or f"POI-{numeric_node}"),
+                            "name": poi.get("name") or f"POI {numeric_node}",
+                            "category": (poi.get("category") or "service").lower(),
+                            "node_id": numeric_node,
+                            "floor_id": poi.get("floor_id") or 1,
+                        }
+                    )
+
+            if len(nodes) < 4:
+                return False
+
+            self.nodes = nodes
+            self.nodes_by_id = {node["id"]: node for node in nodes}
+            self.pois = pois
             return True
+        except Exception as exc:
+            print(f"Could not load routing-service GIS data: {exc}")
+            return False
 
     def _load_fallback_data(self):
-        """Small node/POI set for MQTT simulation without Map Service."""
         self.nodes = [
-            {"id": f"N{i}", "x": float(i * 10), "y": float((i % 5) * 12), "type": "corridor"}
-            for i in range(1, 22)
+            {"id": 62, "name": "Corredor principal F1", "floor_id": 1, "type": "corridor", "x": -8.58341, "y": 41.16138},
+            {"id": 63, "name": "Bancada Norte F1", "floor_id": 1, "type": "stand", "x": -8.58325, "y": 41.16152},
+            {"id": 64, "name": "Bar nascente F1", "floor_id": 1, "type": "service", "x": -8.58305, "y": 41.16133},
+            {"id": 65, "name": "Entrada IT", "floor_id": 1, "type": "exit", "x": -8.58285, "y": 41.16124},
+            {"id": 66, "name": "Posto operacional F1", "floor_id": 1, "type": "corridor", "x": -8.58356, "y": 41.16111},
+            {"id": 70, "name": "Escadas Piso 2", "floor_id": 2, "type": "vertical_transition", "x": -8.58361, "y": 41.16166},
+            {"id": 71, "name": "Galeria Piso 2", "floor_id": 2, "type": "corridor", "x": -8.58321, "y": 41.16178},
+            {"id": 72, "name": "WC Piso 2", "floor_id": 2, "type": "service", "x": -8.58296, "y": 41.16172},
+            {"id": 80, "name": "Sala medica", "floor_id": 1, "type": "medical", "x": -8.58372, "y": 41.16105},
         ]
-        self.edges = []
-        self.closures = []
-        self.gates = [
-            {"id": "GATE_NORTH", "gate_number": "Norte", "x": 10.0, "y": 0.0},
-            {"id": "GATE_SOUTH", "gate_number": "Sul", "x": 180.0, "y": 30.0},
-        ]
+        self.nodes_by_id = {node["id"]: node for node in self.nodes}
         self.pois = [
-            {"id": "BIN_1", "category": "bin", "x": 60.0, "y": 12.0},
-            {"id": "WC_1", "category": "restroom", "x": 120.0, "y": 24.0},
+            {"id": "poi-exit-it", "name": "Entrada IT", "category": "exit", "node_id": 65, "floor_id": 1},
+            {"id": "poi-bar-f1", "name": "Bar nascente", "category": "bar", "node_id": 64, "floor_id": 1},
+            {"id": "poi-wc-f2", "name": "WC Piso 2", "category": "restroom", "node_id": 72, "floor_id": 2},
+            {"id": "poi-medical", "name": "Sala medica", "category": "medical", "node_id": 80, "floor_id": 1},
         ]
-        self.bin_fill_levels = {poi["id"]: random.uniform(10, 30) for poi in self.pois}
-        print(f"✅ Loaded fallback simulator data: {len(self.nodes)} nodes, {len(self.gates)} gates, {len(self.pois)} POIs")
-    
-    def get_random_node(self, node_type=None):
-        """Get random node, optionally filtered by type"""
-        if node_type:
-            candidates = [n for n in self.nodes if n.get('type') == node_type]
-        else:
-            candidates = self.nodes
-        
-        return random.choice(candidates) if candidates else None
-    
-    def get_node_by_id(self, node_id):
-        """Get node by ID"""
-        return next((n for n in self.nodes if n['id'] == node_id), None)
-    
-    def get_route(self, from_node, to_node):
-        """Get route from Routing Service"""
-        try:
-            response = requests.get(
-                f"{ROUTING_SERVICE_URL}/api/route",
-                params={"from_node": from_node, "to_node": to_node},
-                timeout=5
-            )
-            if response.status_code == 200:
-                return response.json()
-            return None
-        except Exception as e:
-            print(f"⚠️  Routing service error: {e}")
-            return None
-    
-    # ========== EVENT GENERATORS ==========
-    
-    def generate_gate_event(self, gate_id, person_id, direction="entry"):
-        """Gate passage event"""
-        gate = next((g for g in self.gates if g['id'] == gate_id), None)
-        if not gate:
-            return None
-        
-        self.gate_counters[gate_id] += 1 if direction == "entry" else -1
 
-        cnn_count = cnn_counter.get_count(gate_id) if CNN_AVAILABLE else max(0, self.gate_counters[gate_id])
-        
+    def _derive_operational_assets(self):
+        exit_pois = [poi for poi in self.pois if poi["category"] in {"exit", "gate", "entrance"}]
+        service_pois = [poi for poi in self.pois if poi["category"] in {"bar", "restroom", "toilet", "food", "service"}]
+
+        self.gates = [
+            self._asset_from_node("GATE-IT", "Entrada IT", 65),
+            self._asset_from_node("GATE-F1-NORTH", "Entrada Norte F1", exit_pois[0]["node_id"] if exit_pois else 62),
+            self._asset_from_node("GATE-F2-GALLERY", "Galeria Piso 2", 70 if 70 in self.nodes_by_id else self.nodes[0]["id"]),
+        ]
+
+        self.bins = []
+        for index, poi in enumerate(service_pois[:5], start=1):
+            node = self.nodes_by_id.get(poi["node_id"])
+            if not node:
+                continue
+            bin_id = f"BIN-{poi['floor_id']}-{index:02d}"
+            self.bins.append(
+                {
+                    "id": bin_id,
+                    "name": f"Ecoponto {poi['name']}",
+                    "node_id": poi["node_id"],
+                    "floor_id": poi["floor_id"],
+                    "x": node["x"],
+                    "y": node["y"],
+                }
+            )
+
+        if not self.bins:
+            self.bins = [self._asset_from_node("BIN-F1-01", "Ecoponto corredor F1", 64)]
+
+        self.bin_fill_levels = {bin_asset["id"]: random.uniform(25, 65) for bin_asset in self.bins}
+        self.crowd_areas = [node for node in self.nodes if node["type"] in {"corridor", "stand", "service", "vertical_transition"}]
+        if not self.crowd_areas:
+            self.crowd_areas = self.nodes
+
+    def _asset_from_node(self, asset_id: str, name: str, node_id: int) -> dict[str, Any]:
+        node = self.nodes_by_id.get(node_id) or self.nodes[0]
+        return {
+            "id": asset_id,
+            "name": name,
+            "node_id": node["id"],
+            "floor_id": node.get("floor_id", 1),
+            "x": node["x"],
+            "y": node["y"],
+        }
+
+    def _record(self, topic_key: str, event: dict[str, Any]) -> dict[str, Any]:
+        self.events.append(event)
+        self.event_count += 1
+        self.mqtt.publish_event(topic_key, event)
+        return event
+
+    def _random_node(self, preferred_types: set[str] | None = None) -> dict[str, Any]:
+        if preferred_types:
+            candidates = [node for node in self.nodes if node.get("type") in preferred_types]
+            if candidates:
+                return random.choice(candidates)
+        return random.choice(self.nodes)
+
+    def generate_gate_event(self):
+        gate = random.choice(self.gates)
+        direction = random.choices(["entry", "exit"], weights=[0.75, 0.25])[0]
+        delta = 1 if direction == "entry" else -1
+        self.gate_counters[gate["id"]] = max(0, self.gate_counters[gate["id"]] + delta)
+
+        model_count = CNN_COUNTER.get_count(gate["id"]) if CNN_COUNTER else None
+        current_count = int(model_count if model_count is not None else self.gate_counters[gate["id"]])
+        throughput = random.uniform(18, 42) if SIM_SCENARIO == "matchday" else random.uniform(4, 12)
+
         event = {
             "event_id": str(uuid.uuid4()),
             "event_type": "gate_passage",
-            "timestamp": datetime.now().isoformat() + "Z",
-            "gate_id": gate_id,
-            "person_id": f"P_{person_id:06d}",
+            "timestamp": utc_now(),
+            "gate_id": gate["id"],
+            "gate_name": gate["name"],
+            "person_id": f"P-{random.randint(1000, 999999)}",
             "direction": direction,
-            "current_count": cnn_count,
-            "throughput_per_min": round(random.uniform(15, 25), 1),
-            "location": {"x": gate['x'], "y": gate['y']},
+            "current_count": current_count,
+            "throughput_per_min": round(throughput, 1),
+            "location_node": gate["node_id"],
+            "floor_id": gate["floor_id"],
+            "location": {"x": gate["x"], "y": gate["y"]},
             "metadata": {
-                "heat_level": "red" if self.gate_counters[gate_id] > 150 
-                             else "yellow" if self.gate_counters[gate_id] > 80 
-                             else "green"
-            }
+                "scenario": SIM_SCENARIO,
+                "heat_level": "red" if current_count > 140 else "yellow" if current_count > 70 else "green",
+            },
         }
-        
-        self.events.append(event)
-        self.mqtt.publish_event("gate_updates", event)
-        self.event_count += 1
-        return event
-    
-    def generate_bin_alert(self, bin_poi_id):
-        """Bin overflow alert for cleaning staff"""
-        poi = next((p for p in self.pois if p['id'] == bin_poi_id), None)
-        if not poi:
-            return None
-        
-        fill_pct = self.bin_fill_levels.get(bin_poi_id, 0)
-        fill_pct = min(100, fill_pct + random.uniform(10, 20))
-        self.bin_fill_levels[bin_poi_id] = fill_pct
-        
-        # Find nearest node to this POI
-        nearest_node = min(
-            self.nodes,
-            key=lambda n: ((n['x'] - poi['x'])**2 + (n['y'] - poi['y'])**2)**0.5
-        )
-        
+        return self._record("gate_updates", event)
+
+    def generate_queue_update(self):
+        location = random.choice(self.bins + self.gates)
+        is_gate = location["id"].startswith("GATE")
+        queue_length = random.randint(0, 12 if is_gate else 18)
+        wait_min = round(queue_length / (4.0 if is_gate else 1.7), 1)
+        event = {
+            "event_id": str(uuid.uuid4()),
+            "event_type": "queue_update",
+            "timestamp": utc_now(),
+            "location_id": location["id"],
+            "location_name": location["name"],
+            "location_type": "gate" if is_gate else "toilet",
+            "queue_length": queue_length,
+            "estimated_wait_min": wait_min,
+            "location_node": location["node_id"],
+            "floor_id": location["floor_id"],
+            "location": {"x": location["x"], "y": location["y"]},
+        }
+        return self._record("queue_update", event)
+
+    def generate_bin_alert(self):
+        bin_asset = random.choice(self.bins)
+        current_fill = self.bin_fill_levels.get(bin_asset["id"], 35)
+        fill_pct = min(100, current_fill + random.uniform(4, 18))
+        self.bin_fill_levels[bin_asset["id"]] = fill_pct
+
         event = {
             "event_id": str(uuid.uuid4()),
             "event_type": "bin_alert",
-            "timestamp": datetime.now().isoformat() + "Z",
-            "bin_id": bin_poi_id,
+            "timestamp": utc_now(),
+            "bin_id": bin_asset["id"],
             "fill_percentage": round(fill_pct, 1),
-            "priority": "critical" if fill_pct > 95 else "high" if fill_pct > 85 else "medium",
-            "poi_node": nearest_node['id'],
-            "location": {"x": poi['x'], "y": poi['y']},
+            "priority": "critical" if fill_pct >= 95 else "high" if fill_pct >= 85 else "medium",
+            "poi_node": bin_asset["node_id"],
+            "location_node": bin_asset["node_id"],
+            "floor_id": bin_asset["floor_id"],
+            "location": {"x": bin_asset["x"], "y": bin_asset["y"]},
             "assigned_role": "cleaning",
             "metadata": {
                 "action_required": "empty_bin",
-                "needs_service": fill_pct > 85
-            }
+                "needs_service": fill_pct >= 85,
+                "source": "emulator-stadium",
+            },
         }
-        
-        self.events.append(event)
-        self.mqtt.publish_event("bin_alerts", event)
-        self.event_count += 1
-        return event
-    
-    def generate_sos_event(self, location_node_id):
-        """Emergency SOS event"""
-        node = self.get_node_by_id(location_node_id)
-        if not node:
-            return None
-        
-        sos_id = f"SOS-{uuid.uuid4().hex[:6]}"
-        
+        return self._record("bin_alerts", event)
+
+    def generate_sos_event(self):
+        node = self._random_node({"corridor", "stand", "service", "vertical_transition"})
+        emergency = random.choice(
+            [
+                ("medical", "high", "Queda de adepto com dor no tornozelo"),
+                ("medical", "critical", "Possivel desmaio junto a zona de circulacao"),
+                ("security", "high", "Discussao entre adeptos a bloquear passagem"),
+                ("security", "medium", "Objeto suspeito reportado por assistente"),
+            ]
+        )
+        assigned_role, severity, details = emergency
+
         event = {
             "event_id": str(uuid.uuid4()),
             "event_type": "sos_event",
-            "timestamp": datetime.now().isoformat() + "Z",
-            "sos_id": sos_id,
-            "priority": random.choice(["high", "critical"]),
-            "location_node": location_node_id,
-            "location": {"x": node['x'], "y": node['y']},
-            "details": random.choice(["fainting", "injury", "chest_pain"]),
-            "assigned_role": "security",
-            "status": "active"
-        }
-        
-        self.events.append(event)
-        self.mqtt.publish_event("sos_events", event)
-        self.event_count += 1
-        
-        # Assign nearest responder
-        self.assign_responder(sos_id, location_node_id, "security")
-        
-        return event
-    
-    def assign_responder(self, incident_id, location_node, role):
-        """Assign nearest staff to incident"""
-        try:
-            response = requests.get(
-                f"{ROUTING_SERVICE_URL}/api/emergency/nearest",
-                params={"location": location_node, "role": role},
-                timeout=5
-            )
-            
-            if response.status_code == 200:
-                data = response.json()
-                
-                event = {
-                    "event_id": str(uuid.uuid4()),
-                    "event_type": "responder_assign",
-                    "timestamp": datetime.now().isoformat() + "Z",
-                    "incident_id": incident_id,
-                    "responder": data.get('assigned_staff_id', 'STAFF_001'),
-                    "responder_position": data['responder_position'],
-                    "role": role,
-                    "eta_seconds": data['eta_seconds'],
-                    "route": data['path'],
-                    "distance": data['distance']
-                }
-                
-                self.events.append(event)
-                self.mqtt.publish_event("responder_assign", event)
-                self.event_count += 1
-                return event
-        
-        except Exception as e:
-            print(f"⚠️  Could not assign responder: {e}")
-        
-        return None
-    
-    def generate_evacuation_event(self):
-        """Evacuation with corridor closure"""
-        if len(self.edges) < 2:
-            return None
-        
-        # Pick random edge to close
-        edge = random.choice(self.edges)
-        
-        event = {
-            "event_id": str(uuid.uuid4()),
-            "event_type": "evac_update",
-            "timestamp": datetime.now().isoformat() + "Z",
-            "closure": {
-                "edge": f"{edge['from']}-{edge['to']}",
-                "from_node": edge['from'],
-                "to_node": edge['to'],
-                "reason": random.choice(["smoke", "crowd", "structural"]),
-                "closed": True
-            },
+            "timestamp": utc_now(),
+            "sos_id": f"SOS-{uuid.uuid4().hex[:6].upper()}",
+            "priority": severity,
+            "severity": severity,
+            "location_node": node["id"],
+            "floor_id": node.get("floor_id", 1),
+            "location": {"x": node["x"], "y": node["y"]},
+            "details": details,
+            "assigned_role": assigned_role,
+            "status": "active",
             "metadata": {
-                "severity": "critical"
-            }
+                "source": "emulator-stadium",
+                "recommended_route_target": 65,
+            },
         }
-        
-        self.events.append(event)
-        self.mqtt.publish_event("evac_update", event)
-        self.event_count += 1
-        
-        # Update Routing Service
-        try:
-            requests.post(
-                f"{ROUTING_SERVICE_URL}/api/hazards/closure",
-                params={"from_node": edge['from'], "to_node": edge['to']},
-                timeout=5
-            )
-            print(f"🚧 Closure added: {edge['from']} ↔ {edge['to']}")
-        except:
-            pass
-        
-        return event
-    
-    def generate_crowd_density_event(self, area_node_id):
-        """Crowd density update"""
-        node = self.get_node_by_id(area_node_id)
-        if not node:
-            return None
-        
-        # ===== ZIP MODEL INTEGRATION =====
-        if ZIP_AVAILABLE:
-            count = zip_counter.get_count(area_node_id)
-        else:
-            count = random.randint(10, 200)
-        # ==================================
+        return self._record("sos_events", event)
 
-        capacity = 150
-        occupancy = (count / capacity) * 100
-        
+    def generate_crowd_density_event(self):
+        node = random.choice(self.crowd_areas)
+        base = ZIP_COUNTER.get_count(node["id"]) if ZIP_COUNTER else None
+        count = int(base if base is not None else random.randint(20, 190))
+        capacity = 120 if node.get("type") == "corridor" else 180
+        occupancy = min(100.0, (count / capacity) * 100)
+
         event = {
             "event_id": str(uuid.uuid4()),
             "event_type": "crowd_density",
-            "timestamp": datetime.now().isoformat() + "Z",
-            "area_id": area_node_id,
-            "area_type": node.get('type', 'normal'),
+            "timestamp": utc_now(),
+            "area_id": str(node["id"]),
+            "area_type": node.get("type", "corridor"),
             "current_count": count,
             "capacity": capacity,
             "occupancy_rate": round(occupancy, 1),
-            "location": {"x": node['x'], "y": node['y']},
-            "heat_level": "red" if occupancy > 80 else "yellow" if occupancy > 50 else "green"
+            "location_node": node["id"],
+            "floor_id": node.get("floor_id", 1),
+            "location": {"x": node["x"], "y": node["y"]},
+            "heat_level": "red" if occupancy > 82 else "yellow" if occupancy > 55 else "green",
+            "metadata": {"source": "emulator-stadium"},
         }
-        
-        self.events.append(event)
-        self.mqtt.publish_event("crowd_density", event)
-        self.event_count += 1
-        
-        # Update crowd penalty in routing
+
         if occupancy > 60:
-            try:
-                requests.post(
-                    f"{ROUTING_SERVICE_URL}/api/hazards/crowd",
-                    params={"node_id": area_node_id, "penalty": occupancy},
-                    timeout=5
-                )
-            except:
-                pass
-        
-        return event
+            self._post_routing_crowd_penalty(node["id"], occupancy)
+        return self._record("crowd_density", event)
 
-# ========== SIMULATION RUNNER ==========
+    def generate_evacuation_update(self):
+        node = self._random_node({"corridor", "vertical_transition", "service"})
+        reason = random.choice(["smoke_detected", "crowd_pressure", "maintenance_blockage"])
+        severity = random.choice([0.6, 0.8, 1.0])
+        self.active_closures.add(node["id"])
 
-def run_integrated_simulation(duration_seconds=60):
-    """Run integrated simulation"""
-    print("\n" + "="*60)
-    print("STADIUM EVENT SIMULATOR - INTEGRATED VERSION")
-    print("="*60 + "\n")
-    
+        self._post_node_closure(node["id"], reason, severity)
+
+        event = {
+            "event_id": str(uuid.uuid4()),
+            "event_type": "evac_update",
+            "timestamp": utc_now(),
+            "closure": {
+                "node_id": node["id"],
+                "from_node": node["id"],
+                "to_node": node["id"],
+                "reason": reason,
+                "closed": True,
+            },
+            "floor_id": node.get("floor_id", 1),
+            "location": {"x": node["x"], "y": node["y"]},
+            "metadata": {
+                "severity": severity,
+                "source": "emulator-stadium",
+                "routing_endpoint": "/api/graph/node-closures",
+            },
+        }
+        return self._record("evac_update", event)
+
+    def _post_routing_crowd_penalty(self, node_id: int, occupancy: float):
+        try:
+            requests.post(
+                f"{ROUTING_SERVICE_URL}/api/hazards/crowd",
+                params={"node_id": node_id, "occupancy_rate": round(occupancy, 1)},
+                timeout=2,
+            )
+        except Exception:
+            pass
+
+    def _post_node_closure(self, node_id: int, reason: str, severity: float):
+        try:
+            response = requests.post(
+                f"{ROUTING_SERVICE_URL}/api/graph/node-closures",
+                json={
+                    "node_id": node_id,
+                    "reason": reason,
+                    "source": "emulator-stadium",
+                    "severity": severity,
+                    "is_active": True,
+                },
+                timeout=3,
+            )
+            if response.status_code >= 400:
+                print(f"routing-service rejected node closure {node_id}: {response.status_code}")
+        except Exception as exc:
+            print(f"could not update routing-service closure for node {node_id}: {exc}")
+
+
+def run_integrated_simulation(duration_seconds: int):
+    print("=" * 68)
+    print("OpsLite Stadium Emulator")
+    print("=" * 68)
+    print(f"routing-service: {ROUTING_SERVICE_URL}")
+    print(f"mqtt: {MQTT_BROKER}:{MQTT_PORT}")
+    print(f"scenario: {SIM_SCENARIO}, duration: {duration_seconds}s")
+    print("=" * 68)
+
     mqtt_pub = MQTTPublisher(MQTT_BROKER, MQTT_PORT)
-    event_gen = IntegratedEventGenerator(mqtt_pub)
-    
-    if not event_gen.nodes:
-        print("❌ No map data loaded. Cannot proceed.")
-        return
-    
-    print(f"\n🎬 Starting {duration_seconds}s simulation...\n")
-    
+    generator = OpsLiteEventGenerator(mqtt_pub)
+
     start_time = time.time()
-    
-    # Simulation loop
+    last_bin = -14.0
+    last_queue = -6.0
+    last_density = -8.0
+    last_evac = 0.0
+
     while time.time() - start_time < duration_seconds:
         elapsed = time.time() - start_time
-        
-        # Gate events (frequent)
-        if random.random() < 0.3 and event_gen.gates:
-            gate = random.choice(event_gen.gates)
-            person_id = random.randint(1, 10000)
-            event_gen.generate_gate_event(gate['id'], person_id, "entry")
-        
-        # Bin alerts (periodic)
-        if elapsed % 10 < 1 and event_gen.bin_fill_levels:
-            bin_id = random.choice(list(event_gen.bin_fill_levels.keys()))
-            event_gen.generate_bin_alert(bin_id)
-        
-        # SOS events (rare)
-        if random.random() < 0.05:
-            node = event_gen.get_random_node()
-            if node:
-                event_gen.generate_sos_event(node['id'])
-        
-        # Crowd density updates (periodic)
-        if elapsed % 8 < 1:
-            node = event_gen.get_random_node()
-            if node:
-                event_gen.generate_crowd_density_event(node['id'])
-        
-        # Evacuation (very rare)
-        if random.random() < 0.01:
-            event_gen.generate_evacuation_event()
-        
-        time.sleep(1)  # 1 event per second
-    
-    print(f"\n✅ Simulation complete!")
-    print(f"📊 Total events generated: {event_gen.event_count}")
-    
-    # Save events
-    with open("stadium_events_integrated.json", "w") as f:
-        json.dump(event_gen.events, f, indent=2)
-    print(f"💾 Events saved to: stadium_events_integrated.json")
 
-# ========== MAIN ==========
+        if random.random() < 0.35:
+            generator.generate_gate_event()
+
+        if elapsed - last_queue >= 6:
+            generator.generate_queue_update()
+            last_queue = elapsed
+
+        if elapsed - last_density >= 8:
+            generator.generate_crowd_density_event()
+            last_density = elapsed
+
+        if elapsed - last_bin >= 14:
+            generator.generate_bin_alert()
+            last_bin = elapsed
+
+        if random.random() < 0.035:
+            generator.generate_sos_event()
+
+        if elapsed > 30 and elapsed - last_evac >= 75 and random.random() < 0.25:
+            generator.generate_evacuation_update()
+            last_evac = elapsed
+
+        time.sleep(SIM_TICK_SECONDS)
+
+    output_path = Path(SIM_OUTPUT_FILE)
+    output_path.write_text(json.dumps(generator.events, indent=2), encoding="utf-8")
+    print("=" * 68)
+    print(f"Simulation complete: {generator.event_count} events")
+    print(f"Events saved to {output_path}")
+
 
 if __name__ == "__main__":
     import sys
-    
-    duration = 3600 
+
+    duration = int(os.getenv("SIM_DURATION_SECONDS", "3600"))
     if len(sys.argv) > 1:
         try:
             duration = int(sys.argv[1])
-        except:
+        except ValueError:
             pass
-    
+
     run_integrated_simulation(duration)

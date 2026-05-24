@@ -1,0 +1,477 @@
+[
+  {
+    "event_id": "56490e5b-20a2-443a-a054-9f2932bcb5f4",
+    "event_type": "gate_passage",
+    "timestamp": "2026-05-24T22:45:43.998458+00:00",
+    "gate_id": "GATE-F2-GALLERY",
+    "gate_name": "Galeria Piso 2",
+    "person_id": "P-17237",
+    "direction": "entry",
+    "current_count": 1,
+    "throughput_per_min": 26.1,
+    "location_node": 70,
+    "floor_id": 2,
+    "location": {
+      "x": -8.659923751,
+      "y": 40.634000615
+    },
+    "metadata": {
+      "scenario": "matchday",
+      "heat_level": "green"
+    }
+  },
+  {
+    "event_id": "87c276d8-7f44-4ef3-abbd-3b0679ab767f",
+    "event_type": "queue_update",
+    "timestamp": "2026-05-24T22:45:43.998750+00:00",
+    "location_id": "GATE-F1-NORTH",
+    "location_name": "Entrada Norte F1",
+    "location_type": "gate",
+    "queue_length": 1,
+    "estimated_wait_min": 0.2,
+    "location_node": 65,
+    "floor_id": 1,
+    "location": {
+      "x": -8.659917501,
+      "y": 40.63396608
+    }
+  },
+  {
+    "event_id": "7a5da2b8-f373-4f70-a11f-239415298ee3",
+    "event_type": "crowd_density",
+    "timestamp": "2026-05-24T22:45:43.998999+00:00",
+    "area_id": "45",
+    "area_type": "salaIn",
+    "current_count": 59,
+    "capacity": 180,
+    "occupancy_rate": 32.8,
+    "location_node": 45,
+    "floor_id": 1,
+    "location": {
+      "x": -8.65985276,
+      "y": 40.634202226
+    },
+    "heat_level": "green",
+    "metadata": {
+      "source": "emulator-stadium"
+    }
+  },
+  {
+    "event_id": "57621eb2-0dc5-404e-b0a2-caa21a547cad",
+    "event_type": "bin_alert",
+    "timestamp": "2026-05-24T22:45:43.999206+00:00",
+    "bin_id": "BIN-2-05",
+    "fill_percentage": 58.8,
+    "priority": "medium",
+    "poi_node": 91,
+    "location_node": 91,
+    "floor_id": 2,
+    "location": {
+      "x": -8.65982765,
+      "y": 40.634140328
+    },
+    "assigned_role": "cleaning",
+    "metadata": {
+      "action_required": "empty_bin",
+      "needs_service": false,
+      "source": "emulator-stadium"
+    }
+  },
+  {
+    "event_id": "a5ae38c9-8cae-4849-9a92-892a4cc873ce",
+    "event_type": "gate_passage",
+    "timestamp": "2026-05-24T22:45:47.000365+00:00",
+    "gate_id": "GATE-F1-NORTH",
+    "gate_name": "Entrada Norte F1",
+    "person_id": "P-332832",
+    "direction": "entry",
+    "current_count": 1,
+    "throughput_per_min": 35.5,
+    "location_node": 65,
+    "floor_id": 1,
+    "location": {
+      "x": -8.659917501,
+      "y": 40.63396608
+    },
+    "metadata": {
+      "scenario": "matchday",
+      "heat_level": "green"
+    }
+  },
+  {
+    "event_id": "97269d7d-9b3e-4ccb-bddf-5a874573f234",
+    "event_type": "gate_passage",
+    "timestamp": "2026-05-24T22:45:48.001213+00:00",
+    "gate_id": "GATE-F1-NORTH",
+    "gate_name": "Entrada Norte F1",
+    "person_id": "P-665443",
+    "direction": "entry",
+    "current_count": 2,
+    "throughput_per_min": 20.3,
+    "location_node": 65,
+    "floor_id": 1,
+    "location": {
+      "x": -8.659917501,
+      "y": 40.63396608
+    },
+    "metadata": {
+      "scenario": "matchday",
+      "heat_level": "green"
+    }
+  },
+  {
+    "event_id": "f1bea4bb-1a10-4077-b39e-a9d7f8d94775",
+    "event_type": "gate_passage",
+    "timestamp": "2026-05-24T22:45:49.001974+00:00",
+    "gate_id": "GATE-F1-NORTH",
+    "gate_name": "Entrada Norte F1",
+    "person_id": "P-538104",
+    "direction": "entry",
+    "current_count": 3,
+    "throughput_per_min": 25.0,
+    "location_node": 65,
+    "floor_id": 1,
+    "location": {
+      "x": -8.659917501,
+      "y": 40.63396608
+    },
+    "metadata": {
+      "scenario": "matchday",
+      "heat_level": "green"
+    }
+  },
+  {
+    "event_id": "0e5abe13-8a56-48f2-a6b0-800adc3d3281",
+    "event_type": "queue_update",
+    "timestamp": "2026-05-24T22:45:50.002424+00:00",
+    "location_id": "BIN-1-04",
+    "location_name": "Ecoponto WC Feminino 1.07",
+    "location_type": "toilet",
+    "queue_length": 16,
+    "estimated_wait_min": 9.4,
+    "location_node": 61,
+    "floor_id": 1,
+    "location": {
+      "x": -8.660081691,
+      "y": 40.634135891
+    }
+  },
+  {
+    "event_id": "8b0b30ff-8066-403d-be6f-cfbe41e17629",
+    "event_type": "gate_passage",
+    "timestamp": "2026-05-24T22:45:51.003021+00:00",
+    "gate_id": "GATE-F2-GALLERY",
+    "gate_name": "Galeria Piso 2",
+    "person_id": "P-278342",
+    "direction": "exit",
+    "current_count": 0,
+    "throughput_per_min": 42.0,
+    "location_node": 70,
+    "floor_id": 2,
+    "location": {
+      "x": -8.659923751,
+      "y": 40.634000615
+    },
+    "metadata": {
+      "scenario": "matchday",
+      "heat_level": "green"
+    }
+  },
+  {
+    "event_id": "4dd1b7f8-9df7-44c1-9c32-a5965f8dd9b7",
+    "event_type": "crowd_density",
+    "timestamp": "2026-05-24T22:45:52.003684+00:00",
+    "area_id": "114",
+    "area_type": "salaOut",
+    "current_count": 118,
+    "capacity": 180,
+    "occupancy_rate": 65.6,
+    "location_node": 114,
+    "floor_id": 2,
+    "location": {
+      "x": -8.659867255,
+      "y": 40.634231265
+    },
+    "heat_level": "yellow",
+    "metadata": {
+      "source": "emulator-stadium"
+    }
+  },
+  {
+    "event_id": "a7f516ab-1ab9-4023-bab9-838f9396259c",
+    "event_type": "gate_passage",
+    "timestamp": "2026-05-24T22:45:55.010348+00:00",
+    "gate_id": "GATE-F2-GALLERY",
+    "gate_name": "Galeria Piso 2",
+    "person_id": "P-101040",
+    "direction": "entry",
+    "current_count": 1,
+    "throughput_per_min": 25.4,
+    "location_node": 70,
+    "floor_id": 2,
+    "location": {
+      "x": -8.659923751,
+      "y": 40.634000615
+    },
+    "metadata": {
+      "scenario": "matchday",
+      "heat_level": "green"
+    }
+  },
+  {
+    "event_id": "a40732f6-2000-49e0-9ae8-69032dd73d73",
+    "event_type": "queue_update",
+    "timestamp": "2026-05-24T22:45:56.011079+00:00",
+    "location_id": "BIN-1-03",
+    "location_name": "Ecoponto WC Maculino 1.06",
+    "location_type": "toilet",
+    "queue_length": 4,
+    "estimated_wait_min": 2.4,
+    "location_node": 60,
+    "floor_id": 1,
+    "location": {
+      "x": -8.660070972,
+      "y": 40.634129136
+    }
+  },
+  {
+    "event_id": "3cde06ab-6275-4fb8-aeaa-350209da118d",
+    "event_type": "bin_alert",
+    "timestamp": "2026-05-24T22:45:58.011732+00:00",
+    "bin_id": "BIN-1-03",
+    "fill_percentage": 39.7,
+    "priority": "medium",
+    "poi_node": 60,
+    "location_node": 60,
+    "floor_id": 1,
+    "location": {
+      "x": -8.660070972,
+      "y": 40.634129136
+    },
+    "assigned_role": "cleaning",
+    "metadata": {
+      "action_required": "empty_bin",
+      "needs_service": false,
+      "source": "emulator-stadium"
+    }
+  },
+  {
+    "event_id": "a1d757b2-278f-48e4-a788-e77ff625bf2f",
+    "event_type": "gate_passage",
+    "timestamp": "2026-05-24T22:46:00.012212+00:00",
+    "gate_id": "GATE-F1-NORTH",
+    "gate_name": "Entrada Norte F1",
+    "person_id": "P-867723",
+    "direction": "exit",
+    "current_count": 2,
+    "throughput_per_min": 19.3,
+    "location_node": 65,
+    "floor_id": 1,
+    "location": {
+      "x": -8.659917501,
+      "y": 40.63396608
+    },
+    "metadata": {
+      "scenario": "matchday",
+      "heat_level": "green"
+    }
+  },
+  {
+    "event_id": "1727ef73-7e4b-41ad-910c-0c44ec191874",
+    "event_type": "crowd_density",
+    "timestamp": "2026-05-24T22:46:00.012519+00:00",
+    "area_id": "69",
+    "area_type": "salaIn",
+    "current_count": 143,
+    "capacity": 180,
+    "occupancy_rate": 79.4,
+    "location_node": 69,
+    "floor_id": 1,
+    "location": {
+      "x": -8.660084735,
+      "y": 40.634169865
+    },
+    "heat_level": "yellow",
+    "metadata": {
+      "source": "emulator-stadium"
+    }
+  },
+  {
+    "event_id": "cf2d8cce-3afc-4703-ad9f-4a70145f2d05",
+    "event_type": "gate_passage",
+    "timestamp": "2026-05-24T22:46:01.016687+00:00",
+    "gate_id": "GATE-IT",
+    "gate_name": "Entrada IT",
+    "person_id": "P-329643",
+    "direction": "entry",
+    "current_count": 1,
+    "throughput_per_min": 36.7,
+    "location_node": 65,
+    "floor_id": 1,
+    "location": {
+      "x": -8.659917501,
+      "y": 40.63396608
+    },
+    "metadata": {
+      "scenario": "matchday",
+      "heat_level": "green"
+    }
+  },
+  {
+    "event_id": "0ce8b7d8-ea1e-4af4-9fc3-59752efadee7",
+    "event_type": "gate_passage",
+    "timestamp": "2026-05-24T22:46:02.017437+00:00",
+    "gate_id": "GATE-IT",
+    "gate_name": "Entrada IT",
+    "person_id": "P-930122",
+    "direction": "entry",
+    "current_count": 2,
+    "throughput_per_min": 24.2,
+    "location_node": 65,
+    "floor_id": 1,
+    "location": {
+      "x": -8.659917501,
+      "y": 40.63396608
+    },
+    "metadata": {
+      "scenario": "matchday",
+      "heat_level": "green"
+    }
+  },
+  {
+    "event_id": "9157c6d1-f454-469e-812d-60375e03abe9",
+    "event_type": "queue_update",
+    "timestamp": "2026-05-24T22:46:02.017916+00:00",
+    "location_id": "GATE-F2-GALLERY",
+    "location_name": "Galeria Piso 2",
+    "location_type": "gate",
+    "queue_length": 12,
+    "estimated_wait_min": 3.0,
+    "location_node": 70,
+    "floor_id": 2,
+    "location": {
+      "x": -8.659923751,
+      "y": 40.634000615
+    }
+  },
+  {
+    "event_id": "f768a5ce-bcc3-480f-8797-3ec0372c3821",
+    "event_type": "gate_passage",
+    "timestamp": "2026-05-24T22:46:08.019065+00:00",
+    "gate_id": "GATE-IT",
+    "gate_name": "Entrada IT",
+    "person_id": "P-146479",
+    "direction": "entry",
+    "current_count": 3,
+    "throughput_per_min": 32.3,
+    "location_node": 65,
+    "floor_id": 1,
+    "location": {
+      "x": -8.659917501,
+      "y": 40.63396608
+    },
+    "metadata": {
+      "scenario": "matchday",
+      "heat_level": "green"
+    }
+  },
+  {
+    "event_id": "cd75fd62-7448-4a8b-ac5f-b6642c49265d",
+    "event_type": "queue_update",
+    "timestamp": "2026-05-24T22:46:08.019601+00:00",
+    "location_id": "BIN-1-04",
+    "location_name": "Ecoponto WC Feminino 1.07",
+    "location_type": "toilet",
+    "queue_length": 12,
+    "estimated_wait_min": 7.1,
+    "location_node": 61,
+    "floor_id": 1,
+    "location": {
+      "x": -8.660081691,
+      "y": 40.634135891
+    }
+  },
+  {
+    "event_id": "e833b1f3-ae93-4e51-8ab8-47ec82408b92",
+    "event_type": "crowd_density",
+    "timestamp": "2026-05-24T22:46:08.019830+00:00",
+    "area_id": "45",
+    "area_type": "salaIn",
+    "current_count": 46,
+    "capacity": 180,
+    "occupancy_rate": 25.6,
+    "location_node": 45,
+    "floor_id": 1,
+    "location": {
+      "x": -8.65985276,
+      "y": 40.634202226
+    },
+    "heat_level": "green",
+    "metadata": {
+      "source": "emulator-stadium"
+    }
+  },
+  {
+    "event_id": "1b51fc44-7d90-46f0-93de-ea309b01ff46",
+    "event_type": "gate_passage",
+    "timestamp": "2026-05-24T22:46:12.020508+00:00",
+    "gate_id": "GATE-F2-GALLERY",
+    "gate_name": "Galeria Piso 2",
+    "person_id": "P-198381",
+    "direction": "entry",
+    "current_count": 2,
+    "throughput_per_min": 27.2,
+    "location_node": 70,
+    "floor_id": 2,
+    "location": {
+      "x": -8.659923751,
+      "y": 40.634000615
+    },
+    "metadata": {
+      "scenario": "matchday",
+      "heat_level": "green"
+    }
+  },
+  {
+    "event_id": "67a629bd-5464-4f58-a7df-b4afb224dd00",
+    "event_type": "bin_alert",
+    "timestamp": "2026-05-24T22:46:12.020686+00:00",
+    "bin_id": "BIN-2-05",
+    "fill_percentage": 72.0,
+    "priority": "medium",
+    "poi_node": 91,
+    "location_node": 91,
+    "floor_id": 2,
+    "location": {
+      "x": -8.65982765,
+      "y": 40.634140328
+    },
+    "assigned_role": "cleaning",
+    "metadata": {
+      "action_required": "empty_bin",
+      "needs_service": false,
+      "source": "emulator-stadium"
+    }
+  },
+  {
+    "event_id": "2218f05d-be27-4c9a-9fca-9ba5baefb008",
+    "event_type": "gate_passage",
+    "timestamp": "2026-05-24T22:46:13.020877+00:00",
+    "gate_id": "GATE-F1-NORTH",
+    "gate_name": "Entrada Norte F1",
+    "person_id": "P-9053",
+    "direction": "entry",
+    "current_count": 3,
+    "throughput_per_min": 35.3,
+    "location_node": 65,
+    "floor_id": 1,
+    "location": {
+      "x": -8.659917501,
+      "y": 40.63396608
+    },
+    "metadata": {
+      "scenario": "matchday",
+      "heat_level": "green"
+    }
+  }
+]
