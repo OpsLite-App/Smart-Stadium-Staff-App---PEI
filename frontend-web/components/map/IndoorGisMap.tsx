@@ -42,6 +42,8 @@ const quickCameraActions: Array<{ level: CameraDensityLevel; label: string; peop
   { level: 'critical', label: 'Critical', peopleCount: 65 },
 ];
 
+const EMPTY_SELECTED_NODE_IDS: string[] = [];
+
 function buildCameraStatusLookup(statuses: CameraStatus[]) {
   return {
     byCameraId: new Map(statuses.map((status) => [status.camera_id, status])),
@@ -176,7 +178,7 @@ export function IndoorGisMap({
   routeGeoJson = null,
   routeAffected = false,
   nodeSelectionMode = null,
-  selectedNodeIds = [],
+  selectedNodeIds = EMPTY_SELECTED_NODE_IDS,
   onNodeSelect,
   heightClassName = 'h-[34rem] md:h-[38rem]',
   showCameraControls = true,

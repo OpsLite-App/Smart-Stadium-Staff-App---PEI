@@ -315,10 +315,10 @@ export const api = {
     return response.data;
   },
 
-  markEvacuationSafe: async (evacuationId: string, currentNode: string, notes?: string): Promise<GlobalEvacuation> => {
+  markEvacuationSafe: async (evacuationId: string, currentNode?: string, notes?: string): Promise<GlobalEvacuation> => {
     const response = await authAxios.post<GlobalEvacuation>(
       `${EMERGENCY_SERVICE}/evacuation/global/${evacuationId}/safe`,
-      { current_node: currentNode, notes },
+      { current_node: currentNode || undefined, notes },
       { timeout: 5000 }
     );
     return response.data;

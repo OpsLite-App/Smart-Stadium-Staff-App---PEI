@@ -36,6 +36,6 @@
 
 - **Concurrency Error Handling:** Validated asynchronous system behavior under a massive and continuous influx of geolocation events, injected simultaneously by the emulator through the `mosquitto` MQTT broker into the `event-processor`.
 
-- **Transactional Consistency Assurance:** Logical mechanisms within core microservices (such as `map-service` and `routing-service`) are strictly enclosed within transactional blocks. This guarantees that if a complex geographic update process fails mid-execution, the database triggers an automatic rollback, preventing any data corruption.
+- **Transactional Consistency Assurance:** Logical mechanisms within active core components such as `routing-service` and `postgres_map` are strictly enclosed within transactional blocks. This guarantees that if a complex geographic update process fails mid-execution, the database triggers an automatic rollback, preventing any data corruption. The legacy `map-service` is not part of the active runtime.
 
 - **Business Invariant Validation:** Enforcement of logical constraints and integrity checks within the codebase to actively reject impossible or anomalous data inputs, such as route coordinates or infrastructure states generated outside the defined physical perimeter of the stadium.

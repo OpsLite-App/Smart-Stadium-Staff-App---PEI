@@ -7,6 +7,7 @@ Calls Routing Service for route calculations
 from fastapi import FastAPI, HTTPException, Query, Depends, Request
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
+from sqlalchemy.orm.attributes import flag_modified
 from typing import Callable, List, Optional
 from datetime import datetime
 import asyncio
@@ -715,9 +716,7 @@ def mark_staff_safe(
     auth: dict = Depends(require_roles("security", "cleaning", "medical", "supervisor")),
     db: Session = Depends(get_db),
 ):
-    """Mark the authenticated staff member as safe after reaching node 65."""
-    if str(request.current_node) != str(EVACUATION_EXIT_NODE):
-        raise HTTPException(status_code=400, detail=f"Safe confirmation is only allowed at node {EVACUATION_EXIT_NODE}")
+    """Mark the authenticated staff member as safe."""
 
     evacuation = db.query(EvacuationZone).filter(EvacuationZone.id == evacuation_id).first()
     if not evacuation or _evacuation_metadata(evacuation).get("kind") != "global_evacuation":
@@ -726,13 +725,13 @@ def mark_staff_safe(
     if evacuation.status != "active":
         raise HTTPException(status_code=409, detail="Evacuation is not active")
 
-    metadata = _evacuation_metadata(evacuation)
+    metadata = dict(_evacuation_metadata(evacuation))
     confirmations = dict(metadata.get("confirmations") or {})
     user_id = str(auth.get("user_id") or auth.get("id") or auth.get("sub") or auth.get("email") or "unknown")
     confirmations[user_id] = {
         "email": auth.get("email") or auth.get("username"),
         "role": auth.get("role"),
-        "current_node": str(request.current_node),
+        "current_node": str(request.current_node) if request.current_node is not None else None,
         "notes": request.notes,
         "safe_at": datetime.now().isoformat(),
     }
@@ -740,6 +739,7 @@ def mark_staff_safe(
     metadata["confirmations"] = confirmations
     evacuation.evacuated_count = len(confirmations)
     evacuation.incident_metadata = metadata
+    flag_modified(evacuation, "incident_metadata")
     db.commit()
     db.refresh(evacuation)
 

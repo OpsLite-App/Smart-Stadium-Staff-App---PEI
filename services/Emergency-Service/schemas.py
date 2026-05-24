@@ -220,8 +220,8 @@ class GlobalEvacuationResponse(BaseModel):
 
 
 class EvacuationSafeRequest(BaseModel):
-    """Staff confirmation that they reached the safe node."""
-    current_node: str = Field(..., description="Current staff node")
+    """Staff confirmation that they are safe."""
+    current_node: Optional[str] = Field(None, description="Current staff node, when available")
     notes: Optional[str] = Field(None, description="Optional confirmation notes")
 
 

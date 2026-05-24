@@ -1,13 +1,19 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
-import { AlertTriangle, CheckCircle2, DoorOpen, Loader2, MapPin, ShieldAlert } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, DoorOpen, Loader2, MapPin, ShieldAlert, ShieldCheck, Users } from 'lucide-react';
 import { api, type GlobalEvacuation } from '@/lib/services/api';
 import { useAuthStore } from '@/lib/stores/useAuthStore';
 import { IndoorGisMap } from '@/components/map/IndoorGisMap';
 import type { GisFeatureCollection, RouteEdgeProperties } from '@/lib/services/gisApi';
 
 const EXIT_NODE = '65';
+const EVACUATION_SAFE_STORAGE_KEY = 'opslite-safe-evacuations';
+const FLOOR_OPTIONS = [
+  { id: 0, label: 'Piso 0' },
+  { id: 1, label: 'Piso 1' },
+  { id: 2, label: 'Piso 2' },
+];
 const fieldClass =
   'w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm font-semibold text-slate-900 shadow-sm outline-none transition focus:border-red-500 focus:ring-4 focus:ring-red-100 placeholder:text-slate-400 disabled:bg-slate-100 disabled:text-slate-500';
 const labelClass = 'mb-1.5 block text-xs font-black uppercase tracking-[0.14em] text-slate-600';
@@ -19,8 +25,63 @@ function splitList(value: string) {
     .filter(Boolean);
 }
 
-function isSafeAtExit(location?: string | null, exitNode = EXIT_NODE) {
-  return String(location ?? '').trim() === String(exitNode);
+function formatDateTime(value?: string | null) {
+  if (!value) return 'Sem hora registada';
+
+  return new Date(value).toLocaleString('pt-PT', {
+    day: '2-digit',
+    month: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
+function hasConfirmedSafety(evacuation: GlobalEvacuation, user: { id?: number; email?: string } | null) {
+  if (!evacuation.confirmations || !user) return false;
+
+  return Boolean(
+    (user.id != null && evacuation.confirmations[String(user.id)]) ||
+      (user.email && evacuation.confirmations[user.email])
+  );
+}
+
+function userSafetyKey(user: { id?: number; email?: string } | null) {
+  if (!user) return null;
+  if (user.id != null) return `id:${user.id}`;
+  if (user.email) return `email:${user.email}`;
+  return null;
+}
+
+function readLocalSafetyConfirmations() {
+  if (typeof window === 'undefined') return {};
+
+  try {
+    const raw = window.localStorage.getItem(EVACUATION_SAFE_STORAGE_KEY);
+    const parsed = raw ? JSON.parse(raw) : {};
+    return parsed && !Array.isArray(parsed) && typeof parsed === 'object'
+      ? (parsed as Record<string, string[]>)
+      : {};
+  } catch {
+    return {};
+  }
+}
+
+function markEvacuationConfirmedLocally(evacuationId: string, user: { id?: number; email?: string } | null) {
+  if (typeof window === 'undefined') return;
+  const key = userSafetyKey(user);
+  if (!key) return;
+
+  const confirmations = readLocalSafetyConfirmations();
+  const ids = confirmations[key] ?? [];
+  confirmations[key] = Array.from(new Set([...ids, evacuationId]));
+  window.localStorage.setItem(EVACUATION_SAFE_STORAGE_KEY, JSON.stringify(confirmations));
+}
+
+function hasConfirmedLocally(evacuationId: string | undefined, user: { id?: number; email?: string } | null) {
+  const key = userSafetyKey(user);
+  if (!evacuationId || !key) return false;
+
+  return (readLocalSafetyConfirmations()[key] ?? []).includes(evacuationId);
 }
 
 export default function EmergencyPage() {
@@ -33,6 +94,8 @@ export default function EmergencyPage() {
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [nodePickMode, setNodePickMode] = useState<'source' | 'blocked'>('source');
+  const [routeFloorId, setRouteFloorId] = useState(1);
+  const [locallyConfirmedToken, setLocallyConfirmedToken] = useState<string | null>(null);
   const [form, setForm] = useState({
     title: 'Evacuação do edifício',
     description: '',
@@ -42,13 +105,20 @@ export default function EmergencyPage() {
     floor_id: '1',
     affected_nodes: '',
     affected_zones: 'Entrada IT',
-    instructions: 'Dirige-te para a entrada do IT e confirma quando estiveres no nó 65.',
+    instructions: 'Segue a rota indicada para a saída segura. Confirma quando estiveres em segurança.',
   });
 
   const safeConfirmed = useMemo(() => {
-    if (!user?.id || !evacuation.confirmations) return false;
-    return Boolean(evacuation.confirmations[String(user.id)]);
-  }, [evacuation.confirmations, user?.id]);
+    const localToken = evacuation.id && userSafetyKey(user)
+      ? `${userSafetyKey(user)}:${evacuation.id}`
+      : null;
+
+    return (
+      Boolean(localToken && locallyConfirmedToken === localToken) ||
+      hasConfirmedLocally(evacuation.id, user) ||
+      hasConfirmedSafety(evacuation, user)
+    );
+  }, [evacuation, locallyConfirmedToken, user]);
 
   const loadState = useCallback(async () => {
     setLoading(true);
@@ -104,7 +174,7 @@ export default function EmergencyPage() {
       setEvacuation(created);
       setMessage('Emergência declarada. As rotas de evacuação passam a usar a entrada do IT como saída segura.');
       await loadState();
-    } catch (error) {
+    } catch {
       setMessage('Não foi possível declarar a emergência. Confirma se já existe uma evacuação ativa.');
     } finally {
       setSubmitting(false);
@@ -120,9 +190,12 @@ export default function EmergencyPage() {
     try {
       const updated = await api.markEvacuationSafe(evacuation.id, currentLocation);
       setEvacuation(updated);
-      setMessage('Confirmação registada. Ficas marcado como seguro nesta evacuação.');
+      const key = userSafetyKey(user);
+      setLocallyConfirmedToken(key ? `${key}:${evacuation.id}` : null);
+      markEvacuationConfirmedLocally(evacuation.id, user);
+      setMessage('Confirmação registada. Obrigado, ficas marcado como seguro nesta evacuação.');
     } catch {
-      setMessage(`Só podes confirmar segurança quando a tua localização atual for o nó ${EXIT_NODE}.`);
+      setMessage('Não foi possível registar a confirmação de segurança. Tenta novamente.');
     } finally {
       setSubmitting(false);
     }
@@ -146,13 +219,33 @@ export default function EmergencyPage() {
     }
   }
 
-  const canConfirmSafe = evacuation.active && isSafeAtExit(currentLocation, evacuation.exit_node || EXIT_NODE);
+  const canConfirmSafe = evacuation.active;
   const blockedNodeIds = useMemo(() => splitList(form.affected_nodes), [form.affected_nodes]);
   const selectedNodeIds = useMemo(
     () => [form.source_node, ...blockedNodeIds].filter(Boolean),
     [blockedNodeIds, form.source_node]
   );
   const formFloorId = Number(form.floor_id) || 1;
+  const confirmedCount = evacuation.evacuated_count ?? Object.keys(evacuation.confirmations ?? {}).length;
+  const affectedZones = evacuation.affected_zones ?? [];
+  const activeBlockedNodes = evacuation.affected_nodes ?? [];
+  const availableRouteFloors = useMemo(() => {
+    const floors = new Set<number>();
+    routeGeoJson?.features.forEach((feature) => {
+      const floor = feature.properties.floor_id ?? feature.properties.current_floor_id;
+      if (typeof floor === 'number') floors.add(floor);
+    });
+
+    if (floors.size === 0 && evacuation.floor_id != null) floors.add(evacuation.floor_id);
+    return FLOOR_OPTIONS.filter((option) => floors.has(option.id));
+  }, [evacuation.floor_id, routeGeoJson]);
+
+  useEffect(() => {
+    if (availableRouteFloors.length === 0) return;
+    if (!availableRouteFloors.some((floor) => floor.id === routeFloorId)) {
+      setRouteFloorId(availableRouteFloors[0].id);
+    }
+  }, [availableRouteFloors, routeFloorId]);
 
   const handleNodeSelect = useCallback((nodeId: string) => {
     if (nodePickMode === 'source') {
@@ -177,7 +270,7 @@ export default function EmergencyPage() {
               <p className="text-xs font-bold uppercase tracking-[0.24em] text-red-600">Emergência</p>
               <h1 className="mt-2 text-3xl font-black text-slate-950">Evacuação operacional</h1>
               <p className="mt-2 max-w-2xl text-sm text-slate-600">
-                A evacuação é declarada pelo supervisor e todos os utilizadores recebem rota para a entrada do IT, nó {EXIT_NODE}.
+                Consulta a rota recomendada, segue para a saída segura e confirma quando estiveres fora de perigo.
               </p>
             </div>
             <button
@@ -199,7 +292,102 @@ export default function EmergencyPage() {
 
         <div className="grid gap-5 lg:grid-cols-[25rem_1fr]">
           <section className="space-y-6">
-            {isSupervisor && (
+            {isSupervisor && evacuation.active && (
+              <div className="rounded-[1.75rem] border border-red-200 bg-white p-5 shadow-sm">
+                <div className="mb-5 flex items-start justify-between gap-4">
+                  <div className="flex min-w-0 items-start gap-3">
+                    <div className="rounded-2xl bg-red-100 p-3 text-red-700">
+                      <ShieldAlert size={20} />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-xs font-black uppercase tracking-[0.18em] text-red-600">Comando ativo</p>
+                      <h2 className="mt-1 text-lg font-black text-slate-950">{evacuation.title}</h2>
+                      <p className="mt-1 text-sm leading-5 text-slate-600">
+                        Evacuação em curso desde {formatDateTime(evacuation.initiated_at)}.
+                      </p>
+                    </div>
+                  </div>
+                  <span className="rounded-full bg-red-50 px-3 py-1.5 text-xs font-black uppercase text-red-700">
+                    {evacuation.severity}
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="rounded-2xl border border-slate-100 bg-slate-50 p-3">
+                    <div className="flex items-center gap-2 text-xs font-bold uppercase text-slate-500">
+                      <MapPin size={14} /> Origem
+                    </div>
+                    <p className="mt-2 text-xl font-black text-slate-950">Nó {evacuation.source_node}</p>
+                  </div>
+                  <div className="rounded-2xl border border-slate-100 bg-slate-50 p-3">
+                    <div className="flex items-center gap-2 text-xs font-bold uppercase text-slate-500">
+                      <DoorOpen size={14} /> Saída
+                    </div>
+                    <p className="mt-2 text-xl font-black text-slate-950">Nó {evacuation.exit_node}</p>
+                  </div>
+                  <div className="rounded-2xl border border-emerald-100 bg-emerald-50 p-3">
+                    <div className="flex items-center gap-2 text-xs font-bold uppercase text-emerald-700">
+                      <Users size={14} /> Seguros
+                    </div>
+                    <p className="mt-2 text-xl font-black text-emerald-900">{confirmedCount}</p>
+                  </div>
+                  <div className="rounded-2xl border border-slate-100 bg-slate-50 p-3">
+                    <div className="flex items-center gap-2 text-xs font-bold uppercase text-slate-500">
+                      <ShieldCheck size={14} /> Estado
+                    </div>
+                    <p className="mt-2 text-xl font-black text-slate-950">Ativa</p>
+                  </div>
+                </div>
+
+                <div className="mt-4 space-y-3">
+                  <div className="rounded-2xl border border-slate-100 bg-slate-50 p-3">
+                    <p className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">Instruções para a equipa</p>
+                    <p className="mt-2 text-sm leading-5 text-slate-700">
+                      {evacuation.instructions || 'Seguir a rota indicada e confirmar segurança quando estiverem fora de perigo.'}
+                    </p>
+                  </div>
+
+                  {(affectedZones.length > 0 || activeBlockedNodes.length > 0) && (
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <div className="rounded-2xl border border-slate-100 bg-white p-3">
+                        <p className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">Zonas afetadas</p>
+                        <p className="mt-2 text-sm font-semibold text-slate-800">
+                          {affectedZones.length ? affectedZones.join(', ') : 'Sem zona definida'}
+                        </p>
+                      </div>
+                      <div className="rounded-2xl border border-slate-100 bg-white p-3">
+                        <p className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">Nós bloqueados</p>
+                        <p className="mt-2 text-sm font-semibold text-slate-800">
+                          {activeBlockedNodes.length ? activeBlockedNodes.join(', ') : 'Sem bloqueios manuais'}
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                <div className="mt-5 grid gap-3 sm:grid-cols-2">
+                  <button
+                    type="button"
+                    onClick={() => void loadState()}
+                    disabled={loading}
+                    className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-black text-slate-700 hover:bg-slate-50 disabled:opacity-60"
+                  >
+                    {loading ? <Loader2 size={16} className="animate-spin" /> : <ShieldAlert size={16} />}
+                    Atualizar estado
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleCompleteEvacuation}
+                    disabled={submitting}
+                    className="inline-flex items-center justify-center gap-2 rounded-xl bg-slate-950 px-4 py-3 text-sm font-black text-white hover:bg-slate-800 disabled:opacity-60"
+                  >
+                    {submitting ? 'A encerrar...' : 'Encerrar evacuação'}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {isSupervisor && !evacuation.active && (
               <form onSubmit={handleCreateEvacuation} className="rounded-[1.75rem] border border-red-200 bg-white p-5 shadow-sm">
                 <div className="mb-5 flex items-start gap-3">
                   <div className="rounded-2xl bg-red-100 p-3 text-red-700">
@@ -251,7 +439,11 @@ export default function EmergencyPage() {
                     </div>
                     <div>
                       <label className={labelClass}>Piso</label>
-                      <input className={fieldClass} value={form.floor_id} onChange={(e) => setForm((prev) => ({ ...prev, floor_id: e.target.value }))} placeholder="1" />
+                      <select className={fieldClass} value={form.floor_id} onChange={(e) => setForm((prev) => ({ ...prev, floor_id: e.target.value }))}>
+                        {FLOOR_OPTIONS.map((floor) => (
+                          <option key={floor.id} value={String(floor.id)}>{floor.label}</option>
+                        ))}
+                      </select>
                     </div>
                   </div>
 
@@ -316,8 +508,8 @@ export default function EmergencyPage() {
                     <textarea className={`${fieldClass} min-h-20 resize-y`} value={form.instructions} onChange={(e) => setForm((prev) => ({ ...prev, instructions: e.target.value }))} placeholder="Instruções para os utilizadores" />
                   </div>
 
-                  <button disabled={submitting || evacuation.active} className="w-full rounded-xl bg-red-600 px-4 py-3 text-sm font-black text-white shadow-sm hover:bg-red-700 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-500">
-                    {submitting ? 'A processar...' : evacuation.active ? 'Emergência ativa' : 'Submeter emergência'}
+                  <button disabled={submitting} className="w-full rounded-xl bg-red-600 px-4 py-3 text-sm font-black text-white shadow-sm hover:bg-red-700 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-500">
+                    {submitting ? 'A processar...' : 'Ativar evacuação'}
                   </button>
                 </div>
               </form>
@@ -326,24 +518,42 @@ export default function EmergencyPage() {
             <div className="rounded-[2rem] border border-slate-200 bg-white p-5 shadow-sm">
               <h2 className="text-lg font-black text-slate-950">Estado atual</h2>
               {evacuation.active ? (
-                <div className="mt-4 space-y-3">
+                <div className="mt-4 space-y-4">
                   <div className="rounded-2xl border border-red-100 bg-red-50 p-4">
-                    <p className="text-sm font-black text-red-900">{evacuation.title}</p>
-                    <p className="mt-1 text-sm text-red-800">{evacuation.description || 'Sem descrição adicional.'}</p>
-                    <div className="mt-3 flex flex-wrap gap-2 text-xs font-semibold">
-                      <span className="rounded-full bg-white px-3 py-1 text-red-700">Nó problema: {evacuation.source_node}</span>
-                      <span className="rounded-full bg-white px-3 py-1 text-red-700">Saída: {evacuation.exit_node}</span>
-                      <span className="rounded-full bg-white px-3 py-1 text-red-700">Seguros: {evacuation.evacuated_count ?? 0}</span>
+                    <div className="flex items-start gap-3">
+                      <div className="rounded-xl bg-white p-2 text-red-700">
+                        <AlertTriangle size={18} />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-sm font-black text-red-950">{evacuation.title}</p>
+                        <p className="mt-1 text-sm leading-5 text-red-800">
+                          {evacuation.description || 'Evacuação ativa. Mantém a calma e segue a rota indicada.'}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="mt-4 grid grid-cols-2 gap-2 text-xs font-bold sm:grid-cols-3">
+                      <div className="rounded-xl bg-white px-3 py-2 text-red-800">
+                        <p className="text-red-500">Origem</p>
+                        <p className="mt-0.5">Nó {evacuation.source_node}</p>
+                      </div>
+                      <div className="rounded-xl bg-white px-3 py-2 text-red-800">
+                        <p className="text-red-500">Saída segura</p>
+                        <p className="mt-0.5">Nó {evacuation.exit_node}</p>
+                      </div>
+                      <div className="rounded-xl bg-white px-3 py-2 text-red-800">
+                        <p className="text-red-500">Confirmados</p>
+                        <p className="mt-0.5">{evacuation.evacuated_count ?? 0}</p>
+                      </div>
                     </div>
                   </div>
-                  {evacuation.instructions && <p className="rounded-2xl bg-slate-50 p-3 text-sm text-slate-700">{evacuation.instructions}</p>}
-                  {isSupervisor ? (
-                    <button onClick={handleCompleteEvacuation} disabled={submitting} className="w-full rounded-xl bg-slate-900 px-4 py-3 text-sm font-black text-white hover:bg-slate-800 disabled:opacity-50">
-                      Terminar evacuação
-                    </button>
-                  ) : (
-                    <button onClick={handleSafeConfirmation} disabled={!canConfirmSafe || submitting || safeConfirmed} className="w-full rounded-xl bg-emerald-600 px-4 py-3 text-sm font-black text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50">
-                      {safeConfirmed ? 'Já estás marcado como seguro' : canConfirmSafe ? 'Já estou seguro' : `Disponível no nó ${evacuation.exit_node || EXIT_NODE}`}
+                  {evacuation.instructions && (
+                    <p className="rounded-2xl bg-slate-50 p-3 text-sm leading-5 text-slate-700">
+                      {evacuation.instructions}
+                    </p>
+                  )}
+                  {!isSupervisor && (
+                    <button onClick={handleSafeConfirmation} disabled={!canConfirmSafe || submitting || safeConfirmed} className="w-full rounded-xl bg-emerald-600 px-4 py-3 text-sm font-black text-white shadow-sm hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50">
+                      {safeConfirmed ? 'Segurança confirmada' : submitting ? 'A confirmar...' : 'Confirmar que estou em segurança'}
                     </button>
                   )}
                 </div>
@@ -357,20 +567,36 @@ export default function EmergencyPage() {
           </section>
 
           <section className="rounded-[2rem] border border-slate-200 bg-white p-5 shadow-sm">
-            <div className="mb-4 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+            <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
               <div>
                 <h2 className="text-lg font-black text-slate-950">Rota de evacuação</h2>
                 <p className="text-sm text-slate-500">
-                  {currentLocation ? `Localização atual: nó ${currentLocation}` : 'Localização atual não disponível'} · Saída segura: nó {evacuation.exit_node || EXIT_NODE}
+                  {currentLocation ? `A partir da tua posição atual` : 'A aguardar localização atual'} · saída segura no nó {evacuation.exit_node || EXIT_NODE}
                 </p>
               </div>
-              <div className="inline-flex items-center gap-2 rounded-full bg-slate-100 px-3 py-2 text-xs font-bold text-slate-700">
-                <DoorOpen size={14} /> Entrada IT
+              <div className="flex flex-wrap items-center gap-2">
+                {availableRouteFloors.length > 0 && (
+                  <div className="flex rounded-2xl bg-slate-100 p-1">
+                    {availableRouteFloors.map((floor) => (
+                      <button
+                        key={floor.id}
+                        type="button"
+                        onClick={() => setRouteFloorId(floor.id)}
+                        className={`rounded-xl px-3 py-2 text-xs font-black transition ${routeFloorId === floor.id ? 'bg-white text-slate-950 shadow-sm' : 'text-slate-500 hover:text-slate-900'}`}
+                      >
+                        {floor.label}
+                      </button>
+                    ))}
+                  </div>
+                )}
+                <div className="inline-flex items-center gap-2 rounded-full bg-slate-100 px-3 py-2 text-xs font-bold text-slate-700">
+                  <DoorOpen size={14} /> Entrada IT
+                </div>
               </div>
             </div>
 
             {evacuation.active && routeGeoJson ? (
-              <IndoorGisMap floorId={evacuation.floor_id || 1} routeGeoJson={routeGeoJson} routeAffected={false} />
+              <IndoorGisMap floorId={routeFloorId} routeGeoJson={routeGeoJson} routeAffected={false} />
             ) : (
               <div className="flex min-h-[30rem] items-center justify-center rounded-[1.5rem] border border-dashed border-slate-200 bg-slate-50 p-8 text-center">
                 <div>

@@ -33,7 +33,7 @@ public final class RoleAccess {
     permissions.put("canViewAlerts", true);
     permissions.put("canUseChat", !supervisor);
     permissions.put("canUseEmergencyButton", security || cleaning || medical || supervisor);
-    permissions.put("canViewTasks", true);
+    permissions.put("canViewTasks", !medical);
     permissions.put("canViewMedicalIncidents", medical);
     permissions.put("canViewAnalytics", supervisor);
     permissions.put("canViewTeam", supervisor);

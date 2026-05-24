@@ -267,16 +267,28 @@ export default function MapPage() {
 
   const circulationNotifications = useMemo<CirculationNotification[]>(() => {
     const notifications: CirculationNotification[] = [];
+    const blockedByEdge = new Map<number, EdgeOverride[]>();
 
     blockedOverrides.forEach((override) => {
+      const existing = blockedByEdge.get(override.edge_id) ?? [];
+      existing.push(override);
+      blockedByEdge.set(override.edge_id, existing);
+    });
+
+    blockedByEdge.forEach((overrides, edgeId) => {
+      const primaryOverride = overrides
+        .slice()
+        .sort((a, b) => b.severity - a.severity || b.id - a.id)[0];
+      const repeatedBlocks = overrides.length > 1 ? ` (${overrides.length} bloqueios ativos)` : '';
+
       notifications.push({
-        id: `blocked-${override.edge_id}`,
+        id: `blocked-${edgeId}`,
         kind: 'blocked-path',
         level: 'critical',
         title: 'Corredor fechado',
-        detail: override.reason || `Aresta ${override.edge_id} bloqueada para circulação.`,
-        edgeId: override.edge_id,
-        timestamp: override.starts_at,
+        detail: `${primaryOverride.reason || `Aresta ${edgeId} bloqueada para circulação.`}${repeatedBlocks}`,
+        edgeId,
+        timestamp: primaryOverride.starts_at,
       });
     });
 
