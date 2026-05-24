@@ -51,7 +51,7 @@ export function permissionsForRole(roleInput: string | undefined | null): Permis
     canUseNavigation: true,
     canViewAlerts: true,
     canUseChat: !supervisor,
-    canUseEmergencyButton: security,
+    canUseEmergencyButton: security || cleaning || medical || supervisor,
     canViewTasks: !medical,
     canViewMedicalIncidents: medical,
     canViewAnalytics: supervisor,

@@ -11,6 +11,7 @@ import {
   type GisFeature,
   type GisFeatureCollection,
   type ImpactedEdgeProperties,
+  type NodeProperties,
   type RoomProperties,
   type RouteEdgeProperties,
   type VerticalTransitionProperties,
@@ -20,6 +21,11 @@ interface IndoorGisMapProps {
   floorId: number;
   routeGeoJson?: GisFeatureCollection<RouteEdgeProperties> | null;
   routeAffected?: boolean;
+  nodeSelectionMode?: 'source' | 'blocked' | null;
+  selectedNodeIds?: string[];
+  onNodeSelect?: (nodeId: string) => void;
+  heightClassName?: string;
+  showCameraControls?: boolean;
 }
 
 const coverageStyles: Record<CameraDensityLevel, { color: string; fillColor: string; fillOpacity: number }> = {
@@ -139,7 +145,42 @@ function routeEndpointIconHtml(kind: RouteEndpointKind) {
   `;
 }
 
-export function IndoorGisMap({ floorId, routeGeoJson = null, routeAffected = false }: IndoorGisMapProps) {
+function nodeMarkerHtml(nodeId: number, selected: boolean, mode?: 'source' | 'blocked' | null) {
+  const background = selected ? (mode === 'source' ? '#dc2626' : '#f97316') : '#ffffff';
+  const color = selected ? '#ffffff' : '#0f172a';
+  const border = selected ? background : '#2563eb';
+
+  return `
+    <span style="
+      min-width:24px;
+      height:24px;
+      padding:0 6px;
+      border-radius:999px;
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      background:${background};
+      color:${color};
+      border:2px solid ${border};
+      box-shadow:0 8px 18px rgba(15,23,42,0.22);
+      font-size:10px;
+      font-weight:900;
+      line-height:1;
+      cursor:pointer;
+    ">${nodeId}</span>
+  `;
+}
+
+export function IndoorGisMap({
+  floorId,
+  routeGeoJson = null,
+  routeAffected = false,
+  nodeSelectionMode = null,
+  selectedNodeIds = [],
+  onNodeSelect,
+  heightClassName = 'h-[34rem] md:h-[38rem]',
+  showCameraControls = true,
+}: IndoorGisMapProps) {
   const { user } = useAuthStore();
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<import('leaflet').Map | null>(null);
@@ -245,9 +286,10 @@ export function IndoorGisMap({ floorId, routeGeoJson = null, routeAffected = fal
 
         if (!mapRef.current || !layerGroupRef.current) return;
 
-        const [rooms, corridors, cameras, coverage, transitions, cameraStatusResponse, impactedEdges] = await Promise.all([
+        const [rooms, corridors, nodes, cameras, coverage, transitions, cameraStatusResponse, impactedEdges] = await Promise.all([
           gisApi.getRooms({ floorId }),
           gisApi.getCorridors({ floorId }),
+          gisApi.getNodes({ floorId }),
           gisApi.getCameras({ floorId }),
           gisApi.getCameraCoverage({ floorId }),
           gisApi.getVerticalTransitions({ floorId }),
@@ -435,7 +477,29 @@ export function IndoorGisMap({ floorId, routeGeoJson = null, routeAffected = fal
           },
         }).addTo(layerGroupRef.current);
 
-        const fitLayer = getBestFitLayer(routeLayer, roomLayer, corridorLayer, cameraLayer, transitionLayer);
+        const selectedNodeSet = new Set(selectedNodeIds.map(String));
+        const nodeLayer = nodeSelectionMode
+          ? L.geoJSON(nodes as unknown as GeoJSON.GeoJsonObject, {
+              pointToLayer: (feature, latlng) => {
+                const properties = feature.properties as NodeProperties;
+                const selected = selectedNodeSet.has(String(properties.node_id));
+
+                return L.marker(latlng, {
+                  zIndexOffset: selected ? 1000 : 700,
+                  icon: L.divIcon({
+                    className: 'gis-node-selector-marker',
+                    html: nodeMarkerHtml(properties.node_id, selected, nodeSelectionMode),
+                    iconSize: [30, 24],
+                    iconAnchor: [15, 12],
+                  }),
+                })
+                  .bindTooltip(`Nó ${properties.node_id} · ${properties.type ?? 'graph node'}`, { sticky: true })
+                  .on('click', () => onNodeSelect?.(String(properties.node_id)));
+              },
+            }).addTo(layerGroupRef.current)
+          : null;
+
+        const fitLayer = getBestFitLayer(routeLayer, roomLayer, corridorLayer, cameraLayer, transitionLayer, ...(nodeLayer ? [nodeLayer] : []));
         if (fitLayer) {
           const bounds = fitLayer.getBounds();
           if (bounds.isValid()) {
@@ -457,11 +521,11 @@ export function IndoorGisMap({ floorId, routeGeoJson = null, routeAffected = fal
     return () => {
       cancelled = true;
     };
-  }, [floorId, canManageCameraDensity, mapReady, refreshToken, routeAffected, routeGeoJson, selectCamera]);
+  }, [floorId, canManageCameraDensity, mapReady, refreshToken, routeAffected, routeGeoJson, selectCamera, nodeSelectionMode, onNodeSelect, selectedNodeIds]);
 
   return (
     <div className="overflow-hidden rounded-[1.5rem] border border-slate-200 bg-slate-50">
-      <div className="relative h-[34rem] bg-[linear-gradient(135deg,#f8fafc,#eef2f7)] md:h-[38rem]">
+      <div className={`relative bg-[linear-gradient(135deg,#f8fafc,#eef2f7)] ${heightClassName}`}>
         <div ref={containerRef} className="h-full w-full" />
         {loading && (
           <div className="absolute inset-0 z-[500] flex items-center justify-center bg-white/65 text-sm font-medium text-slate-600 backdrop-blur-sm">
@@ -473,7 +537,7 @@ export function IndoorGisMap({ floorId, routeGeoJson = null, routeAffected = fal
             {error}
           </div>
         )}
-        {canManageCameraDensity && (
+        {showCameraControls && canManageCameraDensity && (
         <div className="absolute right-4 top-4 z-[500] w-[20rem] max-w-[calc(100%-2rem)] rounded-2xl border border-slate-200 bg-white/95 p-4 shadow-xl backdrop-blur">
           <div className="mb-3 flex items-start justify-between gap-3">
             <div>

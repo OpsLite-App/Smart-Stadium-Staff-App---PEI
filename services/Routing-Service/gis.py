@@ -38,6 +38,12 @@ class GisLayerService:
             "columns": ["id", "corridor_name", "floor_id", "corridor_type", "accessible", "status"],
             "floor_column": "floor_id",
         },
+        "nodes": {
+            "table": "nodes",
+            "id": "node_id",
+            "columns": ["id", "node_id", "floor_id", "type"],
+            "floor_column": "floor_id",
+        },
         "cameras": {
             "table": "camera_infrastructure",
             "id": "id",

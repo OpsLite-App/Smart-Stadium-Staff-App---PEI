@@ -185,6 +185,46 @@ class EvacuationRouteResponse(BaseModel):
     alternative_routes: List[Dict[str, Any]]
 
 
+class GlobalEvacuationCreate(BaseModel):
+    """Supervisor-created building evacuation."""
+    title: str = Field(..., min_length=3, description="Short operational title")
+    description: Optional[str] = Field(None, description="Operational details shown to staff")
+    emergency_type: str = Field(default="other", description="fire, gas, structural, security, medical, other")
+    severity: str = Field(default="critical", description="high or critical")
+    source_node: str = Field(..., description="Problem location node")
+    floor_id: Optional[int] = Field(None, description="Affected floor, when known")
+    affected_nodes: List[str] = Field(default_factory=list, description="Nodes to mark as affected/blocked")
+    affected_zones: List[str] = Field(default_factory=list, description="Human-readable affected zones")
+    instructions: Optional[str] = Field(None, description="Extra instructions for staff")
+
+
+class GlobalEvacuationResponse(BaseModel):
+    """Active global evacuation state."""
+    id: str
+    active: bool
+    status: str
+    title: str
+    description: Optional[str]
+    emergency_type: str
+    severity: str
+    source_node: str
+    floor_id: Optional[int]
+    exit_node: str
+    affected_nodes: List[str]
+    affected_zones: List[str]
+    instructions: Optional[str]
+    initiated_at: str
+    completed_at: Optional[str]
+    evacuated_count: int
+    confirmations: Dict[str, Any]
+
+
+class EvacuationSafeRequest(BaseModel):
+    """Staff confirmation that they reached the safe node."""
+    current_node: str = Field(..., description="Current staff node")
+    notes: Optional[str] = Field(None, description="Optional confirmation notes")
+
+
 # ========== CORRIDOR CLOSURE SCHEMAS ==========
 
 class CorridorClosureCreate(BaseModel):

@@ -64,6 +64,14 @@ class EdgeOverrideCreate(EdgeOverrideBase):
     pass
 
 
+class NodeClosureCreate(BaseModel):
+    node_id: int
+    reason: Optional[str] = None
+    source: str = "manual"
+    severity: float = 1.0
+    is_active: bool = True
+
+
 class EdgeOverrideResponse(EdgeOverrideBase):
     id: int
 
@@ -804,6 +812,60 @@ class PgRoutingService:
         with get_connection() as conn:
             rows = conn.execute(self.LIST_EDGE_OVERRIDES_SQL).fetchall()
         return [self._to_edge_override_response(row) for row in rows]
+
+    def create_node_closure(self, payload: NodeClosureCreate) -> List[EdgeOverrideResponse]:
+        """Block every edge connected to a graph node."""
+        with get_connection() as conn:
+            rows = conn.execute(
+                """
+                SELECT edge_id
+                FROM edges
+                WHERE from_node = %s OR to_node = %s
+                ORDER BY edge_id
+                """,
+                (payload.node_id, payload.node_id),
+            ).fetchall()
+
+            if not rows:
+                raise HTTPException(status_code=404, detail=f"Node {payload.node_id} has no connected edges")
+
+            inserted = []
+            for row in rows:
+                inserted.append(
+                    conn.execute(
+                        self.INSERT_EDGE_OVERRIDE_SQL,
+                        (
+                            int(row["edge_id"]),
+                            True,
+                            99.0,
+                            payload.reason,
+                            payload.source,
+                            payload.severity,
+                            None,
+                            None,
+                            payload.is_active,
+                        ),
+                    ).fetchone()
+                )
+            conn.commit()
+
+        return [self._to_edge_override_response(row) for row in inserted]
+
+    def deactivate_edge_overrides_by_source(self, source: str) -> Dict:
+        """Deactivate live edge overrides created by a specific subsystem/source."""
+        with get_connection() as conn:
+            row = conn.execute(
+                """
+                UPDATE graph_edge_overrides
+                SET is_active = FALSE, updated_at = NOW()
+                WHERE source = %s AND is_active = TRUE
+                RETURNING id
+                """,
+                (source,),
+            ).fetchall()
+            conn.commit()
+
+        return {"source": source, "deactivated": len(row)}
 
     def create_operational_event(self, payload: OperationalEventCreate) -> OperationalEventResponse:
         """Create a minimal operational event for monitoring."""

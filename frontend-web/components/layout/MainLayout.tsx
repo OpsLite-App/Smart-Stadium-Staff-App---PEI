@@ -4,6 +4,7 @@ import { ReactNode, useEffect } from 'react';
 import { useAuthStore } from '@/lib/stores/useAuthStore';
 import { usePathname, useRouter } from 'next/navigation';
 import { LangToggle } from '@/components/ui/LangToggle';
+import { GlobalEvacuationNotice } from '@/components/emergency/GlobalEvacuationNotice';
 import { 
   HeartPulse,
   Map, 
@@ -337,6 +338,7 @@ export function MainLayout({ children }: MainLayoutProps) {
           {children}
         </main>
       </div>
+      <GlobalEvacuationNotice />
     </div>
   );
 }

@@ -12,11 +12,13 @@ from datetime import datetime
 import asyncio
 import httpx
 import os
+import uuid
 
-from models import IncidentStatus, IncidentSeverity, IncidentType
+from models import IncidentStatus, IncidentSeverity, IncidentType, EvacuationZone, EvacuationType
 from schemas import (
     IncidentCreate, IncidentUpdate, IncidentResponse,
     EvacuationRequest, EvacuationResponse,
+    GlobalEvacuationCreate, GlobalEvacuationResponse, EvacuationSafeRequest,
     DispatchRequest, DispatchResponse, ManualDispatchRequest,
     SensorAlertCreate, SensorAlertResponse,
     IncidentStatistics, ActiveIncidentsResponse
@@ -44,6 +46,7 @@ app.add_middleware(
 ROUTING_SERVICE_URL = os.getenv("ROUTING_SERVICE_URL", "http://routing-service:8002")
 CONGESTION_SERVICE_URL = os.getenv("CONGESTION_SERVICE_URL", "http://congestion-service:8003")
 AUTH_SERVICE_URL = os.getenv("AUTH_SERVICE_URL", "http://auth-service:8081")
+EVACUATION_EXIT_NODE = os.getenv("EVACUATION_EXIT_NODE", "65")
 
 EMERGENCY_CONTACTS = {
     "fire_brigade": "112",
@@ -536,6 +539,231 @@ def mark_responder_arrived(dispatch_id: str, db: Session = Depends(get_db)):
 
 
 # ========== EVACUATION ==========
+
+def _evacuation_metadata(evacuation: EvacuationZone) -> dict:
+    return evacuation.incident_metadata or {}
+
+
+def _evacuation_source(evacuation_id: str) -> str:
+    return f"evacuation:{evacuation_id}"
+
+
+def _get_active_global_evacuation(db: Session) -> Optional[EvacuationZone]:
+    evacuations = db.query(EvacuationZone).filter(EvacuationZone.status == "active").all()
+    return next(
+        (evac for evac in evacuations if _evacuation_metadata(evac).get("kind") == "global_evacuation"),
+        None,
+    )
+
+
+def _global_evacuation_to_response(evacuation: EvacuationZone) -> GlobalEvacuationResponse:
+    metadata = _evacuation_metadata(evacuation)
+    confirmations = metadata.get("confirmations") or {}
+
+    return GlobalEvacuationResponse(
+        id=evacuation.id,
+        active=evacuation.status == "active",
+        status=evacuation.status,
+        title=metadata.get("title") or evacuation.reason or "Evacuação ativa",
+        description=metadata.get("description"),
+        emergency_type=metadata.get("emergency_type") or "other",
+        severity=metadata.get("severity") or "critical",
+        source_node=str(metadata.get("source_node") or ""),
+        floor_id=metadata.get("floor_id"),
+        exit_node=str(metadata.get("exit_node") or EVACUATION_EXIT_NODE),
+        affected_nodes=[str(node) for node in (evacuation.affected_nodes or [])],
+        affected_zones=evacuation.affected_zones or [],
+        instructions=metadata.get("instructions"),
+        initiated_at=evacuation.initiated_at.isoformat(),
+        completed_at=evacuation.completed_at.isoformat() if evacuation.completed_at else None,
+        evacuated_count=evacuation.evacuated_count or len(confirmations),
+        confirmations=confirmations,
+    )
+
+
+async def _notify_routing_node_closure(node_id: str, source: str, reason: str) -> list:
+    if str(node_id) == str(EVACUATION_EXIT_NODE):
+        return []
+
+    async with httpx.AsyncClient(timeout=5.0) as client:
+        response = await client.post(
+            f"{ROUTING_SERVICE_URL}/api/graph/node-closures",
+            json={
+                "node_id": int(node_id),
+                "reason": reason,
+                "source": source,
+                "severity": 1.0,
+                "is_active": True,
+            },
+        )
+
+    if response.status_code >= 400:
+        print(f"⚠️ Failed to close node {node_id}: {response.text}")
+        return []
+
+    return response.json()
+
+
+async def _notify_routing_evacuation_event(evacuation: EvacuationZone) -> None:
+    metadata = _evacuation_metadata(evacuation)
+
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            await client.post(
+                f"{ROUTING_SERVICE_URL}/api/graph/events",
+                json={
+                    "event_type": "evacuation",
+                    "title": metadata.get("title") or "Evacuação ativa",
+                    "description": metadata.get("description") or evacuation.reason,
+                    "severity": 1.0,
+                    "status": "active",
+                    "source": _evacuation_source(evacuation.id),
+                    "floor_id": metadata.get("floor_id"),
+                },
+            )
+    except Exception as exc:
+        print(f"⚠️ Failed to publish evacuation event: {exc}")
+
+
+async def _clear_routing_evacuation_closures(evacuation_id: str) -> None:
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            await client.post(
+                f"{ROUTING_SERVICE_URL}/api/graph/edge-overrides/deactivate-by-source",
+                params={"source": _evacuation_source(evacuation_id)},
+            )
+    except Exception as exc:
+        print(f"⚠️ Failed to clear evacuation closures: {exc}")
+
+
+@app.post("/api/emergency/evacuation/global", response_model=GlobalEvacuationResponse, status_code=201)
+async def create_global_evacuation(
+    request: GlobalEvacuationCreate,
+    _auth: dict = Depends(require_roles("supervisor")),
+    db: Session = Depends(get_db),
+):
+    """Supervisor declares a building evacuation to the fixed IT entrance node."""
+    if _get_active_global_evacuation(db):
+        raise HTTPException(status_code=409, detail="There is already an active global evacuation")
+
+    evacuation_id = f"evac-{uuid.uuid4().hex[:8]}"
+    affected_nodes = [str(node) for node in dict.fromkeys([request.source_node, *request.affected_nodes])]
+    closure_nodes = [str(node) for node in dict.fromkeys(request.affected_nodes)]
+    source = _evacuation_source(evacuation_id)
+
+    metadata = {
+        "kind": "global_evacuation",
+        "title": request.title,
+        "description": request.description,
+        "emergency_type": request.emergency_type,
+        "severity": request.severity,
+        "source_node": str(request.source_node),
+        "floor_id": request.floor_id,
+        "exit_node": EVACUATION_EXIT_NODE,
+        "instructions": request.instructions,
+        "created_by": _auth.get("email") or _auth.get("username") or _auth.get("sub"),
+        "confirmations": {},
+    }
+
+    evacuation = EvacuationZone(
+        id=evacuation_id,
+        incident_id=None,
+        evacuation_type=EvacuationType.FULL,
+        affected_zones=request.affected_zones,
+        affected_nodes=affected_nodes,
+        exit_routes={"exit_node": EVACUATION_EXIT_NODE},
+        blocked_corridors=[],
+        reason=request.title,
+        status="active",
+        incident_metadata=metadata,
+    )
+
+    db.add(evacuation)
+    db.commit()
+    db.refresh(evacuation)
+
+    created_overrides = []
+    for node_id in closure_nodes:
+        created_overrides.extend(await _notify_routing_node_closure(node_id, source, request.title))
+
+    metadata["routing_override_ids"] = [override.get("id") for override in created_overrides if isinstance(override, dict)]
+    evacuation.blocked_corridors = [str(override.get("edge_id")) for override in created_overrides if isinstance(override, dict)]
+    evacuation.incident_metadata = metadata
+    db.commit()
+    db.refresh(evacuation)
+
+    await _notify_routing_evacuation_event(evacuation)
+    return _global_evacuation_to_response(evacuation)
+
+
+@app.get("/api/emergency/evacuation/global/active")
+def get_active_global_evacuation(
+    _auth: dict = Depends(require_roles("security", "cleaning", "medical", "supervisor")),
+    db: Session = Depends(get_db),
+):
+    """Return the current global evacuation, if any."""
+    evacuation = _get_active_global_evacuation(db)
+    if not evacuation:
+        return {"active": False}
+    return _global_evacuation_to_response(evacuation)
+
+
+@app.post("/api/emergency/evacuation/global/{evacuation_id}/safe", response_model=GlobalEvacuationResponse)
+def mark_staff_safe(
+    evacuation_id: str,
+    request: EvacuationSafeRequest,
+    auth: dict = Depends(require_roles("security", "cleaning", "medical", "supervisor")),
+    db: Session = Depends(get_db),
+):
+    """Mark the authenticated staff member as safe after reaching node 65."""
+    if str(request.current_node) != str(EVACUATION_EXIT_NODE):
+        raise HTTPException(status_code=400, detail=f"Safe confirmation is only allowed at node {EVACUATION_EXIT_NODE}")
+
+    evacuation = db.query(EvacuationZone).filter(EvacuationZone.id == evacuation_id).first()
+    if not evacuation or _evacuation_metadata(evacuation).get("kind") != "global_evacuation":
+        raise HTTPException(status_code=404, detail=f"Evacuation {evacuation_id} not found")
+
+    if evacuation.status != "active":
+        raise HTTPException(status_code=409, detail="Evacuation is not active")
+
+    metadata = _evacuation_metadata(evacuation)
+    confirmations = dict(metadata.get("confirmations") or {})
+    user_id = str(auth.get("user_id") or auth.get("id") or auth.get("sub") or auth.get("email") or "unknown")
+    confirmations[user_id] = {
+        "email": auth.get("email") or auth.get("username"),
+        "role": auth.get("role"),
+        "current_node": str(request.current_node),
+        "notes": request.notes,
+        "safe_at": datetime.now().isoformat(),
+    }
+
+    metadata["confirmations"] = confirmations
+    evacuation.evacuated_count = len(confirmations)
+    evacuation.incident_metadata = metadata
+    db.commit()
+    db.refresh(evacuation)
+
+    return _global_evacuation_to_response(evacuation)
+
+
+@app.post("/api/emergency/evacuation/global/{evacuation_id}/complete", response_model=GlobalEvacuationResponse)
+async def complete_global_evacuation(
+    evacuation_id: str,
+    _auth: dict = Depends(require_roles("supervisor")),
+    db: Session = Depends(get_db),
+):
+    """Supervisor closes the evacuation and clears route closures created by it."""
+    evacuation = db.query(EvacuationZone).filter(EvacuationZone.id == evacuation_id).first()
+    if not evacuation or _evacuation_metadata(evacuation).get("kind") != "global_evacuation":
+        raise HTTPException(status_code=404, detail=f"Evacuation {evacuation_id} not found")
+
+    evacuation.status = "completed"
+    evacuation.completed_at = datetime.now()
+    db.commit()
+    db.refresh(evacuation)
+
+    await _clear_routing_evacuation_closures(evacuation_id)
+    return _global_evacuation_to_response(evacuation)
 
 @app.post("/api/emergency/evacuation", response_model=EvacuationResponse, status_code=201)
 async def initiate_evacuation(request: EvacuationRequest, db: Session = Depends(get_db)):

@@ -16,6 +16,7 @@ from gis import CameraStatusUpdate, GisLayerService
 from pgrouting import (
     PgRoutingService,
     EdgeOverrideCreate,
+    NodeClosureCreate,
     OperationalEventCreate,
 )
 
@@ -39,6 +40,7 @@ app.add_middleware(
 
 MAP_SERVICE_URL = os.getenv("MAP_SERVICE_URL")
 AUTH_SERVICE_URL = os.getenv("AUTH_SERVICE_URL", "http://auth-service:8081")
+EVACUATION_EXIT_NODE = int(os.getenv("EVACUATION_EXIT_NODE", "65"))
 
 
 # ========== GLOBAL STATE ==========
@@ -441,6 +443,20 @@ async def create_edge_override(payload: EdgeOverrideCreate):
     return service.create_edge_override(payload)
 
 
+@app.post("/api/graph/node-closures")
+async def create_node_closure(payload: NodeClosureCreate):
+    """Create live edge overrides for every corridor connected to a node."""
+    service = get_pgrouting_service()
+    return service.create_node_closure(payload)
+
+
+@app.post("/api/graph/edge-overrides/deactivate-by-source")
+async def deactivate_edge_overrides_by_source(source: str = Query(...)):
+    """Deactivate live edge overrides created by a specific subsystem/source."""
+    service = get_pgrouting_service()
+    return service.deactivate_edge_overrides_by_source(source)
+
+
 @app.get("/api/graph/events")
 async def list_operational_events():
     """List active and historical operational events."""
@@ -475,6 +491,16 @@ async def get_gis_corridors(
     """Return corridor polygons as GeoJSON."""
     service = get_gis_layer_service()
     return service.get_feature_collection("corridors", floor_id=floor_id, output_srid=srid)
+
+
+@app.get("/api/gis/nodes")
+async def get_gis_nodes(
+    floor_id: Optional[int] = Query(None, description="Optional floor filter"),
+    srid: int = Query(4326, description="Output SRID for GeoJSON coordinates"),
+):
+    """Return routing graph nodes as GeoJSON points."""
+    service = get_gis_layer_service()
+    return service.get_feature_collection("nodes", floor_id=floor_id, output_srid=srid)
 
 
 @app.get("/api/gis/cameras")
@@ -596,27 +622,35 @@ async def find_nearest(target: str = Query(...), candidates: List[str] = Query(.
 @app.get("/api/route/evacuation")
 async def evacuation_route(from_node: str = Query(..., description="Current position")):
     """
-    Find safest evacuation route to nearest exit
+    Find safest evacuation route to the fixed IT entrance/exit.
     
     Example: /api/route/evacuation?from_node=62
     """
     if not GRAPH:
         service = get_pgrouting_service()
         start_node = _parse_node_id(from_node)
-        for exit_node in (1, 21, 20):
-            try:
-                route = service.get_route(start_node, exit_node)
-                response = _pgrouting_response_to_legacy_route(route)
-                response["exit_node"] = str(exit_node)
-                response["route_type"] = "evacuation"
-                return response
-            except HTTPException:
-                continue
-        raise HTTPException(status_code=404, detail="No evacuation route found")
+        route = service.get_route(start_node, EVACUATION_EXIT_NODE)
+        response = _pgrouting_response_to_legacy_route(route)
+        response["exit_node"] = str(EVACUATION_EXIT_NODE)
+        response["route_type"] = "evacuation"
+        return response
 
-    exit_nodes = ['1', '21', '20']
+    exit_nodes = [str(EVACUATION_EXIT_NODE)]
     
     return route_handler.get_evacuation_route(from_node, exit_nodes)
+
+
+@app.get("/api/route/evacuation/geojson")
+async def evacuation_route_geojson(
+    from_node: int = Query(..., description="Current pgRouting node"),
+    srid: int = Query(4326, description="Output SRID for GeoJSON coordinates"),
+):
+    """Return evacuation route geometry to the fixed IT entrance node."""
+    service = get_pgrouting_service()
+    response = service.get_route_geojson(from_node, EVACUATION_EXIT_NODE, output_srid=srid)
+    response.summary["exit_node"] = EVACUATION_EXIT_NODE
+    response.summary["route_type"] = "evacuation"
+    return response
 
 
 # ========== HAZARD MANAGEMENT ==========

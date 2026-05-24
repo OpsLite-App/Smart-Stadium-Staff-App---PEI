@@ -38,6 +38,13 @@ export interface CorridorProperties {
   status: string | null;
 }
 
+export interface NodeProperties {
+  id: number;
+  node_id: number;
+  floor_id: number;
+  type: string | null;
+}
+
 export interface CameraProperties {
   id: number;
   camera_name: string | null;
@@ -151,6 +158,7 @@ async function getLayer<TProperties>(
 export const gisApi = {
   getRooms: (params?: GisQueryParams) => getLayer<RoomProperties>("rooms", params),
   getCorridors: (params?: GisQueryParams) => getLayer<CorridorProperties>("corridors", params),
+  getNodes: (params?: GisQueryParams) => getLayer<NodeProperties>("nodes", params),
   getCameras: (params?: GisQueryParams) => getLayer<CameraProperties>("cameras", params),
   getCameraCoverage: (params?: GisQueryParams) =>
     getLayer<CameraCoverageProperties>("camera-coverage", params),

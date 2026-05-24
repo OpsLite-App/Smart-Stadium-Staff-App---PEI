@@ -33,7 +33,7 @@ Unknown roles default to `Security`.
 | Use navigation | Yes | Yes | Yes | Yes |
 | View alerts | Yes | Yes | Yes | Yes |
 | Use chat | Yes | Yes | Yes | No |
-| Emergency button | Yes | No | No | No |
+| Emergency / evacuation | Yes | Yes | Yes | Yes |
 | View tasks | Yes | Yes | No | No |
 | Medical incidents | No | No | Yes | No |
 | Analytics | No | No | No | Yes |

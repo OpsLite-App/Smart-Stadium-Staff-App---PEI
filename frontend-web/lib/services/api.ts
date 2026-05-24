@@ -90,6 +90,38 @@ export interface StaffMember {
   location: string;
 }
 
+export interface GlobalEvacuation {
+  id?: string;
+  active: boolean;
+  status?: string;
+  title?: string;
+  description?: string | null;
+  emergency_type?: string;
+  severity?: string;
+  source_node?: string;
+  floor_id?: number | null;
+  exit_node?: string;
+  affected_nodes?: string[];
+  affected_zones?: string[];
+  instructions?: string | null;
+  initiated_at?: string;
+  completed_at?: string | null;
+  evacuated_count?: number;
+  confirmations?: Record<string, unknown>;
+}
+
+export interface CreateGlobalEvacuationPayload {
+  title: string;
+  description?: string;
+  emergency_type: string;
+  severity: string;
+  source_node: string;
+  floor_id?: number;
+  affected_nodes: string[];
+  affected_zones: string[];
+  instructions?: string;
+}
+
 export interface HeatmapPoint {
   latitude: number;
   longitude: number;
@@ -267,6 +299,46 @@ export const api = {
       { timeout: 5000 }
     );
     return response.data;
+  },
+
+  getActiveGlobalEvacuation: async (): Promise<GlobalEvacuation> => {
+    const response = await authAxios.get<GlobalEvacuation>(`${EMERGENCY_SERVICE}/evacuation/global/active`, {
+      timeout: 5000,
+    });
+    return response.data;
+  },
+
+  createGlobalEvacuation: async (payload: CreateGlobalEvacuationPayload): Promise<GlobalEvacuation> => {
+    const response = await authAxios.post<GlobalEvacuation>(`${EMERGENCY_SERVICE}/evacuation/global`, payload, {
+      timeout: 8000,
+    });
+    return response.data;
+  },
+
+  markEvacuationSafe: async (evacuationId: string, currentNode: string, notes?: string): Promise<GlobalEvacuation> => {
+    const response = await authAxios.post<GlobalEvacuation>(
+      `${EMERGENCY_SERVICE}/evacuation/global/${evacuationId}/safe`,
+      { current_node: currentNode, notes },
+      { timeout: 5000 }
+    );
+    return response.data;
+  },
+
+  completeGlobalEvacuation: async (evacuationId: string): Promise<GlobalEvacuation> => {
+    const response = await authAxios.post<GlobalEvacuation>(
+      `${EMERGENCY_SERVICE}/evacuation/global/${evacuationId}/complete`,
+      {},
+      { timeout: 8000 }
+    );
+    return response.data;
+  },
+
+  getEvacuationRouteGeoJson: async (fromNode: string) => {
+    const response = await authAxios.get(`${ROUTING_BASE}/route/evacuation/geojson`, {
+      params: { from_node: fromNode },
+      timeout: 8000,
+    });
+    return response.data.route;
   },
 
   // ---- MAINTENANCE ----
