@@ -291,17 +291,6 @@ export const api = {
     return response.data;
   },
 
-  acceptIncident: async (incidentId: string, userId?: number) => {
-    console.log(`✅ Aceitando incidente ${incidentId} em ${EMERGENCY_SERVICE}/incidents/${incidentId}/accept`);
-    // ✅ CHANGED: Use authAxios instead of axios
-    const response = await authAxios.post(
-      `${EMERGENCY_SERVICE}/incidents/${incidentId}/accept`,
-      { userId },
-      { timeout: 5000 }
-    );
-    return response.data;
-  },
-
   getActiveGlobalEvacuation: async (): Promise<GlobalEvacuation> => {
     const response = await authAxios.get<GlobalEvacuation>(`${EMERGENCY_SERVICE}/evacuation/global/active`, {
       timeout: 5000,
@@ -370,17 +359,6 @@ export const api = {
     const response = await authAxios.patch(
       `${MAINTENANCE_SERVICE}/tasks/${taskId}`,
       { status: backendStatus },
-      { timeout: 5000 }
-    );
-    return response.data;
-  },
-
-  updateTaskChecklist: async (taskId: string, checklist: any[]) => {
-    console.log(`✅ Atualizando checklist da tarefa ${taskId}`);
-    // ✅ CHANGED: Use authAxios instead of axios
-    const response = await authAxios.put(
-      `${MAINTENANCE_SERVICE}/tasks/${taskId}/checklist`,
-      { checklist },
       { timeout: 5000 }
     );
     return response.data;
@@ -470,36 +448,6 @@ export const api = {
       timeout: 6000,
     });
     return response.data;
-  },
-
-  getProfileStats: async (userId: number) => {
-    // ✅ CHANGED: Use authAxios instead of axios
-    return authAxios.get(`${AUTH_SERVICE}/users/${userId}/stats`, {
-      timeout: 5000,
-    });
-  },
-
-  getRecentActivity: async (userId: number) => {
-    // ✅ CHANGED: Use authAxios instead of axios
-    return authAxios.get(`${AUTH_SERVICE}/users/${userId}/activity`, {
-      timeout: 5000,
-    });
-  },
-
-  updateUserPreferences: async (userId: number, preferences: any) => {
-    // ✅ CHANGED: Use authAxios instead of axios
-    return authAxios.put(`${AUTH_SERVICE}/users/${userId}/preferences`, preferences, {
-      timeout: 5000,
-    });
-  },
-
-  updateDutyStatus: async (userId: number, status: boolean) => {
-    // ✅ CHANGED: Use authAxios instead of axios
-    return authAxios.put(
-      `${AUTH_SERVICE}/users/${userId}/duty`,
-      { onDuty: status },
-      { timeout: 5000 }
-    );
   },
 
   // ---- CROWD & QUEUE ----

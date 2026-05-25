@@ -8,6 +8,7 @@ from typing import Any, Dict, Iterable, List, Optional
 
 from db import get_connection
 from pydantic import BaseModel, Field
+from runtime_checks import ensure_active_indoor_dataset
 
 
 class CameraStatusUpdate(BaseModel):
@@ -79,12 +80,22 @@ class GisLayerService:
         },
     }
 
+    def __init__(self) -> None:
+        self._dataset_ready = False
+
+    def _ensure_dataset_ready(self) -> None:
+        if self._dataset_ready:
+            return
+        ensure_active_indoor_dataset()
+        self._dataset_ready = True
+
     def get_feature_collection(
         self,
         layer_name: str,
         floor_id: Optional[int] = None,
         output_srid: int = 4326,
     ) -> Dict[str, Any]:
+        self._ensure_dataset_ready()
         layer = self.LAYERS[layer_name]
         rows = self._fetch_layer_rows(layer, floor_id, output_srid)
 
@@ -153,6 +164,7 @@ class GisLayerService:
         output_srid: int = 4326,
     ) -> Dict[str, Any]:
         """Return active routing edge overrides as GeoJSON LineString features."""
+        self._ensure_dataset_ready()
         params: List[Any] = [output_srid]
         where_clause = """
             WHERE e.geom IS NOT NULL
@@ -215,6 +227,7 @@ class GisLayerService:
 
     def initialize_camera_status_table(self) -> None:
         """Create and seed the operational camera status table if needed."""
+        self._ensure_dataset_ready()
         sql = """
             CREATE TABLE IF NOT EXISTS camera_status (
                 camera_id integer PRIMARY KEY REFERENCES camera_infrastructure(id) ON DELETE CASCADE,
@@ -504,6 +517,7 @@ class GisLayerService:
         return None
 
     def get_camera_status_for_camera(self, camera_id: int) -> Dict[str, Any]:
+        self._ensure_dataset_ready()
         sql = """
             SELECT
                 ci.id AS camera_id,

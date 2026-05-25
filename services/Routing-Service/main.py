@@ -5,7 +5,7 @@ Only responsible for calculating routes, no emergency management
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
-from typing import Optional, List
+from typing import Any, Callable, Dict, List, Optional
 import httpx
 import asyncio
 import os
@@ -19,6 +19,7 @@ from pgrouting import (
     NodeClosureCreate,
     OperationalEventCreate,
 )
+from runtime_checks import RuntimeReadinessError
 
 # ========== FASTAPI APP ==========
 
@@ -59,8 +60,12 @@ def get_pgrouting_service() -> PgRoutingService:
     """Lazily initialize direct pgRouting access."""
     global pgrouting_service
     if pgrouting_service is None:
-        pgrouting_service = PgRoutingService()
-        pgrouting_service.initialize_runtime_tables()
+        service = PgRoutingService()
+        try:
+            service.initialize_runtime_tables()
+        except Exception as exc:
+            raise _wrap_runtime_exception("pgRouting runtime", exc) from exc
+        pgrouting_service = service
     return pgrouting_service
 
 
@@ -68,9 +73,52 @@ def get_gis_layer_service() -> GisLayerService:
     """Lazily initialize GeoJSON access for indoor GIS layers."""
     global gis_layer_service
     if gis_layer_service is None:
-        gis_layer_service = GisLayerService()
-        gis_layer_service.initialize_camera_status_table()
+        get_pgrouting_service()
+        service = GisLayerService()
+        try:
+            service.initialize_camera_status_table()
+        except Exception as exc:
+            raise _wrap_runtime_exception("GIS layer runtime", exc) from exc
+        gis_layer_service = service
     return gis_layer_service
+
+
+def _wrap_runtime_exception(component: str, exc: Exception) -> RuntimeReadinessError:
+    if isinstance(exc, RuntimeReadinessError):
+        return exc
+
+    return RuntimeReadinessError(
+        f"{component} is unavailable.",
+        suggestion="Check routing-service logs and postgres_map configuration.",
+        details={"cause": str(exc)},
+    )
+
+
+def _probe_runtime_component(component: str, loader: Callable[[], object]) -> Dict[str, Any]:
+    try:
+        loader()
+        return {"ready": True}
+    except Exception as exc:
+        readiness_error = _wrap_runtime_exception(component, exc)
+        payload = readiness_error.to_payload()
+        payload["ready"] = False
+        return payload
+
+
+def require_pgrouting_service() -> PgRoutingService:
+    try:
+        return get_pgrouting_service()
+    except Exception as exc:
+        readiness_error = _wrap_runtime_exception("pgRouting runtime", exc)
+        raise HTTPException(status_code=503, detail=readiness_error.to_payload()) from exc
+
+
+def require_gis_layer_service() -> GisLayerService:
+    try:
+        return get_gis_layer_service()
+    except Exception as exc:
+        readiness_error = _wrap_runtime_exception("GIS layer runtime", exc)
+        raise HTTPException(status_code=503, detail=readiness_error.to_payload()) from exc
 
 
 def _parse_node_id(node_id: str) -> int:
@@ -162,8 +210,14 @@ async def startup():
     try:
         get_pgrouting_service()
         print("✅ pgRouting runtime tables ready")
-    except Exception as e:
-        print(f"⚠️  pgRouting runtime tables unavailable: {e}")
+    except RuntimeReadinessError as exc:
+        print(f"⚠️  pgRouting runtime tables unavailable: {exc.message}")
+
+    try:
+        get_gis_layer_service()
+        print("✅ GIS indoor layers ready")
+    except RuntimeReadinessError as exc:
+        print(f"⚠️  GIS indoor layers unavailable: {exc.message}")
     
     if GRAPH:
         # Initialize API handlers (ONLY route and hazard)
@@ -228,38 +282,39 @@ async def load_graph_from_map_service():
 @app.get("/")
 async def root():
     """Health check"""
-    pgrouting_ready = False
-    try:
-        get_pgrouting_service()
-        pgrouting_ready = True
-    except Exception:
-        pgrouting_ready = False
+    runtime = {
+        "pgrouting": _probe_runtime_component("pgRouting runtime", get_pgrouting_service),
+        "gis": _probe_runtime_component("GIS layer runtime", get_gis_layer_service),
+    }
+    runtime_ready = runtime["pgrouting"]["ready"] and runtime["gis"]["ready"]
+    status = "running" if GRAPH and runtime_ready else "degraded" if GRAPH or not runtime_ready else "ready"
+    mode = "legacy_graph_and_pgrouting" if GRAPH and runtime_ready else "legacy_graph" if GRAPH else "pgrouting_gis"
 
     return {
         "service": "Routing Service",
         "version": "2.0.0",
-        "status": "running" if GRAPH else ("pgrouting_ready" if pgrouting_ready else "no_graph_loaded"),
-        "mode": "legacy_graph_and_pgrouting" if GRAPH else "pgrouting_gis",
+        "status": status,
+        "mode": mode,
         "nodes": len(GRAPH.nodes) if GRAPH else 0,
         "closures": len(HAZARD_MAP.closures) // 2 if HAZARD_MAP else 0,
         "legacy_map_service": MAP_SERVICE_URL or "disabled",
-        "pgrouting_ready": pgrouting_ready,
+        "pgrouting_ready": runtime["pgrouting"]["ready"],
+        "gis_ready": runtime["gis"]["ready"],
+        "runtime": runtime,
     }
 
 
 @app.get("/health")
 async def health():
     """Detailed health check"""
-    pgrouting_ready = False
-    pgrouting_error = None
-    try:
-        get_pgrouting_service()
-        pgrouting_ready = True
-    except Exception as exc:
-        pgrouting_error = str(exc)
+    runtime = {
+        "pgrouting": _probe_runtime_component("pgRouting runtime", get_pgrouting_service),
+        "gis": _probe_runtime_component("GIS layer runtime", get_gis_layer_service),
+    }
+    runtime_ready = runtime["pgrouting"]["ready"] and runtime["gis"]["ready"]
 
     if not GRAPH:
-        if pgrouting_ready:
+        if runtime_ready:
             return {
                 "status": "healthy",
                 "mode": "pgrouting_gis",
@@ -270,20 +325,24 @@ async def health():
                     "adjacency_entries": 0,
                 },
                 "pgrouting_ready": True,
+                "gis_ready": True,
+                "runtime": runtime,
                 "legacy_map_service": MAP_SERVICE_URL or "disabled",
             }
 
         return {
             "status": "degraded",
-            "message": "Graph not loaded",
-            "suggestion": "Call POST /api/reload to load graph",
-            "pgrouting_ready": False,
-            "pgrouting_error": pgrouting_error,
+            "mode": "pgrouting_gis",
+            "message": "Active PostGIS/pgRouting runtime is unavailable",
+            "runtime": runtime,
+            "pgrouting_ready": runtime["pgrouting"]["ready"],
+            "gis_ready": runtime["gis"]["ready"],
+            "legacy_map_service": MAP_SERVICE_URL or "disabled",
         }
     
     return {
-        "status": "healthy",
-        "mode": "legacy_graph_and_pgrouting" if pgrouting_ready else "legacy_graph",
+        "status": "healthy" if runtime_ready else "degraded",
+        "mode": "legacy_graph_and_pgrouting" if runtime_ready else "legacy_graph",
         "graph": {
             "nodes": len(GRAPH.nodes),
             "adjacency_entries": len(GRAPH.adjacency)
@@ -293,7 +352,9 @@ async def health():
             "node_hazards": len(HAZARD_MAP.node_hazards),
             "edge_hazards": len(HAZARD_MAP.edge_hazards) // 2
         },
-        "pgrouting_ready": pgrouting_ready,
+        "pgrouting_ready": runtime["pgrouting"]["ready"],
+        "gis_ready": runtime["gis"]["ready"],
+        "runtime": runtime,
     }
 
 
@@ -336,7 +397,7 @@ async def get_route(
     Example: /api/route?from_node=62&to_node=70&avoid_crowds=true
     """
     if not GRAPH:
-        service = get_pgrouting_service()
+        service = require_pgrouting_service()
         route = service.get_route(_parse_node_id(from_node), _parse_node_id(to_node))
         return _pgrouting_response_to_legacy_route(route)
     
@@ -362,7 +423,7 @@ async def get_pgrouting_route(
 
     Example: /api/route/pgrouting?from_node=63&to_node=71&allow_blocked=true
     """
-    service = get_pgrouting_service()
+    service = require_pgrouting_service()
     return service.get_route(from_node, to_node, allow_blocked=allow_blocked)
 
 
@@ -374,7 +435,7 @@ async def get_pgrouting_route_geojson(
     allow_blocked: bool = Query(False, description="Whether to allow traversing blocked/disabled edges")
 ):
     """Calculate an indoor route between two pgRouting nodes and return route edges as GeoJSON."""
-    service = get_pgrouting_service()
+    service = require_pgrouting_service()
     return service.get_route_geojson(from_node, to_node, output_srid=srid, allow_blocked=allow_blocked)
 
 
@@ -388,14 +449,14 @@ async def get_combined_pgrouting_route(
 
     Example: /api/route/pgrouting/combined?from_node=1003&to_node=71
     """
-    service = get_pgrouting_service()
+    service = require_pgrouting_service()
     return service.get_combined_route(from_node, to_node)
 
 
 @app.get("/api/pois")
 async def get_pois():
     """Return indoor POIs from the real PostGIS database."""
-    service = get_pgrouting_service()
+    service = require_pgrouting_service()
     return service.list_pois()
 
 
@@ -409,7 +470,7 @@ async def get_pgrouting_route_by_poi(
 
     Example: /api/route/pgrouting/by-poi?from_poi_id=33&to_poi_id=40
     """
-    service = get_pgrouting_service()
+    service = require_pgrouting_service()
     return service.get_route_by_poi(from_poi_id, to_poi_id)
 
 
@@ -420,56 +481,56 @@ async def get_pgrouting_route_by_poi_geojson(
     srid: int = Query(4326, description="Output SRID for GeoJSON coordinates"),
 ):
     """Calculate an indoor route between two POIs and return route edges as GeoJSON."""
-    service = get_pgrouting_service()
+    service = require_pgrouting_service()
     return service.get_route_geojson_by_poi(from_poi_id, to_poi_id, output_srid=srid)
 
 
 @app.get("/api/graph/status")
 async def get_graph_status():
     """Return a minimal graph status payload for frontend use."""
-    service = get_pgrouting_service()
+    service = require_pgrouting_service()
     return service.get_graph_status()
 
 
 @app.get("/api/graph/edge-overrides")
 async def list_edge_overrides():
     """List live edge overrides used by routing."""
-    service = get_pgrouting_service()
+    service = require_pgrouting_service()
     return service.list_edge_overrides()
 
 
 @app.post("/api/graph/edge-overrides")
 async def create_edge_override(payload: EdgeOverrideCreate):
     """Create a live edge override for blocked paths or congestion."""
-    service = get_pgrouting_service()
+    service = require_pgrouting_service()
     return service.create_edge_override(payload)
 
 
 @app.post("/api/graph/node-closures")
 async def create_node_closure(payload: NodeClosureCreate):
     """Create live edge overrides for every corridor connected to a node."""
-    service = get_pgrouting_service()
+    service = require_pgrouting_service()
     return service.create_node_closure(payload)
 
 
 @app.post("/api/graph/edge-overrides/deactivate-by-source")
 async def deactivate_edge_overrides_by_source(source: str = Query(...)):
     """Deactivate live edge overrides created by a specific subsystem/source."""
-    service = get_pgrouting_service()
+    service = require_pgrouting_service()
     return service.deactivate_edge_overrides_by_source(source)
 
 
 @app.get("/api/graph/events")
 async def list_operational_events():
     """List active and historical operational events."""
-    service = get_pgrouting_service()
+    service = require_pgrouting_service()
     return service.list_operational_events()
 
 
 @app.post("/api/graph/events")
 async def create_operational_event(payload: OperationalEventCreate):
     """Create a minimal operational monitoring event."""
-    service = get_pgrouting_service()
+    service = require_pgrouting_service()
     return service.create_operational_event(payload)
 
 
@@ -481,7 +542,7 @@ async def get_gis_rooms(
     srid: int = Query(4326, description="Output SRID for GeoJSON coordinates"),
 ):
     """Return room polygons as GeoJSON."""
-    service = get_gis_layer_service()
+    service = require_gis_layer_service()
     return service.get_feature_collection("rooms", floor_id=floor_id, output_srid=srid)
 
 
@@ -491,7 +552,7 @@ async def get_gis_corridors(
     srid: int = Query(4326, description="Output SRID for GeoJSON coordinates"),
 ):
     """Return corridor polygons as GeoJSON."""
-    service = get_gis_layer_service()
+    service = require_gis_layer_service()
     return service.get_feature_collection("corridors", floor_id=floor_id, output_srid=srid)
 
 
@@ -501,7 +562,7 @@ async def get_gis_nodes(
     srid: int = Query(4326, description="Output SRID for GeoJSON coordinates"),
 ):
     """Return routing graph nodes as GeoJSON points."""
-    service = get_gis_layer_service()
+    service = require_gis_layer_service()
     return service.get_feature_collection("nodes", floor_id=floor_id, output_srid=srid)
 
 
@@ -511,7 +572,7 @@ async def get_gis_pois(
     srid: int = Query(4326, description="Output SRID for GeoJSON coordinates"),
 ):
     """Return POIs as GeoJSON points."""
-    service = get_gis_layer_service()
+    service = require_gis_layer_service()
     return service.get_feature_collection("pois", floor_id=floor_id, output_srid=srid)
 
 
@@ -521,7 +582,7 @@ async def get_gis_cameras(
     srid: int = Query(4326, description="Output SRID for GeoJSON coordinates"),
 ):
     """Return camera point infrastructure as GeoJSON."""
-    service = get_gis_layer_service()
+    service = require_gis_layer_service()
     return service.get_feature_collection("cameras", floor_id=floor_id, output_srid=srid)
 
 
@@ -531,7 +592,7 @@ async def get_gis_camera_coverage(
     srid: int = Query(4326, description="Output SRID for GeoJSON coordinates"),
 ):
     """Return camera coverage polygons as GeoJSON."""
-    service = get_gis_layer_service()
+    service = require_gis_layer_service()
     return service.get_feature_collection("camera_coverage", floor_id=floor_id, output_srid=srid)
 
 
@@ -540,7 +601,7 @@ async def get_gis_camera_status(
     floor_id: Optional[int] = Query(None, description="Optional floor filter"),
 ):
     """Return live camera monitoring state keyed by real camera IDs."""
-    service = get_gis_layer_service()
+    service = require_gis_layer_service()
     return service.get_camera_status(floor_id=floor_id)
 
 
@@ -550,7 +611,7 @@ async def get_gis_impacted_edges(
     srid: int = Query(4326, description="Output SRID for GeoJSON coordinates"),
 ):
     """Return active graph edge overrides as GeoJSON."""
-    service = get_gis_layer_service()
+    service = require_gis_layer_service()
     return service.get_impacted_edges(floor_id=floor_id, output_srid=srid)
 
 
@@ -561,7 +622,7 @@ async def update_gis_camera_status(
     _: dict = Depends(require_supervisor_role),
 ):
     """Update persisted monitoring state for one camera."""
-    service = get_gis_layer_service()
+    service = require_gis_layer_service()
     try:
         return service.update_camera_status(camera_id, payload)
     except ValueError as exc:
@@ -574,7 +635,7 @@ async def get_gis_vertical_transitions(
     srid: int = Query(4326, description="Output SRID for GeoJSON coordinates"),
 ):
     """Return stairs/lifts/floor transitions as GeoJSON."""
-    service = get_gis_layer_service()
+    service = require_gis_layer_service()
     return service.get_feature_collection("vertical_transitions", floor_id=floor_id, output_srid=srid)
 
 
@@ -639,7 +700,7 @@ async def evacuation_route(from_node: str = Query(..., description="Current posi
     Example: /api/route/evacuation?from_node=62
     """
     if not GRAPH:
-        service = get_pgrouting_service()
+        service = require_pgrouting_service()
         start_node = _parse_node_id(from_node)
         route = service.get_route(start_node, EVACUATION_EXIT_NODE)
         response = _pgrouting_response_to_legacy_route(route)
@@ -659,7 +720,7 @@ async def evacuation_route_geojson(
     allow_blocked: bool = Query(True, description="Whether to route through blocked edges with high cost as a last resort"),
 ):
     """Return evacuation route geometry to the fixed IT entrance node."""
-    service = get_pgrouting_service()
+    service = require_pgrouting_service()
     response = service.get_route_geojson(from_node, EVACUATION_EXIT_NODE, output_srid=srid, allow_blocked=allow_blocked)
     response.summary["exit_node"] = EVACUATION_EXIT_NODE
     response.summary["route_type"] = "evacuation"

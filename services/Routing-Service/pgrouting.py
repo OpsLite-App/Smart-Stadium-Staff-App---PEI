@@ -9,6 +9,7 @@ from pydantic import BaseModel
 
 from astar import calculate_eta
 from db import get_connection
+from runtime_checks import ensure_active_indoor_dataset
 
 
 class PgRoutingRouteResponse(BaseModel):
@@ -97,6 +98,9 @@ class OperationalEventResponse(OperationalEventCreate):
 
 class PgRoutingService:
     """Compute routes directly in PostgreSQL using pgRouting."""
+
+    def __init__(self) -> None:
+        self._runtime_tables_ready = False
 
     CREATE_PGROUTING_EXTENSION_SQL = """
         CREATE EXTENSION IF NOT EXISTS pgrouting
@@ -597,6 +601,11 @@ class PgRoutingService:
 
     def initialize_runtime_tables(self) -> None:
         """Create runtime, outdoor, and combined routing objects if they do not exist yet."""
+        if self._runtime_tables_ready:
+            return
+
+        ensure_active_indoor_dataset()
+
         with get_connection() as conn:
             conn.execute(self.CREATE_PGROUTING_EXTENSION_SQL)
             conn.execute(self.CREATE_EDGE_OVERRIDES_SQL)
@@ -615,6 +624,7 @@ class PgRoutingService:
             conn.execute(self.CREATE_ROUTING_NODES_VIEW_SQL)
             conn.execute(self.CREATE_ROUTING_EDGES_VIEW_SQL)
             conn.commit()
+        self._runtime_tables_ready = True
 
     def get_route(self, from_node: int, to_node: int, allow_blocked: bool = False) -> PgRoutingRouteResponse:
         """Calculate a route and generate simple human-readable instructions."""
