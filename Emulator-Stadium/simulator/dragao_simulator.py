@@ -32,6 +32,8 @@ except ImportError:
 
 
 ROUTING_SERVICE_URL = os.getenv("ROUTING_SERVICE_URL", "http://localhost:8002").rstrip("/")
+AUTH_SERVICE_URL = os.getenv("AUTH_SERVICE_URL", "http://localhost:8081").rstrip("/")
+POSITIONING_SERVICE_URL = os.getenv("POSITIONING_SERVICE_URL", "http://localhost:8004").rstrip("/")
 MQTT_BROKER = os.getenv("MQTT_HOST", os.getenv("MQTT_BROKER", "localhost"))
 MQTT_PORT = int(os.getenv("MQTT_PORT", "1883"))
 SIM_SCENARIO = os.getenv("SIM_SCENARIO", "matchday")
@@ -79,6 +81,7 @@ class MQTTPublisher:
         self.port = port
         self.client = None
         self.connected = False
+        self.generator = None
 
         if not MQTT_AVAILABLE:
             return
@@ -89,6 +92,7 @@ class MQTTPublisher:
             else:
                 self.client = mqtt.Client(protocol=mqtt.MQTTv5)
             self.client.on_connect = self._on_connect
+            self.client.on_message = self._on_message
             self.client.connect(self.broker, self.port, 60)
             self.client.loop_start()
             time.sleep(0.5)
@@ -99,12 +103,28 @@ class MQTTPublisher:
         if rc == 0:
             self.connected = True
             print(f"Connected to MQTT broker at {self.broker}:{self.port}")
+            try:
+                self.client.subscribe("stadium/maintenance/empty")
+                print("Subscribed to stadium/maintenance/empty")
+            except Exception as e:
+                print(f"Error subscribing: {e}")
+
+    def _on_message(self, client, userdata, msg):
+        try:
+            payload = json.loads(msg.payload.decode())
+            bin_id = payload.get("bin_id")
+            if bin_id and self.generator:
+                self.generator.bin_fill_levels[bin_id] = 0.0
+                print(f"🗑️ SIMULATOR: Reset fill level for bin {bin_id} to 0.0%")
+        except Exception as e:
+            print(f"Error handling simulator MQTT message: {e}")
 
     def publish_event(self, event_type: str, event: dict[str, Any]):
         topic = MQTT_TOPICS.get(event_type, "stadium/events")
         if self.connected and self.client:
             self.client.publish(topic, json.dumps(event))
         print(f"published {event.get('event_type', event_type)} -> {topic}")
+
 
 
 class OpsLiteEventGenerator:
@@ -123,6 +143,8 @@ class OpsLiteEventGenerator:
         self.gates: list[dict[str, Any]] = []
         self.bins: list[dict[str, Any]] = []
         self.crowd_areas: list[dict[str, Any]] = []
+        self.staff_list: list[dict[str, Any]] = []
+        self.staff_positions: dict[str, dict[str, Any]] = {}
 
         self.load_operational_data()
 
@@ -340,7 +362,7 @@ class OpsLiteEventGenerator:
             "event_type": "bin_alert",
             "timestamp": utc_now(),
             "bin_id": bin_asset["id"],
-            "fill_percentage": round(fill_pct, 1),
+            "fill_percentage": int(round(fill_pct)),
             "priority": "critical" if fill_pct >= 95 else "high" if fill_pct >= 85 else "medium",
             "poi_node": bin_asset["node_id"],
             "location_node": bin_asset["node_id"],
@@ -471,6 +493,65 @@ class OpsLiteEventGenerator:
         except Exception as exc:
             print(f"could not update routing-service closure for node {node_id}: {exc}")
 
+    def simulate_staff_movement(self):
+        if not self.staff_list:
+            try:
+                resp = requests.get(f"{AUTH_SERVICE_URL}/auth/staff", timeout=3)
+                if resp.status_code == 200:
+                    self.staff_list = resp.json()
+                    self.staff_positions = {}
+                    for s in self.staff_list:
+                        staff_id = str(s.get("id"))
+                        loc = s.get("location")
+                        start_node = None
+                        if loc and loc.isdigit():
+                            start_node = self.nodes_by_id.get(int(loc))
+                        if not start_node:
+                            start_node = random.choice(self.nodes) if self.nodes else None
+                        if start_node:
+                            self.staff_positions[staff_id] = start_node
+                    print(f"Loaded {len(self.staff_list)} staff members for simulation.")
+            except Exception as e:
+                print(f"Could not load staff list in simulator: {e}")
+                return
+
+        for s in self.staff_list:
+            staff_id = str(s.get("id"))
+            current_node = self.staff_positions.get(staff_id)
+            if not current_node:
+                continue
+
+            floor_nodes = [n for n in self.nodes if n.get("floor_id") == current_node.get("floor_id")]
+            if not floor_nodes:
+                continue
+
+            curr_x, curr_y = current_node.get("x", 0), current_node.get("y", 0)
+            candidates = [
+                n for n in floor_nodes
+                if abs(n.get("x", 0) - curr_x) + abs(n.get("y", 0) - curr_y) < 60
+            ]
+            if not candidates:
+                candidates = floor_nodes
+
+            next_node = random.choice(candidates)
+            self.staff_positions[staff_id] = next_node
+
+            payload = {
+                "staff_id": staff_id,
+                "x": next_node.get("x"),
+                "y": next_node.get("y"),
+                "zone": f"Floor {next_node.get('floor_id')}",
+                "location_id": str(next_node.get("id"))
+            }
+            try:
+                requests.put(
+                    f"{POSITIONING_SERVICE_URL}/position/simulate",
+                    json=payload,
+                    timeout=2
+                )
+            except Exception as e:
+                pass
+
 
 def run_integrated_simulation(duration_seconds: int):
     print("=" * 68)
@@ -483,12 +564,14 @@ def run_integrated_simulation(duration_seconds: int):
 
     mqtt_pub = MQTTPublisher(MQTT_BROKER, MQTT_PORT)
     generator = OpsLiteEventGenerator(mqtt_pub)
+    mqtt_pub.generator = generator
 
     start_time = time.time()
     last_bin = -14.0
     last_queue = -6.0
     last_density = -8.0
     last_evac = 0.0
+    last_staff_move = -5.0
 
     while time.time() - start_time < duration_seconds:
         elapsed = time.time() - start_time
@@ -507,6 +590,10 @@ def run_integrated_simulation(duration_seconds: int):
         if elapsed - last_bin >= 14:
             generator.generate_bin_alert()
             last_bin = elapsed
+
+        if elapsed - last_staff_move >= 5:
+            generator.simulate_staff_movement()
+            last_staff_move = elapsed
 
         if random.random() < 0.035:
             generator.generate_sos_event()

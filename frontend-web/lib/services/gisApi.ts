@@ -45,6 +45,15 @@ export interface NodeProperties {
   type: string | null;
 }
 
+export interface PoiProperties {
+  id: number;
+  poi_id: number | null;
+  name: string | null;
+  category: string | null;
+  floor_id: number;
+  node_id: number | null;
+}
+
 export interface CameraProperties {
   id: number;
   camera_name: string | null;
@@ -159,6 +168,7 @@ export const gisApi = {
   getRooms: (params?: GisQueryParams) => getLayer<RoomProperties>("rooms", params),
   getCorridors: (params?: GisQueryParams) => getLayer<CorridorProperties>("corridors", params),
   getNodes: (params?: GisQueryParams) => getLayer<NodeProperties>("nodes", params),
+  getPois: (params?: GisQueryParams) => getLayer<PoiProperties>("pois", params),
   getCameras: (params?: GisQueryParams) => getLayer<CameraProperties>("cameras", params),
   getCameraCoverage: (params?: GisQueryParams) =>
     getLayer<CameraCoverageProperties>("camera-coverage", params),

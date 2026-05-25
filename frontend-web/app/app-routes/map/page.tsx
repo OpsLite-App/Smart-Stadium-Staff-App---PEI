@@ -6,6 +6,7 @@ import {
   Ban,
   BellRing,
   Building2,
+  Flame,
   MapPinned,
   Navigation,
   RefreshCw,
@@ -107,6 +108,7 @@ function getNotificationIcon(kind: NotificationKind, level: NotificationLevel) {
 
 export default function MapPage() {
   const [selectedFloor, setSelectedFloor] = useState<FloorId>('1');
+  const [showHeatmap, setShowHeatmap] = useState(true);
   const [graphStatus, setGraphStatus] = useState<GraphStatus | null>(null);
   const [events, setEvents] = useState<OperationalEvent[]>([]);
   const [edgeOverrides, setEdgeOverrides] = useState<EdgeOverride[]>([]);
@@ -365,6 +367,18 @@ export default function MapPage() {
               />
               <button
                 type="button"
+                onClick={() => setShowHeatmap(!showHeatmap)}
+                className={`inline-flex items-center justify-center gap-2 rounded-xl border px-4 py-2 text-sm font-medium transition-all ${
+                  showHeatmap
+                    ? 'border-orange-200 bg-orange-50 text-orange-800 hover:bg-orange-100/80 shadow-sm shadow-orange-100'
+                    : 'border-gray-200 text-gray-700 hover:bg-gray-50'
+                }`}
+              >
+                <Flame size={16} className={showHeatmap ? 'animate-pulse text-orange-600' : 'text-gray-500'} />
+                {showHeatmap ? 'Ocultar Heatmap' : 'Mostrar Heatmap'}
+              </button>
+              <button
+                type="button"
                 onClick={() => void handleRefresh()}
                 className="inline-flex items-center justify-center gap-2 rounded-xl border border-gray-200 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
               >
@@ -417,6 +431,7 @@ export default function MapPage() {
               floorId={Number(selectedFloor)}
               routeGeoJson={routeGeoJson?.route ?? null}
               routeAffected={routeAffected}
+              showHeatmap={showHeatmap}
             />
           </div>
         </Surface>

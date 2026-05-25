@@ -51,6 +51,43 @@ class TaskManager:
     
     def create_bin_task(self, db: Session, alert: BinAlertCreate) -> TaskResponse:
         """Create task from bin-full alert"""
+        # Check if there is already an active task for this bin_id
+        active_tasks = db.query(MaintenanceTask).filter(
+            MaintenanceTask.task_type == TaskType.BIN_FULL,
+            MaintenanceTask.status.in_([TaskStatus.PENDING, TaskStatus.ASSIGNED, TaskStatus.IN_PROGRESS])
+        ).all()
+        
+        active_bin_tasks = []
+        for t in active_tasks:
+            if t.main_metadata and t.main_metadata.get("bin_id") == alert.bin_id:
+                active_bin_tasks.append(t)
+        
+        if active_bin_tasks:
+            # Active task already exists! Update fill level on the first one and delete any duplicates.
+            primary_task = active_bin_tasks[0]
+            primary_task.main_metadata["fill_percentage"] = alert.fill_percentage
+            primary_task.description = f"Bin {alert.bin_id} is {alert.fill_percentage}% full"
+            if alert.fill_percentage >= 95:
+                primary_task.priority = TaskPriority.CRITICAL
+            elif alert.fill_percentage >= 85:
+                primary_task.priority = TaskPriority.HIGH
+            else:
+                primary_task.priority = TaskPriority.MEDIUM
+            
+            ba = db.query(BinAlert).filter(BinAlert.task_id == primary_task.id).first()
+            if ba:
+                ba.fill_percentage = alert.fill_percentage
+            
+            # Clean up duplicate tasks and alerts if any exist
+            if len(active_bin_tasks) > 1:
+                for duplicate in active_bin_tasks[1:]:
+                    db.query(BinAlert).filter(BinAlert.task_id == duplicate.id).delete()
+                    db.delete(duplicate)
+            
+            db.commit()
+            db.refresh(primary_task)
+            return self._task_to_response(primary_task)
+
         # Determine priority based on fill percentage
         if alert.fill_percentage >= 95:
             priority = "critical"
@@ -159,6 +196,11 @@ class TaskManager:
                 task.started_at = datetime.now()
             elif new_status == TaskStatus.COMPLETED and not task.completed_at:
                 task.completed_at = datetime.now()
+                # Notify simulator if it is a bin full task
+                if task.task_type == TaskType.BIN_FULL or task.task_type.value == "bin_full":
+                    bin_id = task.main_metadata.get("bin_id") if task.main_metadata else None
+                    if bin_id:
+                        self._notify_bin_empty(bin_id)
         
         if update.priority:
             task.priority = TaskPriority(update.priority)
@@ -183,6 +225,31 @@ class TaskManager:
             self._log_task_event(db, task_id, "status_change", old_status, task.status.value)
         
         return self._task_to_response(task)
+
+    def _notify_bin_empty(self, bin_id: str):
+        """Notify MQTT broker that the bin has been emptied"""
+        try:
+            import paho.mqtt.client as mqtt_client
+            import os
+            import json
+            import uuid
+            broker = os.getenv("MQTT_HOST", os.getenv("MQTT_BROKER", "mosquitto"))
+            port = int(os.getenv("MQTT_PORT", "1883"))
+            client = mqtt_client.Client(
+                mqtt_client.CallbackAPIVersion.VERSION2,
+                client_id=f"maintenance-notifier-{uuid.uuid4().hex[:6]}",
+                protocol=mqtt_client.MQTTv5
+            )
+            client.connect(broker, port, 60)
+            client.loop_start()
+            payload = json.dumps({"bin_id": bin_id})
+            res = client.publish("stadium/maintenance/empty", payload)
+            res.wait_for_publish()
+            client.loop_stop()
+            client.disconnect()
+            print(f"✅ Published bin empty event to MQTT for bin {bin_id}", flush=True)
+        except Exception as e:
+            print(f"⚠️ Failed to publish bin empty event to MQTT: {e}", flush=True)
     
     def delete_task(self, db: Session, task_id: str) -> bool:
         """Delete task (use with caution)"""

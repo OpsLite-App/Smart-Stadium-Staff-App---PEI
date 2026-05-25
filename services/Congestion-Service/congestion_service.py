@@ -72,6 +72,7 @@ class CrowdDensity(BaseModel):
     heat_level: str  # green, yellow, red
     status: str  # empty, normal, busy, crowded, critical
     last_update: str
+    floor_id: Optional[int] = 1
 
 
 class HeatmapResponse(BaseModel):
@@ -128,6 +129,8 @@ def on_mqtt_message(client, userdata, msg):
             else:
                 status = "critical"
             
+            floor_id = event.get("floor_id", 1)
+
             # Update current data - INCLUIR AS COORDENADAS
             crowd_data[area_id] = {
                 "area_id": area_id,
@@ -138,7 +141,8 @@ def on_mqtt_message(client, userdata, msg):
                 "heat_level": heat_level,
                 "status": status,
                 "last_update": datetime.now().isoformat(),
-                "location": {"x": x, "y": y}  # 🔥 GUARDAR AS COORDENADAS!
+                "location": {"x": x, "y": y},  # 🔥 GUARDAR AS COORDENADAS!
+                "floor_id": floor_id
             }
             
             logger.info(f"✅ {area_id} guardado. Total áreas: {len(crowd_data)}")
@@ -259,15 +263,19 @@ def get_heatmap():
 
 
 @app.get("/api/heatmap/points")
-def get_heatmap_points():
+def get_heatmap_points(floor_id: Optional[int] = Query(None, description="Filter by floor ID")):
     """
     Get heatmap points with geographic coordinates
-    Returns: [{latitude, longitude, weight, occupancy_rate, area_id}, ...]
+    Returns: [{latitude, longitude, weight, occupancy_rate, area_id, floor_id}, ...]
     """
     try:
         points = []
         
         for area_id, data in crowd_data.items():
+            point_floor = data.get('floor_id')
+            if floor_id is not None and point_floor is not None and point_floor != floor_id:
+                continue
+
             occupancy = data.get('occupancy_rate', 0)
             
             # Se já temos coordenadas nos dados de crowd, usamos
@@ -290,7 +298,8 @@ def get_heatmap_points():
                         "weight": round(weight, 3),
                         "occupancy_rate": round(occupancy, 1),
                         "area_id": area_id,
-                        "heat_level": data.get("heat_level", "green")
+                        "heat_level": data.get("heat_level", "green"),
+                        "floor_id": point_floor
                     })
                     continue  # Já temos coordenadas, passa para o próximo
         
@@ -308,6 +317,10 @@ def get_heatmap_points():
                     if any(p['area_id'] == area_id for p in points):
                         continue
                     
+                    point_floor = data.get('floor_id')
+                    if floor_id is not None and point_floor is not None and point_floor != floor_id:
+                        continue
+
                     if area_id in node_lookup:
                         node = node_lookup[area_id]
                         occupancy = data.get('occupancy_rate', 0)
@@ -321,7 +334,8 @@ def get_heatmap_points():
                             "weight": round(weight, 3),
                             "occupancy_rate": round(occupancy, 1),
                             "area_id": area_id,
-                            "heat_level": data.get("heat_level", "green")
+                            "heat_level": data.get("heat_level", "green"),
+                            "floor_id": point_floor
                         })
         except Exception as e:
             print(f"⚠️ Map Service não disponível: {e}")

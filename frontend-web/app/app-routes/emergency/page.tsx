@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useMemo, useState, useRef, type FormEvent } from 'react';
 import { AlertTriangle, CheckCircle2, DoorOpen, Loader2, MapPin, ShieldAlert, ShieldCheck, Users } from 'lucide-react';
 import { api, type GlobalEvacuation } from '@/lib/services/api';
 import { useAuthStore } from '@/lib/stores/useAuthStore';
@@ -120,29 +120,42 @@ export default function EmergencyPage() {
     );
   }, [evacuation, locallyConfirmedToken, user]);
 
+  const isFirstLoadRef = useRef(true);
+
   const loadState = useCallback(async () => {
-    setLoading(true);
+    if (isFirstLoadRef.current) {
+      setLoading(true);
+    }
     setMessage(null);
 
     try {
-      const [active, staff] = await Promise.all([
+      const [active, staff, positions] = await Promise.all([
         api.getActiveGlobalEvacuation().catch(() => ({ active: false })),
         api.getStaff().catch(() => []),
+        api.getAllStaffPositions().catch(() => []),
       ]);
 
       const me = staff.find((member) => Number(member.id) === Number(user?.id));
-      const location = me?.location ? String(me.location) : '';
+      const myPos = positions.find((p) => Number(p.staff_id) === Number(user?.id));
+      const location = myPos?.location_id ? String(myPos.location_id) : (me?.location ? String(me.location) : '');
       setCurrentLocation(location);
       setEvacuation(active);
 
-      if (active.active && location) {
-        const route = await api.getEvacuationRouteGeoJson(location).catch(() => null);
-        setRouteGeoJson(route);
+      if (active.active) {
+        const evacInfo = active as GlobalEvacuation;
+        const startNode = location && !isNaN(Number(location)) ? location : evacInfo.source_node;
+        if (startNode) {
+          const route = await api.getEvacuationRouteGeoJson(startNode).catch(() => null);
+          setRouteGeoJson(route);
+        } else {
+          setRouteGeoJson(null);
+        }
       } else {
         setRouteGeoJson(null);
       }
     } finally {
       setLoading(false);
+      isFirstLoadRef.current = false;
     }
   }, [user?.id]);
 

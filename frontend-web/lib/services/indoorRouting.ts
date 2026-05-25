@@ -110,11 +110,12 @@ export const indoorRoutingService = {
     return response.data;
   },
 
-  async getRouteGeoJson(fromNode: number, toNode: number): Promise<IndoorRouteGeoJsonResponse> {
+  async getRouteGeoJson(fromNode: number, toNode: number, allowBlocked: boolean = false): Promise<IndoorRouteGeoJsonResponse> {
     const response = await axios.get<IndoorRouteGeoJsonResponse>(`${ROUTING_BASE}/route/pgrouting/geojson`, {
       params: {
         from_node: fromNode,
         to_node: toNode,
+        allow_blocked: allowBlocked,
       },
       timeout: 10000,
     });

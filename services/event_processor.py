@@ -164,12 +164,12 @@ class EventProcessor:
             "priority": "high"
         }
         """
-        fill_percentage = event.get("fill_percentage", 0)
-        if fill_percentage < 85:
-            return  # Only process high fill levels
+        fill_percentage = int(round(event.get("fill_percentage", 0)))
+        if fill_percentage < 100:
+            return  # Only process 100% full bins
 
         bin_id = event.get("bin_id")
-        location_node = event.get("poi_node", "65")
+        location_node = str(event.get("poi_node", "65"))
         priority = event.get("priority", "medium")
 
         payload = {

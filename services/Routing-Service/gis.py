@@ -26,6 +26,12 @@ class GisLayerService:
     CAMERA_OPERATIONAL_STATUSES = {"online", "degraded", "offline"}
 
     LAYERS = {
+        "pois": {
+            "table": "pois",
+            "id": "id",
+            "columns": ["id", "poi_id", "name", "category", "floor_id", "node_id"],
+            "floor_column": "floor_id",
+        },
         "rooms": {
             "table": "rooms_polygons",
             "id": "id",

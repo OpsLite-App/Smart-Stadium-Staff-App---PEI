@@ -227,13 +227,14 @@ export const api = {
   },
 
   // ---- CONGESTION ----
-  getHeatmapPoints: async (): Promise<HeatmapPointsResponse> => {
+  getHeatmapPoints: async (params?: { floorId?: number }): Promise<HeatmapPointsResponse> => {
     try {
       const url = `${CONGESTION_SERVICE}/heatmap/points`;
-      console.log(`🔥 Buscando heatmap de: ${url}`);
+      console.log(`🔥 Buscando heatmap de: ${url} com params:`, params);
 
       // ✅ CHANGED: Use authAxios instead of axios to send cookie
       const response = await authAxios.get<HeatmapPointsResponse>(url, {
+        params: params ? { floor_id: params.floorId } : undefined,
         timeout: 10000,
       });
 
@@ -342,6 +343,14 @@ export const api = {
   },
 
   // ---- MAINTENANCE ----
+  getBinAlerts: async (): Promise<any[]> => {
+    console.log(`📋 Buscando alertas de lixeiras em ${MAINTENANCE_SERVICE}/bins/alerts`);
+    const response = await authAxios.get(`${MAINTENANCE_SERVICE}/bins/alerts`, {
+      timeout: 5000,
+    });
+    return response.data;
+  },
+
   getTaskDetails: async (taskId: string) => {
     console.log(`📋 Buscando detalhes da tarefa ${taskId} em ${MAINTENANCE_SERVICE}/tasks/${taskId}`);
     // ✅ CHANGED: Use authAxios instead of axios
@@ -523,6 +532,15 @@ export const api = {
     return results
       .filter((r): r is PromiseFulfilledResult<StaffPosition> => r.status === "fulfilled")
       .map((r) => r.value);
+  },
+
+  getAllStaffPositions: async (): Promise<StaffPosition[]> => {
+    try {
+      const response = await authAxios.get<StaffPosition[]>(`${POSITIONING_BASE}/positions`, { timeout: 4000 });
+      return response.data;
+    } catch {
+      return [];
+    }
   },
 
 };

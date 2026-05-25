@@ -314,9 +314,12 @@ services:
       - routing-service
     environment:
       ROUTING_SERVICE_URL: http://routing-service:8002
+      AUTH_SERVICE_URL: http://auth-service:8081
+      POSITIONING_SERVICE_URL: http://positioning-service:8004
       MQTT_HOST: mosquitto
       MQTT_BROKER: mosquitto
       MQTT_PORT: "1883"
+      PYTHONUNBUFFERED: "1"
 
 
 volumes:

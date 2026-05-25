@@ -616,10 +616,10 @@ class PgRoutingService:
             conn.execute(self.CREATE_ROUTING_EDGES_VIEW_SQL)
             conn.commit()
 
-    def get_route(self, from_node: int, to_node: int) -> PgRoutingRouteResponse:
+    def get_route(self, from_node: int, to_node: int, allow_blocked: bool = False) -> PgRoutingRouteResponse:
         """Calculate a route and generate simple human-readable instructions."""
         with get_connection() as conn:
-            return self._build_route_response(conn, from_node, to_node)
+            return self._build_route_response(conn, from_node, to_node, allow_blocked=allow_blocked)
 
     def get_combined_route(self, from_node: int, to_node: int) -> PgRoutingRouteResponse:
         """Calculate a route across the combined outdoor-indoor graph."""
@@ -638,12 +638,24 @@ class PgRoutingService:
         from_node: int,
         to_node: int,
         output_srid: int = 4326,
+        allow_blocked: bool = False,
     ) -> PgRoutingRouteGeoJsonResponse:
         """Return route edges as GeoJSON for two real pgRouting node IDs."""
         with get_connection() as conn:
             node_metadata = self._fetch_node_metadata(conn, [from_node, to_node], self.NODE_SQL)
             self._validate_nodes(from_node, to_node, node_metadata)
-            rows = conn.execute(self.ROUTE_GEOJSON_SQL, (from_node, to_node, output_srid)).fetchall()
+            
+            sql = self.ROUTE_GEOJSON_SQL
+            if allow_blocked:
+                # Disable filtering of blocked edges
+                sql = sql.replace("COALESCE(ao.is_blocked, FALSE) = FALSE", "TRUE")
+                # Multiply cost of blocked edges by 10000.0
+                sql = sql.replace(
+                    "COALESCE(ao.cost_multiplier, 1.0)",
+                    "CASE WHEN COALESCE(ao.is_blocked, FALSE) = TRUE THEN 10000.0 ELSE COALESCE(ao.cost_multiplier, 1.0) END"
+                )
+                
+            rows = conn.execute(sql, (from_node, to_node, output_srid)).fetchall()
 
         if not rows:
             raise HTTPException(status_code=404, detail="No path found between the selected nodes")
@@ -904,11 +916,20 @@ class PgRoutingService:
         route_sql: str | None = None,
         node_sql: str | None = None,
         instruction_mode: str = "indoor",
+        allow_blocked: bool = False,
     ) -> PgRoutingRouteResponse:
         node_metadata = self._fetch_node_metadata(conn, [from_node, to_node], node_sql or self.NODE_SQL)
         self._validate_nodes(from_node, to_node, node_metadata)
 
-        route_rows = conn.execute(route_sql or self.ROUTE_SQL, (from_node, to_node)).fetchall()
+        sql = route_sql or self.ROUTE_SQL
+        if allow_blocked:
+            sql = sql.replace("COALESCE(ao.is_blocked, FALSE) = FALSE", "TRUE")
+            sql = sql.replace(
+                "COALESCE(ao.cost_multiplier, 1.0)",
+                "CASE WHEN COALESCE(ao.is_blocked, FALSE) = TRUE THEN 10000.0 ELSE COALESCE(ao.cost_multiplier, 1.0) END"
+            )
+
+        route_rows = conn.execute(sql, (from_node, to_node)).fetchall()
 
         if not route_rows:
             raise HTTPException(status_code=404, detail="No path found between the selected nodes")

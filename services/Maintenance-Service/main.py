@@ -66,6 +66,14 @@ async def startup():
     # Initialize database
     init_db()
     print("✅ Database initialized")
+
+    # Seed initial alerts
+    from database import SessionLocal, seed_initial_alerts
+    db = SessionLocal()
+    try:
+        seed_initial_alerts(db)
+    finally:
+        db.close()
     
     # CORRIGIDO: Inicializar staff coordinator ANTES do task manager
     staff_coordinator = get_staff_coordinator()

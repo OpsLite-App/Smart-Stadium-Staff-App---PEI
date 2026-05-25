@@ -354,15 +354,16 @@ async def get_route(
 @app.get("/api/route/pgrouting")
 async def get_pgrouting_route(
     from_node: int = Query(..., description="Start node ID from PostGIS/pgRouting graph"),
-    to_node: int = Query(..., description="End node ID from PostGIS/pgRouting graph")
+    to_node: int = Query(..., description="End node ID from PostGIS/pgRouting graph"),
+    allow_blocked: bool = Query(False, description="Whether to allow traversing blocked/disabled edges")
 ):
     """
     Calculate an indoor route directly with pgRouting.
 
-    Example: /api/route/pgrouting?from_node=63&to_node=71
+    Example: /api/route/pgrouting?from_node=63&to_node=71&allow_blocked=true
     """
     service = get_pgrouting_service()
-    return service.get_route(from_node, to_node)
+    return service.get_route(from_node, to_node, allow_blocked=allow_blocked)
 
 
 @app.get("/api/route/pgrouting/geojson")
@@ -370,10 +371,11 @@ async def get_pgrouting_route_geojson(
     from_node: int = Query(..., description="Start node ID from PostGIS/pgRouting graph"),
     to_node: int = Query(..., description="End node ID from PostGIS/pgRouting graph"),
     srid: int = Query(4326, description="Output SRID for GeoJSON coordinates"),
+    allow_blocked: bool = Query(False, description="Whether to allow traversing blocked/disabled edges")
 ):
     """Calculate an indoor route between two pgRouting nodes and return route edges as GeoJSON."""
     service = get_pgrouting_service()
-    return service.get_route_geojson(from_node, to_node, output_srid=srid)
+    return service.get_route_geojson(from_node, to_node, output_srid=srid, allow_blocked=allow_blocked)
 
 
 @app.get("/api/route/pgrouting/combined")
@@ -501,6 +503,16 @@ async def get_gis_nodes(
     """Return routing graph nodes as GeoJSON points."""
     service = get_gis_layer_service()
     return service.get_feature_collection("nodes", floor_id=floor_id, output_srid=srid)
+
+
+@app.get("/api/gis/pois")
+async def get_gis_pois(
+    floor_id: Optional[int] = Query(None, description="Optional floor filter"),
+    srid: int = Query(4326, description="Output SRID for GeoJSON coordinates"),
+):
+    """Return POIs as GeoJSON points."""
+    service = get_gis_layer_service()
+    return service.get_feature_collection("pois", floor_id=floor_id, output_srid=srid)
 
 
 @app.get("/api/gis/cameras")
@@ -644,10 +656,11 @@ async def evacuation_route(from_node: str = Query(..., description="Current posi
 async def evacuation_route_geojson(
     from_node: int = Query(..., description="Current pgRouting node"),
     srid: int = Query(4326, description="Output SRID for GeoJSON coordinates"),
+    allow_blocked: bool = Query(True, description="Whether to route through blocked edges with high cost as a last resort"),
 ):
     """Return evacuation route geometry to the fixed IT entrance node."""
     service = get_pgrouting_service()
-    response = service.get_route_geojson(from_node, EVACUATION_EXIT_NODE, output_srid=srid)
+    response = service.get_route_geojson(from_node, EVACUATION_EXIT_NODE, output_srid=srid, allow_blocked=allow_blocked)
     response.summary["exit_node"] = EVACUATION_EXIT_NODE
     response.summary["route_type"] = "evacuation"
     return response

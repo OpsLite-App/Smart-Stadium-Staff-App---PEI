@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useAuthStore } from '@/lib/stores/useAuthStore';
+import { api, mapCoordsToLatLng } from '@/lib/services/api';
 import {
   gisApi,
   type CameraCoverageProperties,
@@ -12,10 +13,97 @@ import {
   type GisFeatureCollection,
   type ImpactedEdgeProperties,
   type NodeProperties,
+  type PoiProperties,
   type RoomProperties,
   type RouteEdgeProperties,
   type VerticalTransitionProperties,
 } from '@/lib/services/gisApi';
+
+function getStaffIconHtml(role: string, name: string, status: string) {
+  let color = '#475569'; // default slate-600
+  let iconSvg = '';
+
+  const normalizedRole = (role || '').toLowerCase();
+  if (normalizedRole.includes('security')) {
+    color = '#2563eb'; // blue
+    iconSvg = `
+      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+      </svg>
+    `;
+  } else if (normalizedRole.includes('cleaning')) {
+    color = '#16a34a'; // green
+    iconSvg = `
+      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/>
+      </svg>
+    `;
+  } else if (normalizedRole.includes('supervisor')) {
+    color = '#d97706'; // amber/orange
+    iconSvg = `
+      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+      </svg>
+    `;
+  } else if (normalizedRole.includes('medical')) {
+    color = '#db2777'; // pink/red
+    iconSvg = `
+      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M22 12h-4l-3 9L9 3l-3 9H2"/>
+      </svg>
+    `;
+  } else {
+    iconSvg = `
+      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="10"/><circle cx="12" cy="10" r="3"/><path d="M7 20.662V19a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v1.662"/>
+      </svg>
+    `;
+  }
+
+  const initial = name ? name.split(' ').map(n => n.charAt(0)).join('').toUpperCase().slice(0, 2) : '';
+
+  const pulseStyle = status === 'active' || status === 'patrol' || status === 'on_duty' 
+    ? `animation: staffPulse 2s infinite;` 
+    : '';
+
+  return `
+    <div style="
+      background: white;
+      border-radius: 50%;
+      padding: 4px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.18);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: ${color};
+      border: 2.5px solid ${color};
+      width: 32px;
+      height: 32px;
+      position: relative;
+      box-sizing: border-box;
+      ${pulseStyle}
+    ">
+      ${iconSvg}
+      <span style="
+        position: absolute;
+        bottom: -4px;
+        right: -4px;
+        background: ${color};
+        color: white;
+        font-size: 7.5px;
+        font-weight: 800;
+        width: 15px;
+        height: 15px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border: 1px solid white;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.15);
+      ">${initial}</span>
+    </div>
+  `;
+}
 
 interface IndoorGisMapProps {
   floorId: number;
@@ -26,6 +114,7 @@ interface IndoorGisMapProps {
   onNodeSelect?: (nodeId: string) => void;
   heightClassName?: string;
   showCameraControls?: boolean;
+  showHeatmap?: boolean;
 }
 
 const coverageStyles: Record<CameraDensityLevel, { color: string; fillColor: string; fillOpacity: number }> = {
@@ -182,11 +271,15 @@ export function IndoorGisMap({
   onNodeSelect,
   heightClassName = 'h-[34rem] md:h-[38rem]',
   showCameraControls = true,
+  showHeatmap = false,
 }: IndoorGisMapProps) {
   const { user } = useAuthStore();
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<import('leaflet').Map | null>(null);
   const layerGroupRef = useRef<import('leaflet').LayerGroup | null>(null);
+  const lastFloorIdRef = useRef<number | null>(null);
+  const lastRouteGeoJsonRef = useRef<any>(null);
+  const hasFittedRef = useRef<boolean>(false);
   const selectedCameraIdRef = useRef<number | null>(null);
   const [mapReady, setMapReady] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -196,6 +289,7 @@ export function IndoorGisMap({
   const [refreshToken, setRefreshToken] = useState(0);
   const [updatingLevel, setUpdatingLevel] = useState<CameraDensityLevel | null>(null);
   const canManageCameraDensity = Boolean(user?.permissions.canManageCameraDensity);
+  const canViewBins = Boolean(user?.permissions?.canViewBins || (user?.role && ['Cleaning', 'Supervisor'].includes(user.role)));
 
   const selectCamera = useCallback((status: CameraStatus) => {
     if (!canManageCameraDensity) return;
@@ -250,6 +344,12 @@ export function IndoorGisMap({
 
       L.control.attribution({ prefix: false }).addAttribution('Indoor GIS · PostGIS').addTo(map);
 
+      L.tileLayer('https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png', {
+        attribution: '&copy; OpenStreetMap contributors &copy; CARTO',
+        subdomains: 'abcd',
+        maxZoom: 22
+      }).addTo(map);
+
       const layers = L.layerGroup().addTo(map);
       mapRef.current = map;
       layerGroupRef.current = layers;
@@ -274,6 +374,53 @@ export function IndoorGisMap({
   }, [floorId, canManageCameraDensity]);
 
   useEffect(() => {
+    const timer = setInterval(() => {
+      setRefreshToken((prev) => prev + 1);
+    }, 6000); // refresh every 6s to keep positions active
+    return () => clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
+    if (!mapReady || !mapRef.current) return;
+
+    const handlePopupOpen = (e: any) => {
+      const popup = e.popup;
+      const container = popup.getElement();
+      if (!container) return;
+
+      const btn = container.querySelector('.gis-empty-bin-btn');
+      if (btn) {
+        const taskId = btn.getAttribute('data-task-id');
+        btn.addEventListener('click', async () => {
+          btn.setAttribute('disabled', 'true');
+          btn.style.background = '#94a3b8';
+          btn.textContent = 'A esvaziar...';
+
+          try {
+            if (taskId) {
+              await api.updateTaskStatus(taskId, 'completed');
+              setRefreshToken((prev) => prev + 1);
+              mapRef.current?.closePopup();
+            }
+          } catch (err) {
+            console.error('Failed to empty bin:', err);
+            btn.removeAttribute('disabled');
+            btn.style.background = '#ef4444';
+            btn.textContent = 'Erro! Tentar de novo';
+          }
+        });
+      }
+    };
+
+    mapRef.current.on('popupopen', handlePopupOpen);
+    return () => {
+      if (mapRef.current) {
+        mapRef.current.off('popupopen', handlePopupOpen);
+      }
+    };
+  }, [mapReady]);
+
+  useEffect(() => {
     let cancelled = false;
 
     async function renderLayers() {
@@ -288,7 +435,7 @@ export function IndoorGisMap({
 
         if (!mapRef.current || !layerGroupRef.current) return;
 
-        const [rooms, corridors, nodes, cameras, coverage, transitions, cameraStatusResponse, impactedEdges] = await Promise.all([
+        const [rooms, corridors, nodes, cameras, coverage, transitions, cameraStatusResponse, impactedEdges, pois, binAlerts, heatmapPointsRes, staffMembers, staffPositions] = await Promise.all([
           gisApi.getRooms({ floorId }),
           gisApi.getCorridors({ floorId }),
           gisApi.getNodes({ floorId }),
@@ -297,6 +444,11 @@ export function IndoorGisMap({
           gisApi.getVerticalTransitions({ floorId }),
           gisApi.getCameraStatus({ floorId }),
           gisApi.getImpactedEdges({ floorId }),
+          gisApi.getPois({ floorId }),
+          canViewBins ? api.getBinAlerts().catch(() => []) : Promise.resolve([]),
+          showHeatmap ? api.getHeatmapPoints({ floorId }).catch(() => ({ points: [] })) : Promise.resolve({ points: [] }),
+          api.getStaff().catch(() => []),
+          api.getAllStaffPositions().catch(() => []),
         ]);
 
         if (cancelled) return;
@@ -396,9 +548,9 @@ export function IndoorGisMap({
 
         const routeFeaturesForFloor = routeGeoJson
           ? {
-              ...routeGeoJson,
-              features: routeGeoJson.features.filter((feature) => feature.properties.floor_id === floorId),
-            }
+            ...routeGeoJson,
+            features: routeGeoJson.features.filter((feature) => feature.properties.floor_id === floorId),
+          }
           : null;
 
         const routeLayer = L.geoJSON((routeFeaturesForFloor ?? { type: 'FeatureCollection', features: [] }) as unknown as GeoJSON.GeoJsonObject, {
@@ -448,12 +600,37 @@ export function IndoorGisMap({
           pointToLayer: (feature, latlng) => {
             const properties = feature.properties as CameraProperties;
             const status = cameraStatusLookup.byCameraId.get(properties.id);
+            const density = status?.density_level || 'normal';
+            const color = coverageStyles[density]?.color || '#64748b';
+
+            const cameraHtml = `
+              <div style="
+                background: white;
+                border-radius: 50%;
+                padding: 4px;
+                box-shadow: 0 3px 8px rgba(0,0,0,0.18);
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                color: ${color};
+                border: 2px solid ${color};
+                width: 26px;
+                height: 26px;
+                box-sizing: border-box;
+              ">
+                <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2 2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
+                  <circle cx="12" cy="13" r="4"/>
+                </svg>
+              </div>
+            `;
+
             return L.marker(latlng, {
               icon: L.divIcon({
                 className: 'gis-camera-marker',
-                html: '<span class="gis-marker-dot gis-marker-dot-camera"></span>',
-                iconSize: [18, 18],
-                iconAnchor: [9, 9],
+                html: cameraHtml,
+                iconSize: [26, 26],
+                iconAnchor: [13, 13],
               }),
             })
               .bindTooltip(properties.camera_name ?? `Camera ${properties.id}`, { sticky: true })
@@ -479,33 +656,209 @@ export function IndoorGisMap({
           },
         }).addTo(layerGroupRef.current);
 
+        const poiLayer = canViewBins
+          ? L.geoJSON(pois as unknown as GeoJSON.GeoJsonObject, {
+            filter: (feature) => {
+              const properties = feature?.properties as PoiProperties | undefined;
+              if (!properties) return false;
+              return properties.category === 'bin' || (properties.name ? properties.name.toLowerCase().includes('lixeira') : false);
+            },
+            pointToLayer: (feature, latlng) => {
+              const properties = feature.properties as PoiProperties;
+              
+              const parseNodeId = (val: string | number | undefined | null): number | null => {
+                if (val == null) return null;
+                const str = String(val).trim().toUpperCase();
+                const cleaned = str.replace(/^N/, '');
+                const parsed = parseInt(cleaned, 10);
+                return isNaN(parsed) ? null : parsed;
+              };
+
+              const poiNodeId = parseNodeId(properties.node_id);
+              const activeAlerts = (binAlerts || []).filter(
+                (alert: any) => alert.status !== 'completed' && alert.status !== 'cancelled' && !alert.completed_at
+              );
+              const alertForPoi = activeAlerts.find(
+                (alert: any) => parseNodeId(alert.location_node) === poiNodeId
+              );
+
+              const fillPct = alertForPoi ? (alertForPoi.fill_percentage ?? 0) : 0;
+              const isFull = !!alertForPoi && fillPct >= 100;
+              const statusText = isFull ? `Cheio (${Math.round(fillPct)}%)` : (alertForPoi ? `Limpo (${Math.round(fillPct)}%)` : 'Vazio');
+              const statusColor = isFull ? '#ef4444' : '#22c55e';
+              
+              const iconHtml = isFull 
+                ? `<div class="gis-bin-full" style="background:white;border-radius:50%;padding:5px;box-shadow:0 4px 12px rgba(239,68,68,0.25);display:flex;align-items:center;justify-content:center;color:#ef4444;border:2px solid #ef4444;width:26px;height:26px;box-sizing:border-box;"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg></div>`
+                : `<div style="background:white;border-radius:50%;padding:5px;box-shadow:0 2px 6px rgba(0,0,0,0.1);display:flex;align-items:center;justify-content:center;color:#22c55e;border:2px solid #22c55e;width:26px;height:26px;box-sizing:border-box;"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg></div>`;
+
+              const marker = L.marker(latlng, {
+                icon: L.divIcon({
+                  className: 'gis-poi-marker',
+                  html: iconHtml,
+                  iconSize: [26, 26],
+                  iconAnchor: [13, 13],
+                }),
+              });
+
+              let popupContent = `
+                <div style="font-family: inherit; padding: 6px; min-width: 150px; text-align: center;">
+                  <strong style="font-size: 13px; color: #1f2937; display: block; margin-bottom: 4px;">
+                    ${properties.name ?? 'Lixeira'}
+                  </strong>
+                  <span style="font-size: 11px; display: block; margin-bottom: 6px; color: #4b5563;">
+                    Nó: ${properties.node_id ?? 'N/A'}
+                  </span>
+                  <div style="display: flex; align-items: center; justify-content: center; margin-bottom: 8px;">
+                    <span style="font-size: 12px; font-weight: 700; color: ${statusColor};">
+                      ${statusText}
+                    </span>
+                  </div>
+              `;
+
+              const canEmpty = isFull && user && ['Cleaning', 'Supervisor'].includes(user.role);
+              if (canEmpty) {
+                popupContent += `
+                  <button 
+                    class="gis-empty-bin-btn" 
+                    data-task-id="${alertForPoi.id}"
+                    style="
+                      width: 100%;
+                      background: #4f46e5;
+                      color: white;
+                      border: none;
+                      padding: 6px 10px;
+                      border-radius: 6px;
+                      font-size: 11px;
+                      font-weight: 600;
+                      cursor: pointer;
+                      text-align: center;
+                      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+                      transition: background 0.15s;
+                    "
+                    onmouseover="this.style.background='#4338ca'"
+                    onmouseout="this.style.background='#4f46e5'"
+                  >
+                    Esvaziar Lixeira
+                  </button>
+                `;
+              }
+
+              popupContent += `</div>`;
+
+              marker.bindPopup(popupContent);
+              marker.bindTooltip(`<strong>${properties.name ?? 'Lixeira'}</strong><br/><span style="color:${statusColor};font-weight:bold;">${statusText}</span>`, { sticky: true });
+
+              return marker;
+            },
+          }).addTo(layerGroupRef.current)
+          : null;
+
+        let heatmapLayer = null;
+        if (showHeatmap && heatmapPointsRes?.points && heatmapPointsRes.points.length > 0) {
+          try {
+            await import('leaflet.heat');
+            const points = heatmapPointsRes.points.map((p: any) => [p.latitude, p.longitude, p.weight]);
+            // @ts-ignore
+            heatmapLayer = L.heatLayer(points, {
+              radius: 28,
+              blur: 18,
+              maxZoom: 18,
+              max: 1.0,
+              gradient: {
+                0.3: '#3b82f6',
+                0.55: '#10b981',
+                0.75: '#eab308',
+                1.0: '#ef4444'
+              }
+            }).addTo(layerGroupRef.current);
+          } catch (e) {
+            console.error('Failed to load heatmap layer:', e);
+          }
+        }
+
         const selectedNodeSet = new Set(selectedNodeIds.map(String));
         const nodeLayer = nodeSelectionMode
           ? L.geoJSON(nodes as unknown as GeoJSON.GeoJsonObject, {
-              pointToLayer: (feature, latlng) => {
-                const properties = feature.properties as NodeProperties;
-                const selected = selectedNodeSet.has(String(properties.node_id));
+            pointToLayer: (feature, latlng) => {
+              const properties = feature.properties as NodeProperties;
+              const selected = selectedNodeSet.has(String(properties.node_id));
 
-                return L.marker(latlng, {
-                  zIndexOffset: selected ? 1000 : 700,
-                  icon: L.divIcon({
-                    className: 'gis-node-selector-marker',
-                    html: nodeMarkerHtml(properties.node_id, selected, nodeSelectionMode),
-                    iconSize: [30, 24],
-                    iconAnchor: [15, 12],
-                  }),
-                })
-                  .bindTooltip(`Nó ${properties.node_id} · ${properties.type ?? 'graph node'}`, { sticky: true })
-                  .on('click', () => onNodeSelect?.(String(properties.node_id)));
-              },
-            }).addTo(layerGroupRef.current)
+              return L.marker(latlng, {
+                zIndexOffset: selected ? 1000 : 700,
+                icon: L.divIcon({
+                  className: 'gis-node-selector-marker',
+                  html: nodeMarkerHtml(properties.node_id, selected, nodeSelectionMode),
+                  iconSize: [30, 24],
+                  iconAnchor: [15, 12],
+                }),
+              })
+                .bindTooltip(`Nó ${properties.node_id} · ${properties.type ?? 'graph node'}`, { sticky: true })
+                .on('click', () => onNodeSelect?.(String(properties.node_id)));
+            },
+          }).addTo(layerGroupRef.current)
           : null;
 
-        const fitLayer = getBestFitLayer(routeLayer, roomLayer, corridorLayer, cameraLayer, transitionLayer, ...(nodeLayer ? [nodeLayer] : []));
-        if (fitLayer) {
+        // Render staff member markers
+        if (staffMembers && staffMembers.length > 0) {
+          const floorNodeIds = new Set(
+            (nodes?.features || []).map((f: any) => String(f.properties?.node_id || f.properties?.id))
+          );
+
+          staffMembers.forEach((member: any) => {
+            const pos = staffPositions.find((p: any) => String(p.staff_id) === String(member.id));
+            if (!pos) return;
+
+            const isCurrentFloor = floorNodeIds.has(String(pos.location_id)) ||
+              (pos.zone && pos.zone.toLowerCase().includes(`floor ${floorId}`));
+
+            if (isCurrentFloor && layerGroupRef.current) {
+              let lat = pos.y;
+              let lng = pos.x;
+              if (Math.abs(lng) > 10) {
+                const converted = mapCoordsToLatLng(pos.x, pos.y);
+                lat = converted[0];
+                lng = converted[1];
+              }
+
+              const statusEmoji = member.status === 'active' ? '🟢 Active' : member.status === 'patrol' ? '🔵 Patrol' : '⚪ Break';
+              const tooltipHtml = `
+                <div style="font-family:inherit;padding:2px;">
+                  <strong style="font-size:12px;color:#1e293b;">${member.name}</strong><br/>
+                  <span style="font-size:10.5px;color:#64748b;font-weight:600;">${member.role}</span><br/>
+                  <span style="font-size:10px;margin-top:2px;display:inline-block;">Status: ${statusEmoji}</span>
+                </div>
+              `;
+
+              L.marker([lat, lng], {
+                icon: L.divIcon({
+                  className: 'gis-staff-marker',
+                  html: getStaffIconHtml(member.role, member.name, member.status),
+                  iconSize: [32, 32],
+                  iconAnchor: [16, 16],
+                }),
+                zIndexOffset: 850,
+              })
+              .bindTooltip(tooltipHtml, { sticky: true })
+              .addTo(layerGroupRef.current);
+            }
+          });
+        }
+
+        const isNewFloor = lastFloorIdRef.current !== floorId;
+        const isNewRoute = lastRouteGeoJsonRef.current !== routeGeoJson;
+
+        if (isNewFloor || isNewRoute) {
+          hasFittedRef.current = false;
+          lastFloorIdRef.current = floorId;
+          lastRouteGeoJsonRef.current = routeGeoJson;
+        }
+
+        const fitLayer = getBestFitLayer(routeLayer, roomLayer, corridorLayer, cameraLayer, transitionLayer, ...(poiLayer ? [poiLayer] : []), ...(nodeLayer ? [nodeLayer] : []));
+        if (fitLayer && !hasFittedRef.current) {
           const bounds = fitLayer.getBounds();
           if (bounds.isValid()) {
             mapRef.current.fitBounds(bounds.pad(0.12), { animate: false });
+            hasFittedRef.current = true;
           }
         }
 
@@ -523,10 +876,23 @@ export function IndoorGisMap({
     return () => {
       cancelled = true;
     };
-  }, [floorId, canManageCameraDensity, mapReady, refreshToken, routeAffected, routeGeoJson, selectCamera, nodeSelectionMode, onNodeSelect, selectedNodeIds]);
+  }, [floorId, canManageCameraDensity, canViewBins, showHeatmap, mapReady, refreshToken, routeAffected, routeGeoJson, selectCamera, nodeSelectionMode, onNodeSelect, selectedNodeIds]);
 
   return (
     <div className="overflow-hidden rounded-[1.5rem] border border-slate-200 bg-slate-50">
+      <style>{`
+        @keyframes staffPulse {
+          0% {
+            box-shadow: 0 0 0 0 rgba(37, 99, 235, 0.45);
+          }
+          70% {
+            box-shadow: 0 0 0 8px rgba(37, 99, 235, 0);
+          }
+          100% {
+            box-shadow: 0 0 0 0 rgba(37, 99, 235, 0);
+          }
+        }
+      `}</style>
       <div className={`relative bg-[linear-gradient(135deg,#f8fafc,#eef2f7)] ${heightClassName}`}>
         <div ref={containerRef} className="h-full w-full" />
         {loading && (
@@ -540,74 +906,74 @@ export function IndoorGisMap({
           </div>
         )}
         {showCameraControls && canManageCameraDensity && (
-        <div className="absolute right-4 top-4 z-[500] w-[20rem] max-w-[calc(100%-2rem)] rounded-2xl border border-slate-200 bg-white/95 p-4 shadow-xl backdrop-blur">
-          <div className="mb-3 flex items-start justify-between gap-3">
-            <div>
-              <p className="text-[0.65rem] font-semibold uppercase tracking-[0.2em] text-orange-600">
-                Supervisor control
-              </p>
-              <h3 className="mt-1 text-sm font-bold text-slate-950">Camera operations</h3>
+          <div className="absolute right-4 top-4 z-[500] w-[20rem] max-w-[calc(100%-2rem)] rounded-2xl border border-slate-200 bg-white/95 p-4 shadow-xl backdrop-blur">
+            <div className="mb-3 flex items-start justify-between gap-3">
+              <div>
+                <p className="text-[0.65rem] font-semibold uppercase tracking-[0.2em] text-orange-600">
+                  Supervisor control
+                </p>
+                <h3 className="mt-1 text-sm font-bold text-slate-950">Camera operations</h3>
+              </div>
+              <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[0.65rem] font-semibold text-slate-600">
+                {cameraStatuses.length} live
+              </span>
             </div>
-            <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[0.65rem] font-semibold text-slate-600">
-              {cameraStatuses.length} live
-            </span>
+
+            {selectedCamera ? (
+              <div className="space-y-3">
+                <div className="rounded-xl border border-slate-100 bg-slate-50 p-3">
+                  <p className="text-sm font-semibold text-slate-950">
+                    {selectedCamera.camera_name ?? `Camera ${selectedCamera.camera_id}`}
+                  </p>
+                  <p className="mt-1 text-xs text-slate-600">
+                    Floor {selectedCamera.floor_id} · {selectedCamera.monitored_area ?? 'Unmapped coverage'}
+                  </p>
+                  <div className="mt-3 grid grid-cols-3 gap-2 text-xs">
+                    <div className="rounded-lg bg-white p-2">
+                      <p className="text-slate-500">People</p>
+                      <p className="text-lg font-bold text-slate-950">{selectedCamera.people_count}</p>
+                    </div>
+                    <div className="rounded-lg bg-white p-2">
+                      <p className="text-slate-500">Density</p>
+                      <p className="font-bold capitalize text-slate-950">{selectedCamera.density_level}</p>
+                    </div>
+                    <div className="rounded-lg bg-white p-2">
+                      <p className="text-slate-500">Status</p>
+                      <p className="font-bold capitalize text-slate-950">{selectedCamera.status}</p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2">
+                  {quickCameraActions.map((action) => (
+                    <button
+                      key={action.level}
+                      type="button"
+                      disabled={updatingLevel != null}
+                      onClick={() => void updateSelectedCamera(action.level, action.peopleCount)}
+                      className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-left text-xs font-semibold text-slate-700 shadow-sm transition hover:border-orange-300 hover:bg-orange-50 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      <span
+                        className="mr-2 inline-block h-2.5 w-2.5 rounded-full"
+                        style={{ backgroundColor: coverageStyles[action.level].color }}
+                      />
+                      {updatingLevel === action.level ? 'Updating...' : action.label}
+                    </button>
+                  ))}
+                </div>
+
+                {['congested', 'critical'].includes(selectedCamera.density_level) && (
+                  <div className="rounded-xl border border-orange-200 bg-orange-50 px-3 py-2 text-xs font-medium text-orange-800">
+                    Routing impact active: routes will avoid this monitored area when possible.
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 p-3 text-sm text-slate-600">
+                Select a camera or coverage area on the map to manage its live state.
+              </div>
+            )}
           </div>
-
-          {selectedCamera ? (
-            <div className="space-y-3">
-              <div className="rounded-xl border border-slate-100 bg-slate-50 p-3">
-                <p className="text-sm font-semibold text-slate-950">
-                  {selectedCamera.camera_name ?? `Camera ${selectedCamera.camera_id}`}
-                </p>
-                <p className="mt-1 text-xs text-slate-600">
-                  Floor {selectedCamera.floor_id} · {selectedCamera.monitored_area ?? 'Unmapped coverage'}
-                </p>
-                <div className="mt-3 grid grid-cols-3 gap-2 text-xs">
-                  <div className="rounded-lg bg-white p-2">
-                    <p className="text-slate-500">People</p>
-                    <p className="text-lg font-bold text-slate-950">{selectedCamera.people_count}</p>
-                  </div>
-                  <div className="rounded-lg bg-white p-2">
-                    <p className="text-slate-500">Density</p>
-                    <p className="font-bold capitalize text-slate-950">{selectedCamera.density_level}</p>
-                  </div>
-                  <div className="rounded-lg bg-white p-2">
-                    <p className="text-slate-500">Status</p>
-                    <p className="font-bold capitalize text-slate-950">{selectedCamera.status}</p>
-                  </div>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-2">
-                {quickCameraActions.map((action) => (
-                  <button
-                    key={action.level}
-                    type="button"
-                    disabled={updatingLevel != null}
-                    onClick={() => void updateSelectedCamera(action.level, action.peopleCount)}
-                    className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-left text-xs font-semibold text-slate-700 shadow-sm transition hover:border-orange-300 hover:bg-orange-50 disabled:cursor-not-allowed disabled:opacity-60"
-                  >
-                    <span
-                      className="mr-2 inline-block h-2.5 w-2.5 rounded-full"
-                      style={{ backgroundColor: coverageStyles[action.level].color }}
-                    />
-                    {updatingLevel === action.level ? 'Updating...' : action.label}
-                  </button>
-                ))}
-              </div>
-
-              {['congested', 'critical'].includes(selectedCamera.density_level) && (
-                <div className="rounded-xl border border-orange-200 bg-orange-50 px-3 py-2 text-xs font-medium text-orange-800">
-                  Routing impact active: routes will avoid this monitored area when possible.
-                </div>
-              )}
-            </div>
-          ) : (
-            <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 p-3 text-sm text-slate-600">
-              Select a camera or coverage area on the map to manage its live state.
-            </div>
-          )}
-        </div>
         )}
       </div>
     </div>

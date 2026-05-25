@@ -91,8 +91,10 @@ def handle_bin_full(event: dict, task_manager, db):
     location_node = event.get('location_node', event.get('poi_node'))
     fill_percentage = event.get('fill_pct', event.get('fill_percentage', 0))
     
-    if not bin_id or not location_node:
+    if not bin_id or location_node is None:
         return
+    
+    location_node = str(location_node)
     
     # Determine priority
     if fill_percentage >= 95:
@@ -122,8 +124,10 @@ def handle_spill(event: dict, task_manager, db):
     spill_type = event.get('spill_type', 'unknown')
     severity = event.get('severity', 'medium')
     
-    if not location_node:
+    if location_node is None:
         return
+    
+    location_node = str(location_node)
     
     task_data = TaskCreate(
         task_type="spill_cleanup",
@@ -152,8 +156,10 @@ def handle_restroom_check(event: dict, task_manager, db):
     restroom_id = event.get('restroom_id', 'unknown')
     reason = event.get('reason', 'scheduled_check')
     
-    if not location_node:
+    if location_node is None:
         return
+    
+    location_node = str(location_node)
     
     # Priority based on reason
     priority_map = {
@@ -191,8 +197,10 @@ def handle_equipment_issue(event: dict, task_manager, db):
     equipment_type = event.get('equipment_type', 'unknown')
     issue = event.get('issue', 'malfunction')
     
-    if not location_node:
+    if location_node is None:
         return
+    
+    location_node = str(location_node)
     
     task_data = TaskCreate(
         task_type="equipment_repair",
