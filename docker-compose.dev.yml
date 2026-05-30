@@ -1,4 +1,126 @@
 services:
+  redis:
+    image: redis:7-alpine
+    container_name: redis-cache
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+    command: redis-server --appendonly yes
+
+  redis-exporter:
+    image: oliver006/redis_exporter:v1.67.0
+    container_name: redis-exporter
+    depends_on:
+      redis:
+        condition: service_healthy
+    environment:
+      REDIS_ADDR: redis://redis-cache:6379
+    ports:
+      - "9121:9121"
+
+  postgres-map-exporter:
+    image: prometheuscommunity/postgres-exporter:v0.15.0
+    container_name: postgres-map-exporter
+    depends_on:
+      postgres_map:
+        condition: service_healthy
+    environment:
+      DATA_SOURCE_NAME: postgresql://postgres:postgres@postgres_map:5432/estadio_do_dragao?sslmode=disable
+    ports:
+      - "9187:9187"
+
+  blackbox-exporter:
+    image: prom/blackbox-exporter:v0.25.0
+    container_name: blackbox-exporter
+    command:
+      - "--config.file=/etc/blackbox_exporter/config.yml"
+    volumes:
+      - ./monitoring/prometheus/blackbox.yml:/etc/blackbox_exporter/config.yml:ro
+    ports:
+      - "9115:9115"
+
+  prometheus:
+    image: prom/prometheus:v2.55.1
+    container_name: prometheus
+    depends_on:
+      - blackbox-exporter
+      - redis-exporter
+      - postgres-map-exporter
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--web.enable-lifecycle"
+    volumes:
+      - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    ports:
+      - "9090:9090"
+
+  grafana:
+    image: grafana/grafana:11.3.0
+    container_name: grafana
+    depends_on:
+      - prometheus
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports:
+      - "3001:3000"
+
+  frontend-web:
+    build:
+      context: ./frontend-web
+      dockerfile: Dockerfile
+    container_name: frontend-web
+    depends_on:
+      auth-service:
+        condition: service_started
+      routing-service:
+        condition: service_started
+      congestion-service:
+        condition: service_started
+      emergency-service:
+        condition: service_started
+      maintenance-service:
+        condition: service_started
+      queueing-service:
+        condition: service_started
+      positioning-service:
+        condition: service_started
+      chat-service:
+        condition: service_started
+      ws-gateway:
+        condition: service_started
+    environment:
+      NEXT_TELEMETRY_DISABLED: "1"
+      WATCHPACK_POLLING: "true"
+      AUTH_SERVICE_URL: http://auth-service:8081
+      CONGESTION_SERVICE_URL: http://congestion-service:8005
+      EMERGENCY_SERVICE_URL: http://emergency-service:8006
+      MAINTENANCE_SERVICE_URL: http://maintenance-service:8007
+      QUEUEING_SERVICE_URL: http://queueing-service:8003
+      ROUTING_SERVICE_URL: http://routing-service:8002
+      CHAT_SERVICE_URL: http://chat-service:8000
+      POSITIONING_SERVICE_URL: http://positioning-service:8004
+      NEXT_PUBLIC_WS_GATEWAY: ws://localhost:8089/ws
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./frontend-web:/app
+      - frontend_node_modules:/app/node_modules
+
   mosquitto:
     image: eclipse-mosquitto:2.0.18
     container_name: mosquitto
@@ -165,16 +287,21 @@ services:
 
   routing-service:
     build:
-      context: ./services/Routing-Service
-      dockerfile: Dockerfile
+      context: ./services
+      dockerfile: Routing-Service/Dockerfile
     container_name: routing-service
     depends_on:
       postgres_map:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     environment:
       AUTH_SERVICE_URL: http://auth-service:8081
       DATABASE_URI: postgresql://postgres:postgres@postgres_map:5432/estadio_do_dragao
       PGR_DATABASE_URI: postgresql://postgres:postgres@postgres_map:5432/estadio_do_dragao?options=-csearch_path%3Dindoor,public
+      REDIS_URL: redis://redis-cache:6379/0
+      REDIS_HOST: redis-cache
+      REDIS_PORT: "6379"
     ports:
       - "8002:8002"
 
@@ -184,25 +311,37 @@ services:
       dockerfile: Dockerfile
     container_name: queueing-service
     depends_on:
-      - mosquitto
+      mosquitto:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     environment:
       MQTT_HOST: mosquitto
       MQTT_BROKER: mosquitto
       MQTT_PORT: "1883"
+      REDIS_URL: redis://redis-cache:6379/1
+      REDIS_HOST: redis-cache
+      REDIS_PORT: "6379"
     ports:
       - "8003:8003"
 
   congestion-service:
     build:
-      context: ./services/Congestion-Service
-      dockerfile: Dockerfile
+      context: ./services
+      dockerfile: Congestion-Service/Dockerfile
     container_name: congestion-service
     depends_on:
-      - mosquitto
+      mosquitto:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     environment:
       MQTT_HOST: mosquitto
       MQTT_BROKER: mosquitto
       MQTT_PORT: "1883"
+      REDIS_URL: redis://redis-cache:6379/2
+      REDIS_HOST: redis-cache
+      REDIS_PORT: "6379"
     ports:
       - "8005:8005"
 
@@ -295,8 +434,13 @@ services:
     depends_on:
       postgres_positioning:
         condition: service_healthy
+      redis:
+        condition: service_healthy
     environment:
       DATABASE_URL: postgresql://admin:password@postgres_positioning:5432/positioning
+      REDIS_URL: redis://redis-cache:6379/3
+      REDIS_HOST: redis-cache
+      REDIS_PORT: "6379"
     ports:
       - "8004:8004"
 
@@ -333,6 +477,10 @@ services:
 
 
 volumes:
+  prometheus_data:
+  grafana_data:
+  frontend_node_modules:
+  redis_data:
   mosquitto_data:
   mosquitto_log:
   postgres_auth_data:

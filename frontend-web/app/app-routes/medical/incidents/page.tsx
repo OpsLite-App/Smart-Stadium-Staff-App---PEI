@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuthStore } from '@/lib/stores/useAuthStore';
 import { RouteWaypoint, useNavigationStore } from '@/lib/stores/useNavigationStore';
-import { api, EMERGENCY_SERVICE, MAINTENANCE_SERVICE } from '@/lib/services/api';
+import { api, EMERGENCY_EVENTS_URL, EMERGENCY_SERVICE, MAINTENANCE_SERVICE } from '@/lib/services/api';
 import { IndoorGisMap } from '@/components/map/IndoorGisMap';
 import { indoorRoutingService, type IndoorRouteGeoJsonResponse } from '@/lib/services/indoorRouting';
 import axios from 'axios';
@@ -239,8 +239,52 @@ export default function MedicalIncidentsPage() {
 
   useEffect(() => {
     fetchData();
+    const eventSource =
+      typeof window !== 'undefined'
+        ? new EventSource(EMERGENCY_EVENTS_URL, { withCredentials: true })
+        : null;
+
+    const handleRealtimeUpdate = (event: MessageEvent) => {
+      try {
+        const parsed = JSON.parse(event.data) as { type?: string };
+        console.log('✅ Medical SSE update:', parsed.type || 'unknown');
+      } catch {
+        console.log('✅ Medical SSE update received');
+      }
+      void fetchData();
+    };
+
+    [
+      'incident.created',
+      'incident.updated',
+      'incident.escalated',
+      'incident.resolved',
+      'sensor.alert',
+      'dispatch.created',
+      'dispatch.accepted',
+      'dispatch.declined',
+      'dispatch.completed',
+      'dispatch.arrived',
+      'evacuation.created',
+      'evacuation.safe',
+      'evacuation.completed',
+    ].forEach((eventType) => {
+      eventSource?.addEventListener(eventType, handleRealtimeUpdate);
+    });
+
+    eventSource?.addEventListener('connected', () => {
+      console.log('✅ Medical SSE connected');
+    });
+
+    eventSource?.addEventListener('error', () => {
+      console.warn('Medical SSE disconnected, browser will retry automatically');
+    });
+
     const interval = setInterval(fetchData, 15000);
-    return () => clearInterval(interval);
+    return () => {
+      eventSource?.close();
+      clearInterval(interval);
+    };
   }, [fetchData]);
 
 const handleAcceptIncident = async (incident: MedicalIncident) => {

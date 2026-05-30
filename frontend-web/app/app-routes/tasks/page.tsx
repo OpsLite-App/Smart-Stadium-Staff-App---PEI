@@ -5,7 +5,7 @@ import { useTranslation } from 'react-i18next';
 import '@/lib/i18n';
 import { useAuthStore } from '@/lib/stores/useAuthStore';
 import { RouteWaypoint, useNavigationStore } from '@/lib/stores/useNavigationStore';
-import { api, EMERGENCY_SERVICE } from '@/lib/services/api';
+import { api, EMERGENCY_EVENTS_URL, EMERGENCY_SERVICE } from '@/lib/services/api';
 import { gisApi } from '@/lib/services/gisApi';
 import { IndoorGisMap } from '@/components/map/IndoorGisMap';
 import { indoorRoutingService, type IndoorRouteGeoJsonResponse } from '@/lib/services/indoorRouting';
@@ -225,8 +225,55 @@ export default function TasksPage() {
 
   useEffect(() => {
     fetchTasks();
+
+    const eventSource =
+      typeof window !== 'undefined'
+        ? new EventSource(EMERGENCY_EVENTS_URL, { withCredentials: true })
+        : null;
+
+    const handleOperationalUpdate = (event: MessageEvent) => {
+      try {
+        const parsed = JSON.parse(event.data) as { type?: string };
+        console.log('✅ Tasks SSE update:', parsed.type || 'unknown');
+      } catch {
+        console.log('✅ Tasks SSE update received');
+      }
+
+      setRefreshing(true);
+      void fetchTasks();
+    };
+
+    [
+      'incident.created',
+      'incident.updated',
+      'incident.escalated',
+      'incident.resolved',
+      'sensor.alert',
+      'dispatch.created',
+      'dispatch.accepted',
+      'dispatch.declined',
+      'dispatch.completed',
+      'dispatch.arrived',
+      'evacuation.created',
+      'evacuation.safe',
+      'evacuation.completed',
+    ].forEach((eventType) => {
+      eventSource?.addEventListener(eventType, handleOperationalUpdate);
+    });
+
+    eventSource?.addEventListener('connected', () => {
+      console.log('✅ Tasks SSE connected');
+    });
+
+    eventSource?.addEventListener('error', () => {
+      console.warn('Tasks SSE disconnected, browser will retry automatically');
+    });
+
     const interval = setInterval(() => { setRefreshing(true); void fetchTasks(); }, 15000);
-    return () => clearInterval(interval);
+    return () => {
+      eventSource?.close();
+      clearInterval(interval);
+    };
   }, [fetchTasks]);
 
   useEffect(() => {

@@ -1,14 +1,39 @@
 """
 ROUTING SERVICE - Main Application
 Only responsible for calculating routes, no emergency management
+
+With Redis Caching:
+- GET /api/route (cached 60s - routes don't change often)
+- GET /api/route/pgrouting (cached 60s)
+- GET /api/route/evacuation (cached 300s - evacuation routes rarely change)
 """
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.responses import Response
 from typing import Any, Callable, Dict, List, Optional
 import httpx
 import asyncio
 import os
+import sys
+import logging
+import time
+
+# Add parent directory to path to import cache_config
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+try:
+    from cache_config import RedisCache
+    CACHE_AVAILABLE = True
+except ImportError:
+    CACHE_AVAILABLE = False
+    print("⚠️  Redis cache not available - proceeding without caching")
+
+try:
+    from prometheus_client import CONTENT_TYPE_LATEST, Counter, Histogram, generate_latest
+    METRICS_AVAILABLE = True
+except ImportError:
+    METRICS_AVAILABLE = False
 
 from astar import Graph, HazardMap, hazard_aware_astar, find_nearest_node, multi_destination_route
 from api_handlers import RouteAPIHandler, HazardAPIHandler
@@ -20,6 +45,30 @@ from pgrouting import (
     OperationalEventCreate,
 )
 from runtime_checks import RuntimeReadinessError
+
+# ========== CACHE INITIALIZATION ==========
+
+redis_cache = RedisCache() if CACHE_AVAILABLE else None
+logger = logging.getLogger(__name__)
+
+
+def get_cached_route(cache_key: str) -> Optional[Dict[str, Any]]:
+    if not redis_cache:
+        return None
+    cached = redis_cache.get(cache_key)
+    if cached is not None:
+        logger.info("Cache hit: %s", cache_key)
+    return cached
+
+
+def set_cached_route(cache_key: str, value: Any, ttl: int) -> None:
+    if redis_cache:
+        redis_cache.set(cache_key, value, ttl=ttl)
+
+
+def invalidate_route_cache() -> None:
+    if redis_cache:
+        redis_cache.clear_pattern("route:*")
 
 # ========== FASTAPI APP ==========
 
@@ -36,6 +85,46 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+if METRICS_AVAILABLE:
+    REQUEST_COUNT = Counter(
+        "http_requests_total",
+        "Total HTTP requests",
+        ["service", "method", "path", "status"],
+    )
+    REQUEST_LATENCY = Histogram(
+        "http_request_duration_seconds",
+        "HTTP request latency in seconds",
+        ["service", "method", "path"],
+    )
+
+    @app.middleware("http")
+    async def prometheus_metrics_middleware(request, call_next):
+        if request.url.path == "/metrics":
+            return await call_next(request)
+
+        start = time.perf_counter()
+        response = await call_next(request)
+        path = getattr(request.scope.get("route"), "path", request.url.path)
+        elapsed = time.perf_counter() - start
+
+        REQUEST_COUNT.labels(
+            service="routing-service",
+            method=request.method,
+            path=path,
+            status=str(response.status_code),
+        ).inc()
+        REQUEST_LATENCY.labels(
+            service="routing-service",
+            method=request.method,
+            path=path,
+        ).observe(elapsed)
+
+        return response
+
+    @app.get("/metrics", include_in_schema=False)
+    async def metrics():
+        return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
 # ========== CONFIGURATION ==========
 
@@ -397,9 +486,18 @@ async def get_route(
     Example: /api/route?from_node=62&to_node=70&avoid_crowds=true
     """
     if not GRAPH:
+        start_node = _parse_node_id(from_node)
+        end_node = _parse_node_id(to_node)
+        cache_key = f"route:legacy:{start_node}:{end_node}:{avoid_crowds}"
+        cached = get_cached_route(cache_key)
+        if cached is not None:
+            return cached
+
         service = require_pgrouting_service()
-        route = service.get_route(_parse_node_id(from_node), _parse_node_id(to_node))
-        return _pgrouting_response_to_legacy_route(route)
+        route = service.get_route(start_node, end_node)
+        response = _pgrouting_response_to_legacy_route(route)
+        set_cached_route(cache_key, response, ttl=60)
+        return response
     
     from api_handlers import RouteRequest
     
@@ -423,8 +521,15 @@ async def get_pgrouting_route(
 
     Example: /api/route/pgrouting?from_node=63&to_node=71&allow_blocked=true
     """
+    cache_key = f"route:pgrouting:{from_node}:{to_node}:{allow_blocked}"
+    cached = get_cached_route(cache_key)
+    if cached is not None:
+        return cached
+
     service = require_pgrouting_service()
-    return service.get_route(from_node, to_node, allow_blocked=allow_blocked)
+    result = service.get_route(from_node, to_node, allow_blocked=allow_blocked)
+    set_cached_route(cache_key, result, ttl=60)
+    return result
 
 
 @app.get("/api/route/pgrouting/geojson")
@@ -434,9 +539,23 @@ async def get_pgrouting_route_geojson(
     srid: int = Query(4326, description="Output SRID for GeoJSON coordinates"),
     allow_blocked: bool = Query(False, description="Whether to allow traversing blocked/disabled edges")
 ):
-    """Calculate an indoor route between two pgRouting nodes and return route edges as GeoJSON."""
+    """
+    Calculate an indoor route between two pgRouting nodes and return route edges as GeoJSON.
+    Results are cached for 60 seconds (routes don't change often in the same session).
+    """
+    # Build cache key - routes are symmetric, so we cache both directions
+    cache_key = f"route:pgrouting:geojson:{min(from_node, to_node)}:{max(from_node, to_node)}:{srid}:{allow_blocked}"
+    
+    cached = get_cached_route(cache_key)
+    if cached is not None:
+        return cached
+    
     service = require_pgrouting_service()
-    return service.get_route_geojson(from_node, to_node, output_srid=srid, allow_blocked=allow_blocked)
+    result = service.get_route_geojson(from_node, to_node, output_srid=srid, allow_blocked=allow_blocked)
+    
+    set_cached_route(cache_key, result, ttl=60)
+    
+    return result
 
 
 @app.get("/api/route/pgrouting/combined")
@@ -503,21 +622,27 @@ async def list_edge_overrides():
 async def create_edge_override(payload: EdgeOverrideCreate):
     """Create a live edge override for blocked paths or congestion."""
     service = require_pgrouting_service()
-    return service.create_edge_override(payload)
+    result = service.create_edge_override(payload)
+    invalidate_route_cache()
+    return result
 
 
 @app.post("/api/graph/node-closures")
 async def create_node_closure(payload: NodeClosureCreate):
     """Create live edge overrides for every corridor connected to a node."""
     service = require_pgrouting_service()
-    return service.create_node_closure(payload)
+    result = service.create_node_closure(payload)
+    invalidate_route_cache()
+    return result
 
 
 @app.post("/api/graph/edge-overrides/deactivate-by-source")
 async def deactivate_edge_overrides_by_source(source: str = Query(...)):
     """Deactivate live edge overrides created by a specific subsystem/source."""
     service = require_pgrouting_service()
-    return service.deactivate_edge_overrides_by_source(source)
+    result = service.deactivate_edge_overrides_by_source(source)
+    invalidate_route_cache()
+    return result
 
 
 @app.get("/api/graph/events")
@@ -531,14 +656,18 @@ async def list_operational_events():
 async def create_operational_event(payload: OperationalEventCreate):
     """Create a minimal operational monitoring event."""
     service = require_pgrouting_service()
-    return service.create_operational_event(payload)
+    result = service.create_operational_event(payload)
+    invalidate_route_cache()
+    return result
 
 
 @app.post("/api/graph/events/deactivate-by-source")
 async def deactivate_operational_events_by_source(source: str = Query(...)):
     """Deactivate active operational events created by a specific source."""
     service = require_pgrouting_service()
-    return service.deactivate_operational_events_by_source(source)
+    result = service.deactivate_operational_events_by_source(source)
+    invalidate_route_cache()
+    return result
 
 
 # ========== GIS LAYER ENDPOINTS ==========
@@ -631,7 +760,9 @@ async def update_gis_camera_status(
     """Update persisted monitoring state for one camera."""
     service = require_gis_layer_service()
     try:
-        return service.update_camera_status(camera_id, payload)
+        result = service.update_camera_status(camera_id, payload)
+        invalidate_route_cache()
+        return result
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -707,12 +838,18 @@ async def evacuation_route(from_node: str = Query(..., description="Current posi
     Example: /api/route/evacuation?from_node=62
     """
     if not GRAPH:
-        service = require_pgrouting_service()
         start_node = _parse_node_id(from_node)
+        cache_key = f"route:evacuation:{start_node}:{EVACUATION_EXIT_NODE}"
+        cached = get_cached_route(cache_key)
+        if cached is not None:
+            return cached
+
+        service = require_pgrouting_service()
         route = service.get_route(start_node, EVACUATION_EXIT_NODE)
         response = _pgrouting_response_to_legacy_route(route)
         response["exit_node"] = str(EVACUATION_EXIT_NODE)
         response["route_type"] = "evacuation"
+        set_cached_route(cache_key, response, ttl=300)
         return response
 
     exit_nodes = [str(EVACUATION_EXIT_NODE)]
@@ -726,12 +863,25 @@ async def evacuation_route_geojson(
     srid: int = Query(4326, description="Output SRID for GeoJSON coordinates"),
     allow_blocked: bool = Query(True, description="Whether to route through blocked edges with high cost as a last resort"),
 ):
-    """Return evacuation route geometry to the fixed IT entrance node."""
+    """
+    Return evacuation route geometry to the fixed IT entrance node.
+    Results are cached for 300 seconds (evacuation routes are static).
+    """
+    # Build cache key
+    cache_key = f"route:evacuation:geojson:{from_node}:{srid}:{allow_blocked}"
+    
+    cached = get_cached_route(cache_key)
+    if cached is not None:
+        return cached
+    
     service = require_pgrouting_service()
-    response = service.get_route_geojson(from_node, EVACUATION_EXIT_NODE, output_srid=srid, allow_blocked=allow_blocked)
-    response.summary["exit_node"] = EVACUATION_EXIT_NODE
-    response.summary["route_type"] = "evacuation"
-    return response
+    result = service.get_route_geojson(from_node, EVACUATION_EXIT_NODE, output_srid=srid, allow_blocked=allow_blocked)
+    result.summary["exit_node"] = EVACUATION_EXIT_NODE
+    result.summary["route_type"] = "evacuation"
+    
+    set_cached_route(cache_key, result, ttl=300)
+    
+    return result
 
 
 # ========== HAZARD MANAGEMENT ==========

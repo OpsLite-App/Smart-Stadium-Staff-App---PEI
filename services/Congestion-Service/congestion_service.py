@@ -2,16 +2,40 @@
 CONGESTION SERVICE
 Real-time crowd density monitoring and heatmap generation
 Listens to MQTT crowd_density events and provides heatmap API
+
+With Redis Caching:
+- GET /api/heatmap (cached 30s)
+- GET /api/heatmap/points (cached 30s)
 """
 
 import requests
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.responses import Response
 from pydantic import BaseModel
 from typing import Dict, List, Optional
 from datetime import datetime, timedelta
 from collections import defaultdict
 import asyncio
+import sys
+import os
+import time
+
+# Add parent directory to path to import cache_config
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+try:
+    from cache_config import RedisCache
+    CACHE_AVAILABLE = True
+except ImportError:
+    CACHE_AVAILABLE = False
+    print("⚠️  Redis cache not available - proceeding without caching")
+
+try:
+    from prometheus_client import CONTENT_TYPE_LATEST, Counter, Histogram, generate_latest
+    METRICS_AVAILABLE = True
+except ImportError:
+    METRICS_AVAILABLE = False
 
 try:
     import paho.mqtt.client as mqtt
@@ -33,9 +57,47 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ========== CONFIGURATION ==========
+if METRICS_AVAILABLE:
+    REQUEST_COUNT = Counter(
+        "http_requests_total",
+        "Total HTTP requests",
+        ["service", "method", "path", "status"],
+    )
+    REQUEST_LATENCY = Histogram(
+        "http_request_duration_seconds",
+        "HTTP request latency in seconds",
+        ["service", "method", "path"],
+    )
 
-import os
+    @app.middleware("http")
+    async def prometheus_metrics_middleware(request, call_next):
+        if request.url.path == "/metrics":
+            return await call_next(request)
+
+        start = time.perf_counter()
+        response = await call_next(request)
+        path = getattr(request.scope.get("route"), "path", request.url.path)
+        elapsed = time.perf_counter() - start
+
+        REQUEST_COUNT.labels(
+            service="congestion-service",
+            method=request.method,
+            path=path,
+            status=str(response.status_code),
+        ).inc()
+        REQUEST_LATENCY.labels(
+            service="congestion-service",
+            method=request.method,
+            path=path,
+        ).observe(elapsed)
+
+        return response
+
+    @app.get("/metrics", include_in_schema=False)
+    async def metrics():
+        return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
+
+# ========== CONFIGURATION ==========
 MQTT_BROKER = os.getenv("MQTT_HOST", os.getenv("MQTT_BROKER", "localhost"))
 MQTT_PORT = int(os.getenv("MQTT_PORT", "1883"))
 MAP_SERVICE_URL = os.getenv("MAP_SERVICE_URL", "")
@@ -86,6 +148,14 @@ class HeatmapResponse(BaseModel):
 import logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# Initialize cache
+redis_cache = RedisCache() if CACHE_AVAILABLE else None
+
+def invalidate_heatmap_cache():
+    """Invalidate heatmap caches when new data arrives"""
+    if redis_cache:
+        redis_cache.clear_pattern("heatmap:*")
 
 def on_mqtt_message(client, userdata, msg):
     """Process crowd density events from MQTT"""
@@ -147,6 +217,9 @@ def on_mqtt_message(client, userdata, msg):
             
             logger.info(f"✅ {area_id} guardado. Total áreas: {len(crowd_data)}")
             
+            # Invalidate heatmap cache on new data
+            invalidate_heatmap_cache()
+            
             # Add to historical data
             historical_data[area_id].append({
                 "timestamp": datetime.now().isoformat(),
@@ -204,6 +277,9 @@ async def cleanup_stale_data():
         
         for area_id in to_remove:
             del crowd_data[area_id]
+
+        if to_remove:
+            invalidate_heatmap_cache()
         
         await asyncio.sleep(60)  # Run every minute
 
@@ -246,7 +322,17 @@ def get_heatmap():
     Get complete stadium heatmap
     
     Returns all areas with current crowd density
+    Results are cached for 30 seconds
     """
+    # Try to get from cache
+    cache_key = "heatmap:complete"
+    if redis_cache:
+        cached = redis_cache.get(cache_key)
+        if cached:
+            logger.info(f"✨ Cache hit: {cache_key}")
+            return HeatmapResponse(**cached)
+    
+    # Generate heatmap
     areas = [CrowdDensity(**data) for data in crowd_data.values()]
     
     # Calculate summary
@@ -254,12 +340,19 @@ def get_heatmap():
     for area in areas:
         summary[area.heat_level] += 1
     
-    return HeatmapResponse(
+    response = HeatmapResponse(
         timestamp=datetime.now().isoformat(),
         total_areas=len(areas),
         areas=areas,
         summary=summary
     )
+    
+    # Cache for 30 seconds
+    if redis_cache:
+        redis_cache.set(cache_key, response.model_dump(), ttl=30)
+        logger.info(f"💾 Cached: {cache_key} (TTL: 30s)")
+    
+    return response
 
 
 @app.get("/api/heatmap/points")
@@ -267,7 +360,16 @@ def get_heatmap_points(floor_id: Optional[int] = Query(None, description="Filter
     """
     Get heatmap points with geographic coordinates
     Returns: [{latitude, longitude, weight, occupancy_rate, area_id, floor_id}, ...]
+    Results are cached for 30 seconds
     """
+    # Build cache key based on floor_id
+    cache_key = f"heatmap:points:{floor_id}"
+    if redis_cache:
+        cached = redis_cache.get(cache_key)
+        if cached:
+            logger.info(f"✨ Cache hit: {cache_key}")
+            return cached
+    
     try:
         points = []
         
@@ -338,18 +440,26 @@ def get_heatmap_points(floor_id: Optional[int] = Query(None, description="Filter
                             "floor_id": point_floor
                         })
         except Exception as e:
-            print(f"⚠️ Map Service não disponível: {e}")
+            logger.warning(f"⚠️ Map Service não disponível: {e}")
             # Continua com os pontos que já temos
         
-        print(f"✅ Gerados {len(points)} pontos de heatmap")
-        return {
+        logger.info(f"✅ Gerados {len(points)} pontos de heatmap")
+        
+        response = {
             "timestamp": datetime.now().isoformat(),
             "points": points,
             "count": len(points)
         }
+        
+        # Cache for 30 seconds
+        if redis_cache:
+            redis_cache.set(cache_key, response, ttl=30)
+            logger.info(f"💾 Cached: {cache_key} (TTL: 30s)")
+        
+        return response
     
     except Exception as e:
-        print(f"❌ Erro ao gerar heatmap points: {e}")
+        logger.error(f"❌ Erro ao gerar heatmap points: {e}")
         return {"points": [], "count": 0, "error": str(e)}
     
 @app.get("/api/heatmap/{area_id}", response_model=CrowdDensity)

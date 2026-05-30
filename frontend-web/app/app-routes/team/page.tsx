@@ -4,7 +4,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuthStore } from '@/lib/stores/useAuthStore';
-import { api } from '@/lib/services/api';
+import { api, EMERGENCY_EVENTS_URL } from '@/lib/services/api';
 import { useNavigationStore } from '@/lib/stores/useNavigationStore';
 import { IndoorGisMap } from '@/components/map/IndoorGisMap';
 import {
@@ -568,10 +568,54 @@ export default function TeamPage() {
   useEffect(() => {
     fetchTeamMembers();
 
+    const eventSource =
+      typeof window !== 'undefined'
+        ? new EventSource(EMERGENCY_EVENTS_URL, { withCredentials: true })
+        : null;
+
+    const handleRealtimeUpdate = (event: MessageEvent) => {
+      try {
+        const parsed = JSON.parse(event.data) as { type?: string };
+        console.log('✅ Team SSE update:', parsed.type || 'unknown');
+      } catch {
+        console.log('✅ Team SSE update received');
+      }
+      void fetchTeamMembers();
+    };
+
+    [
+      'incident.created',
+      'incident.updated',
+      'incident.escalated',
+      'incident.resolved',
+      'sensor.alert',
+      'dispatch.created',
+      'dispatch.accepted',
+      'dispatch.declined',
+      'dispatch.completed',
+      'dispatch.arrived',
+      'evacuation.created',
+      'evacuation.safe',
+      'evacuation.completed',
+    ].forEach((eventType) => {
+      eventSource?.addEventListener(eventType, handleRealtimeUpdate);
+    });
+
+    eventSource?.addEventListener('connected', () => {
+      console.log('✅ Team SSE connected');
+    });
+
+    eventSource?.addEventListener('error', () => {
+      console.warn('Team SSE disconnected, browser will retry automatically');
+    });
+
     // Refresh automático a cada 30 segundos
     const interval = setInterval(fetchTeamMembers, 30000);
 
-    return () => clearInterval(interval);
+    return () => {
+      eventSource?.close();
+      clearInterval(interval);
+    };
   }, []);
 
   // Obter nome em português da role

@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState, useRef, type FormEvent } from 'react';
 import { AlertTriangle, CheckCircle2, DoorOpen, Loader2, MapPin, ShieldAlert, ShieldCheck, Users } from 'lucide-react';
-import { api, type GlobalEvacuation } from '@/lib/services/api';
+import { api, EMERGENCY_EVENTS_URL, type GlobalEvacuation } from '@/lib/services/api';
 import { useAuthStore } from '@/lib/stores/useAuthStore';
 import { IndoorGisMap } from '@/components/map/IndoorGisMap';
 import type { GisFeatureCollection, RouteEdgeProperties } from '@/lib/services/gisApi';
@@ -161,8 +161,52 @@ export default function EmergencyPage() {
 
   useEffect(() => {
     void loadState();
+    const eventSource =
+      typeof window !== 'undefined'
+        ? new EventSource(EMERGENCY_EVENTS_URL, { withCredentials: true })
+        : null;
+
+    const handleRealtimeUpdate = (event: MessageEvent) => {
+      try {
+        const parsed = JSON.parse(event.data) as { type?: string };
+        console.log('✅ Emergency SSE update:', parsed.type || 'unknown');
+      } catch {
+        console.log('✅ Emergency SSE update received');
+      }
+      void loadState();
+    };
+
+    [
+      'incident.created',
+      'incident.updated',
+      'incident.escalated',
+      'incident.resolved',
+      'sensor.alert',
+      'dispatch.created',
+      'dispatch.accepted',
+      'dispatch.declined',
+      'dispatch.completed',
+      'dispatch.arrived',
+      'evacuation.created',
+      'evacuation.safe',
+      'evacuation.completed',
+    ].forEach((eventType) => {
+      eventSource?.addEventListener(eventType, handleRealtimeUpdate);
+    });
+
+    eventSource?.addEventListener('connected', () => {
+      console.log('✅ Emergency SSE connected');
+    });
+
+    eventSource?.addEventListener('error', () => {
+      console.warn('Emergency SSE disconnected, browser will retry automatically');
+    });
+
     const interval = window.setInterval(() => void loadState(), 15000);
-    return () => window.clearInterval(interval);
+    return () => {
+      eventSource?.close();
+      window.clearInterval(interval);
+    };
   }, [loadState]);
 
   async function handleCreateEvacuation(event: FormEvent<HTMLFormElement>) {

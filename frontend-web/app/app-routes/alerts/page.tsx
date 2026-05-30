@@ -1,7 +1,7 @@
 // app/app-routes/alerts/page.tsx
 'use client';
 import { Client } from '@stomp/stompjs';
-import { WS_GATEWAY, api } from '@/lib/services/api';
+import { EMERGENCY_EVENTS_URL, WS_GATEWAY, api } from '@/lib/services/api';
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuthStore } from '@/lib/stores/useAuthStore';
@@ -650,6 +650,49 @@ export default function AlertsPage() {
   useEffect(() => {
     fetchAlerts();
 
+    const eventSource =
+      typeof window !== 'undefined'
+        ? new EventSource(EMERGENCY_EVENTS_URL, { withCredentials: true })
+        : null;
+
+    const handleRealtimeUpdate = (event: MessageEvent) => {
+      try {
+        const parsed = JSON.parse(event.data) as { type?: string };
+        console.log('✅ Emergency SSE update:', parsed.type || 'unknown');
+      } catch {
+        console.log('✅ Emergency SSE update received');
+      }
+      void fetchAlerts();
+    };
+
+    const realtimeEventTypes = [
+      'incident.created',
+      'incident.updated',
+      'incident.escalated',
+      'incident.resolved',
+      'sensor.alert',
+      'dispatch.created',
+      'dispatch.accepted',
+      'dispatch.declined',
+      'dispatch.completed',
+      'dispatch.arrived',
+      'evacuation.created',
+      'evacuation.safe',
+      'evacuation.completed',
+    ];
+
+    realtimeEventTypes.forEach((eventType) => {
+      eventSource?.addEventListener(eventType, handleRealtimeUpdate);
+    });
+
+    eventSource?.addEventListener('connected', () => {
+      console.log('✅ Emergency SSE connected');
+    });
+
+    eventSource?.addEventListener('error', () => {
+      console.warn('Emergency SSE disconnected, browser will retry automatically');
+    });
+
     // WebSocket for real-time alerts
     // STOMP WebSocket for real-time alerts
     const client = new Client({
@@ -694,6 +737,7 @@ export default function AlertsPage() {
     }, 30000);
 
     return () => {
+      eventSource?.close();
       client.deactivate();
       clearInterval(interval);
     };

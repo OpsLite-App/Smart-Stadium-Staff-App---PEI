@@ -23,7 +23,7 @@ import {
   type IndoorRouteGeoJsonResponse,
   type OperationalEvent,
 } from '@/lib/services/indoorRouting';
-import { api, EMERGENCY_SERVICE } from '@/lib/services/api';
+import { api, EMERGENCY_EVENTS_URL, EMERGENCY_SERVICE } from '@/lib/services/api';
 import { gisApi, type CameraStatus, type ImpactedEdgeProperties } from '@/lib/services/gisApi';
 import { useNavigationStore } from '@/lib/stores/useNavigationStore';
 import { useAuthStore } from '@/lib/stores/useAuthStore';
@@ -164,13 +164,60 @@ export default function MapPage() {
     };
 
     void init();
+    const eventSource =
+      typeof window !== 'undefined'
+        ? new EventSource(EMERGENCY_EVENTS_URL, { withCredentials: true })
+        : null;
+
+    const refreshMapFromRealtime = (event: MessageEvent) => {
+      try {
+        const parsed = JSON.parse(event.data) as { type?: string };
+        console.log('✅ Map SSE update:', parsed.type || 'unknown');
+      } catch {
+        console.log('✅ Map SSE update received');
+      }
+
+      void loadMonitoring();
+      void loadCameraStatuses(selectedFloor);
+      void loadFloorImpactedEdges(selectedFloor);
+    };
+
+    [
+      'incident.created',
+      'incident.updated',
+      'incident.escalated',
+      'incident.resolved',
+      'sensor.alert',
+      'dispatch.created',
+      'dispatch.accepted',
+      'dispatch.declined',
+      'dispatch.completed',
+      'dispatch.arrived',
+      'evacuation.created',
+      'evacuation.safe',
+      'evacuation.completed',
+    ].forEach((eventType) => {
+      eventSource?.addEventListener(eventType, refreshMapFromRealtime);
+    });
+
+    eventSource?.addEventListener('connected', () => {
+      console.log('✅ Map SSE connected');
+    });
+
+    eventSource?.addEventListener('error', () => {
+      console.warn('Map SSE disconnected, browser will retry automatically');
+    });
+
     const timer = setInterval(() => {
       void loadMonitoring();
       void loadCameraStatuses(selectedFloor);
       void loadFloorImpactedEdges(selectedFloor);
     }, 20000);
 
-    return () => clearInterval(timer);
+    return () => {
+      eventSource?.close();
+      clearInterval(timer);
+    };
   }, [selectedFloor]);
 
   useEffect(() => {

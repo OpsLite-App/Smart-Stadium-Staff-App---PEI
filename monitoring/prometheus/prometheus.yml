@@ -1,0 +1,60 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: prometheus
+    static_configs:
+      - targets:
+          - prometheus:9090
+
+  - job_name: routing-service
+    metrics_path: /metrics
+    static_configs:
+      - targets:
+          - routing-service:8002
+
+  - job_name: congestion-service
+    metrics_path: /metrics
+    static_configs:
+      - targets:
+          - congestion-service:8005
+
+  - job_name: ws-gateway
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets:
+          - ws-gateway:8089
+
+  - job_name: redis
+    static_configs:
+      - targets:
+          - redis-exporter:9121
+
+  - job_name: postgres-map
+    static_configs:
+      - targets:
+          - postgres-map-exporter:9187
+
+  - job_name: service-health
+    metrics_path: /probe
+    params:
+      module:
+        - http_2xx
+    static_configs:
+      - targets:
+          - http://routing-service:8002/health
+          - http://congestion-service:8005/health
+          - http://queueing-service:8003/health
+          - http://positioning-service:8004/health
+          - http://emergency-service:8006/health
+          - http://maintenance-service:8007/health
+          - http://chat-service:8000/health
+          - http://ws-gateway:8089/health
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: blackbox-exporter:9115

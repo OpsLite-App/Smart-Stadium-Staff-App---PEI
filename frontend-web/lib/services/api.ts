@@ -6,6 +6,7 @@ import type { PermissionSet } from "@/lib/auth/rbac";
 export const AUTH_BASE = process.env.NEXT_PUBLIC_API_AUTH || "/api/auth";
 export const CONGESTION_BASE = process.env.NEXT_PUBLIC_API_CONGESTION || "/api/congestion";
 export const EMERGENCY_BASE = process.env.NEXT_PUBLIC_API_EMERGENCY || "/api/emergency";
+export const EMERGENCY_EVENTS_URL = `${EMERGENCY_BASE}/events`;
 export const MAINTENANCE_BASE = process.env.NEXT_PUBLIC_API_MAINTENANCE || "/api/maintenance";
 export const QUEUEING_BASE = process.env.NEXT_PUBLIC_API_QUEUEING || "/api/queueing";
 export const CHAT_BASE = process.env.NEXT_PUBLIC_API_CHAT || "/api/chat";

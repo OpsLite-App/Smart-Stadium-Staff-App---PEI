@@ -28,7 +28,7 @@ import { Avatar } from '@/components/ui/Avatar';
 import { Switch } from '@/components/ui/Switch';
 import { Badge } from '@/components/ui/Badge';
 import { RouteWaypoint, useNavigationStore } from '@/lib/stores/useNavigationStore';
-import { AUTH_SERVICE, EMERGENCY_SERVICE, MAINTENANCE_SERVICE, api } from '@/lib/services/api';
+import { AUTH_SERVICE, EMERGENCY_EVENTS_URL, EMERGENCY_SERVICE, MAINTENANCE_SERVICE, api } from '@/lib/services/api';
 
 type Role = 'Security' | 'Cleaning' | 'Supervisor' | 'Medical' | string;
 
@@ -348,6 +348,51 @@ export default function ProfilePage() {
     };
 
     void run();
+
+    const eventSource =
+      typeof window !== 'undefined'
+        ? new EventSource(EMERGENCY_EVENTS_URL, { withCredentials: true })
+        : null;
+
+    const handleRealtimeUpdate = (event: MessageEvent) => {
+      try {
+        const parsed = JSON.parse(event.data) as { type?: string };
+        console.log('✅ Profile SSE update:', parsed.type || 'unknown');
+      } catch {
+        console.log('✅ Profile SSE update received');
+      }
+      void run();
+    };
+
+    [
+      'incident.created',
+      'incident.updated',
+      'incident.escalated',
+      'incident.resolved',
+      'sensor.alert',
+      'dispatch.created',
+      'dispatch.accepted',
+      'dispatch.declined',
+      'dispatch.completed',
+      'dispatch.arrived',
+      'evacuation.created',
+      'evacuation.safe',
+      'evacuation.completed',
+    ].forEach((eventType) => {
+      eventSource?.addEventListener(eventType, handleRealtimeUpdate);
+    });
+
+    eventSource?.addEventListener('connected', () => {
+      console.log('✅ Profile SSE connected');
+    });
+
+    eventSource?.addEventListener('error', () => {
+      console.warn('Profile SSE disconnected, browser will retry automatically');
+    });
+
+    return () => {
+      eventSource?.close();
+    };
   }, [user]);
 
   const handleLanguageChange = (lang: 'pt' | 'en') => {

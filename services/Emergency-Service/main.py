@@ -6,6 +6,7 @@ Calls Routing Service for route calculations
 
 from fastapi import FastAPI, HTTPException, Query, Depends, Request
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from sqlalchemy.orm.attributes import flag_modified
 from typing import Callable, List, Optional
@@ -27,6 +28,7 @@ from schemas import (
 from database import get_db, init_db
 from incident_manager import IncidentManager
 from evacuation_coordinator import EvacuationCoordinator
+from realtime_events import RealtimeEventBus
 
 app = FastAPI(
     title="Stadium Emergency Service",
@@ -60,6 +62,7 @@ EMERGENCY_CONTACTS = {
 
 incident_manager: Optional[IncidentManager] = None
 evacuation_coordinator: Optional[EvacuationCoordinator] = None
+realtime_events = RealtimeEventBus()
 
 
 # ========== AUTH/RBAC ==========
@@ -167,7 +170,9 @@ async def check_incident_escalation():
             for incident in active:
                 if incident_manager.should_escalate(incident):
                     print(f"⚠️  Incident {incident.id} needs escalation!")
-                    incident_manager.escalate_incident(db, incident.id)
+                    escalated = incident_manager.escalate_incident(db, incident.id)
+                    if escalated:
+                        publish_operational_event("incident.escalated", escalated)
             
             db.close()
         except Exception as e:
@@ -245,6 +250,26 @@ def _determine_emergency_level(incidents: List) -> str:
         return "low"
 
 
+def publish_operational_event(event_type: str, payload) -> None:
+    realtime_events.publish(event_type, payload)
+
+
+@app.get("/api/emergency/events")
+async def stream_emergency_events(
+    _auth: dict = Depends(require_roles("supervisor", "security", "medical", "cleaning"))
+):
+    """Stream emergency/dispatch updates to the frontend using Server-Sent Events."""
+    return StreamingResponse(
+        realtime_events.stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
 # ========== INCIDENT MANAGEMENT ==========
 
 @app.post("/api/emergency/incidents", response_model=IncidentResponse, status_code=201)
@@ -257,12 +282,17 @@ async def create_incident(
     """Create new emergency incident"""
     
     created_incident = incident_manager.create_incident(db, incident)
+    publish_operational_event("incident.created", created_incident)
     
     # Auto-dispatch if critical
     if auto_dispatch and created_incident.severity in ["high", "critical"]:
         dispatches = await incident_manager.auto_dispatch_responders(db, created_incident.id)
         if dispatches:
             print(f"✅ Auto-dispatched {len(dispatches)} responders to incident {created_incident.id}")
+            publish_operational_event("dispatch.created", {
+                "incident_id": created_incident.id,
+                "dispatches": dispatches,
+            })
     
     return created_incident
 
@@ -307,6 +337,7 @@ def get_incident(incident_id: str, db: Session = Depends(get_db)):
     if not incident:
         raise HTTPException(status_code=404, detail=f"Incident {incident_id} not found")
     
+    publish_operational_event("incident.updated", incident)
     return incident
 
 
@@ -341,6 +372,7 @@ def escalate_incident(
     if not incident:
         raise HTTPException(status_code=404, detail=f"Incident {incident_id} not found")
     
+    publish_operational_event("incident.escalated", incident)
     return {
         "status": "escalated",
         "incident_id": incident_id,
@@ -366,6 +398,7 @@ def resolve_incident(
     if not incident:
         raise HTTPException(status_code=404, detail=f"Incident {incident_id} not found")
     
+    publish_operational_event("incident.resolved", incident)
     return {
         "status": "resolved",
         "incident_id": incident_id,
@@ -379,11 +412,17 @@ def resolve_incident(
 async def create_sensor_alert(alert: SensorAlertCreate, db: Session = Depends(get_db)):
     """Create incident from sensor alert (fire, smoke, gas)"""
     incident = incident_manager.create_incident_from_sensor(db, alert)
+    publish_operational_event("sensor.alert", incident)
     
     # Auto-dispatch for high severity
     if incident.severity in ["high", "critical"]:
         try:
-            await incident_manager.auto_dispatch_responders(db, incident.id)
+            dispatches = await incident_manager.auto_dispatch_responders(db, incident.id)
+            if dispatches:
+                publish_operational_event("dispatch.created", {
+                    "incident_id": incident.id,
+                    "dispatches": dispatches,
+                })
         except Exception as e:
             # Dispatch failures must not break sensor alert ingestion.
             print(f"⚠️  Auto-dispatch failed for incident {incident.id}: {e}")
@@ -425,6 +464,10 @@ async def dispatch_responders(
     if not dispatches:
         raise HTTPException(status_code=400, detail="No available responders or dispatch failed")
     
+    publish_operational_event("dispatch.created", {
+        "incident_id": request.incident_id,
+        "dispatches": dispatches,
+    })
     return dispatches
 
 
@@ -452,6 +495,10 @@ async def dispatch_specific_responder(
     if not dispatch:
         raise HTTPException(status_code=400, detail="Manual dispatch failed")
 
+    publish_operational_event("dispatch.created", {
+        "incident_id": request.incident_id,
+        "dispatches": [dispatch],
+    })
     return dispatch
 
 
@@ -475,6 +522,7 @@ def accept_responder_dispatch(dispatch_id: str, db: Session = Depends(get_db)):
     if not dispatch:
         raise HTTPException(status_code=404, detail=f"Dispatch {dispatch_id} not found")
 
+    publish_operational_event("dispatch.accepted", dispatch)
     return {
         "status": "en_route",
         "dispatch_id": dispatch_id,
@@ -490,6 +538,7 @@ def refuse_responder_dispatch(dispatch_id: str, db: Session = Depends(get_db)):
     if not dispatch:
         raise HTTPException(status_code=404, detail=f"Dispatch {dispatch_id} not found")
 
+    publish_operational_event("dispatch.declined", dispatch)
     return {
         "status": "declined",
         "dispatch_id": dispatch_id,
@@ -509,6 +558,7 @@ def complete_responder_dispatch(
     if not dispatch:
         raise HTTPException(status_code=404, detail=f"Dispatch {dispatch_id} not found")
 
+    publish_operational_event("dispatch.completed", dispatch)
     return {
         "status": "completed",
         "dispatch_id": dispatch_id,
@@ -524,6 +574,7 @@ def mark_responder_arrived(dispatch_id: str, db: Session = Depends(get_db)):
     if not dispatch:
         raise HTTPException(status_code=404, detail=f"Dispatch {dispatch_id} not found")
     
+    publish_operational_event("dispatch.arrived", dispatch)
     return {
         "status": "arrived",
         "dispatch_id": dispatch_id,
@@ -691,7 +742,9 @@ async def create_global_evacuation(
     db.refresh(evacuation)
 
     await _notify_routing_evacuation_event(evacuation)
-    return _global_evacuation_to_response(evacuation)
+    response = _global_evacuation_to_response(evacuation)
+    publish_operational_event("evacuation.created", response)
+    return response
 
 
 @app.get("/api/emergency/evacuation/global/active")
@@ -740,7 +793,9 @@ def mark_staff_safe(
     db.commit()
     db.refresh(evacuation)
 
-    return _global_evacuation_to_response(evacuation)
+    response = _global_evacuation_to_response(evacuation)
+    publish_operational_event("evacuation.safe", response)
+    return response
 
 
 @app.post("/api/emergency/evacuation/global/{evacuation_id}/complete", response_model=GlobalEvacuationResponse)
@@ -760,7 +815,9 @@ async def complete_global_evacuation(
     db.refresh(evacuation)
 
     await _clear_routing_evacuation_closures(evacuation_id)
-    return _global_evacuation_to_response(evacuation)
+    response = _global_evacuation_to_response(evacuation)
+    publish_operational_event("evacuation.completed", response)
+    return response
 
 @app.post("/api/emergency/evacuation", response_model=EvacuationResponse, status_code=201)
 async def initiate_evacuation(request: EvacuationRequest, db: Session = Depends(get_db)):
