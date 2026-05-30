@@ -7,6 +7,8 @@ import { useRouter } from 'next/navigation';
 import { useAuthStore } from '@/lib/stores/useAuthStore';
 import { EMERGENCY_SERVICE } from '@/lib/services/api';
 import { useNavigationStore } from '@/lib/stores/useNavigationStore';
+import { indoorRoutingService, type Poi } from '@/lib/services/indoorRouting';
+import { IndoorGisMap } from '@/components/map/IndoorGisMap';
 import axios from 'axios';
 import {
   AlertTriangle,
@@ -36,13 +38,26 @@ import {
   CheckCheck,
   ChevronDown,
   ChevronUp,
-  Eye,
-  EyeOff
 } from 'lucide-react';
 
 type FilterTimeRange = 'all' | 'today' | 'hour' | '24h';
-const PGR_NODE_OPTIONS = ['1', '50', '51', '52', '53', '58', '62', '63', '65', '66', '70', '71', '90', '98', '103'];
+type IncidentCategory = 'security' | 'medic' | 'cleaning';
 const DEFAULT_INCIDENT_NODE = '62';
+
+interface IncidentLocationOption {
+  nodeId: string;
+  name: string;
+  floorId: number;
+  category?: string;
+}
+
+const FALLBACK_INCIDENT_LOCATIONS: IncidentLocationOption[] = [
+  { nodeId: '62', name: 'Corredor principal', floorId: 1 },
+  { nodeId: '65', name: 'Entrada IT', floorId: 1 },
+  { nodeId: '66', name: 'Posto operacional', floorId: 1 },
+  { nodeId: '70', name: 'Escadas Piso 2', floorId: 2 },
+  { nodeId: '98', name: 'Zona de apoio', floorId: 1 },
+];
 
 // Alert types
 interface Alert {
@@ -60,6 +75,7 @@ interface Alert {
     };
     area?: string;
     gate?: string;
+    floor_id?: number;
   };
   timestamp: string;
   read: boolean;
@@ -180,13 +196,22 @@ function safeTimestamp(value: unknown): string {
   return new Date().toISOString();
 }
 
-function normalizeEmergencyAlert(raw: Record<string, unknown>): Alert {
+function formatLocationOption(option?: IncidentLocationOption | null, fallbackNode?: string): string {
+  if (!option) return fallbackNode ? `Localização ${fallbackNode}` : 'Localização desconhecida';
+  return `${option.name} · Piso ${option.floorId}`;
+}
+
+function normalizeEmergencyAlert(
+  raw: Record<string, unknown>,
+  resolveLocation: (nodeId: string) => IncidentLocationOption | undefined = () => undefined
+): Alert {
   const sensorType = typeof raw.sensor_type === 'string' ? raw.sensor_type : 'sensor';
   const reading = typeof raw.reading_value === 'number' ? raw.reading_value : undefined;
   const threshold = typeof raw.threshold === 'number' ? raw.threshold : undefined;
   const unit = typeof raw.unit === 'string' ? raw.unit : '';
   const status = typeof raw.status === 'string' ? raw.status : 'active';
   const locationNode = typeof raw.location_node === 'string' ? raw.location_node : 'Desconhecido';
+  const location = resolveLocation(locationNode);
 
   return {
     id: String(raw.id ?? raw.incident_id ?? `emergency-${Date.now()}`),
@@ -197,9 +222,11 @@ function normalizeEmergencyAlert(raw: Record<string, unknown>): Alert {
       reading !== undefined && threshold !== undefined
         ? `Leitura ${reading}${unit ? ` ${unit}` : ''} (limite ${threshold}${unit ? ` ${unit}` : ''}).`
         : 'Alerta de sensor recebido.',
-    location: `Nó ${locationNode}`,
+    location: formatLocationOption(location, locationNode),
     location_details: {
       node_id: locationNode,
+      area: location?.name,
+      floor_id: location?.floorId,
     },
     timestamp: safeTimestamp(raw.detected_at),
     read: status === 'acknowledged' || status === 'resolved',
@@ -214,18 +241,25 @@ function normalizeEmergencyAlert(raw: Record<string, unknown>): Alert {
   };
 }
 
-function normalizeIncidentAlert(incident: EmergencyIncidentAdmin): Alert {
+function normalizeIncidentAlert(
+  incident: EmergencyIncidentAdmin,
+  resolveLocation: (nodeId: string) => IncidentLocationOption | undefined = () => undefined
+): Alert {
   const resolved = incident.status === 'resolved' || incident.status === 'false_alarm' || Boolean(incident.resolved_at);
+  const location = resolveLocation(String(incident.location_node));
+  const locationLabel = formatLocationOption(location, String(incident.location_node));
 
   return {
     id: incident.id,
-    type: incident.incident_type === 'security' ? 'security' : 'emergency',
+    type: incident.incident_type === 'cleaning' ? 'cleaning' : incident.incident_type === 'security' ? 'security' : 'emergency',
     severity: normalizeSeverity(incident.severity),
-    title: `${incident.incident_type} em ${incident.location_node}`,
+    title: `${incident.incident_type} em ${locationLabel}`,
     description: incident.description || incident.notes || 'Incidente registado sem descrição adicional.',
-    location: `Nó ${incident.location_node}`,
+    location: locationLabel,
     location_details: {
       node_id: incident.location_node,
+      area: location?.name,
+      floor_id: location?.floorId,
     },
     timestamp: safeTimestamp(incident.created_at),
     read: resolved,
@@ -235,10 +269,29 @@ function normalizeIncidentAlert(incident: EmergencyIncidentAdmin): Alert {
     source: 'api',
     metadata: {
       incident_id: incident.id,
+      incident_type: incident.incident_type,
       incident_status: incident.status,
       responders_dispatched: incident.responders_dispatched,
     },
   };
+}
+
+function incidentMatchesRole(incident: EmergencyIncidentAdmin, role?: string | null) {
+  const normalizedRole = String(role ?? '').toLowerCase();
+  const type = String(incident.incident_type ?? '').toLowerCase();
+
+  if (normalizedRole.includes('supervisor')) return true;
+  if (normalizedRole.includes('medical') || normalizedRole.includes('medic')) {
+    return ['medic', 'medical', 'health'].some((value) => type.includes(value));
+  }
+  if (normalizedRole.includes('clean')) {
+    return ['cleaning', 'maintenance', 'bin', 'trash', 'lixeira', 'wc'].some((value) => type.includes(value));
+  }
+  if (normalizedRole.includes('security')) {
+    return ['security', 'fire', 'smoke', 'emergency', 'crowd', 'evacuation', 'other'].some((value) => type.includes(value));
+  }
+
+  return true;
 }
 
 function isTerminalIncident(incident?: EmergencyIncidentAdmin | null) {
@@ -272,14 +325,16 @@ export default function AlertsPage() {
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [incidentActionLoading, setIncidentActionLoading] = useState<string | null>(null);
   const [incidentNodeError, setIncidentNodeError] = useState('');
+  const [incidentLocations, setIncidentLocations] = useState<IncidentLocationOption[]>(FALLBACK_INCIDENT_LOCATIONS);
+  const [incidentFloor, setIncidentFloor] = useState<number>(1);
   const [incidentForm, setIncidentForm] = useState({
-    incident_type: 'medical',
+    incident_type: 'medic',
     location_node: DEFAULT_INCIDENT_NODE,
     severity: 'medium',
     description: '',
   });
   const [assigningIncident, setAssigningIncident] = useState<EmergencyIncidentAdmin | null>(null);
-  const [selectedDepartment, setSelectedDepartment] = useState<'security' | 'cleaning' | 'supervisor' | 'medical'>('security');
+  const [selectedDepartment, setSelectedDepartment] = useState<IncidentCategory>('security');
   const [staffCandidates, setStaffCandidates] = useState<StaffCandidate[]>([]);
   const [candidateLoading, setCandidateLoading] = useState(false);
   const [candidateError, setCandidateError] = useState('');
@@ -317,6 +372,71 @@ export default function AlertsPage() {
   const [expandedAlert, setExpandedAlert] = useState<string | null>(null);
   const [showFilters, setShowFilters] = useState(false);
   const resolvedOverridesRef = useRef<Record<string, string>>({});
+  const readAlertIdsRef = useRef<Set<string>>(new Set());
+
+  const getIncidentLocation = (nodeId: string) =>
+    incidentLocations.find((location) => location.nodeId === String(nodeId));
+
+  const getIncidentLocationLabel = (nodeId: string) =>
+    formatLocationOption(getIncidentLocation(nodeId), nodeId);
+
+  const incidentFloorOptions = Array.from(
+    new Set(incidentLocations.map((location) => location.floorId))
+  ).sort((a, b) => a - b);
+
+  const incidentLocationsForFloor = incidentLocations.filter(
+    (location) => location.floorId === incidentFloor
+  );
+
+  useEffect(() => {
+    let mounted = true;
+
+    async function loadIncidentLocations() {
+      try {
+        const pois = await indoorRoutingService.getPois();
+        const byNode = new Map<string, IncidentLocationOption>();
+
+        pois.forEach((poi: Poi) => {
+          if (poi.node_id == null || poi.floor_id == null) return;
+          const nodeId = String(poi.node_id);
+          const displayName = poi.room_name || poi.name || poi.label || `Localização ${nodeId}`;
+
+          if (!byNode.has(nodeId)) {
+            byNode.set(nodeId, {
+              nodeId,
+              name: displayName,
+              floorId: Number(poi.floor_id),
+              category: poi.category,
+            });
+          }
+        });
+
+        const loaded = Array.from(byNode.values()).sort((a, b) => {
+          if (a.floorId !== b.floorId) return a.floorId - b.floorId;
+          return a.name.localeCompare(b.name, 'pt');
+        });
+
+        if (mounted && loaded.length > 0) {
+          setIncidentLocations(loaded);
+          if (!loaded.some((location) => location.nodeId === incidentForm.location_node)) {
+            setIncidentForm((prev) => ({ ...prev, location_node: loaded[0].nodeId }));
+            setIncidentFloor(loaded[0].floorId);
+          } else {
+            const selected = loaded.find((location) => location.nodeId === incidentForm.location_node);
+            if (selected) setIncidentFloor(selected.floorId);
+          }
+        }
+      } catch {
+        if (mounted) setIncidentLocations(FALLBACK_INCIDENT_LOCATIONS);
+      }
+    }
+
+    void loadIncidentLocations();
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -331,9 +451,26 @@ export default function AlertsPage() {
     }
   }, []);
 
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      const stored = localStorage.getItem('alerts-read-ids');
+      if (stored) {
+        readAlertIdsRef.current = new Set(JSON.parse(stored) as string[]);
+      }
+    } catch {
+      readAlertIdsRef.current = new Set();
+    }
+  }, []);
+
   const persistResolvedOverrides = (overrides: Record<string, string>) => {
     if (typeof window === 'undefined') return;
     localStorage.setItem('alerts-resolved-overrides', JSON.stringify(overrides));
+  };
+
+  const persistReadAlertIds = () => {
+    if (typeof window === 'undefined') return;
+    localStorage.setItem('alerts-read-ids', JSON.stringify(Array.from(readAlertIdsRef.current)));
   };
 
   const fetchAlerts = async () => {
@@ -348,9 +485,10 @@ export default function AlertsPage() {
       ]);
 
       const loadedIncidents = incidentResponse.data?.incidents || [];
+      const visibleIncidents = loadedIncidents.filter((incident) => incidentMatchesRole(incident, user?.role));
       const staffNameById = new Map((staffResponse.data || []).map((member) => [String(member.id), member.name]));
       const dispatchEntries = await Promise.all(
-        loadedIncidents.map(async (incident) => {
+        visibleIncidents.map(async (incident) => {
           try {
             const response = await axios.get<ActiveDispatchEntry[]>(
               `${EMERGENCY_SERVICE}/dispatch/incident/${incident.id}`,
@@ -375,15 +513,19 @@ export default function AlertsPage() {
         })
       );
 
-      setIncidents(loadedIncidents);
+      setIncidents(visibleIncidents);
       setIncidentDispatches(Object.fromEntries(dispatchEntries));
 
-      let allAlerts: Alert[] = loadedIncidents.map(normalizeIncidentAlert);
+      let allAlerts: Alert[] = visibleIncidents.map((incident) =>
+        normalizeIncidentAlert(incident, getIncidentLocation)
+      );
 
       // Reapply local resolved overrides after polling to avoid reappearing alerts
       allAlerts = allAlerts.map((alert) => {
         const resolvedAt = resolvedOverridesRef.current[alert.id];
-        if (!resolvedAt) return alert;
+        if (!resolvedAt) {
+          return readAlertIdsRef.current.has(alert.id) ? { ...alert, read: true } : alert;
+        }
         return {
           ...alert,
           resolved: true,
@@ -564,6 +706,9 @@ export default function AlertsPage() {
 
   // Mark alert as read
   const markAsRead = (alertId: string) => {
+    readAlertIdsRef.current.add(alertId);
+    persistReadAlertIds();
+
     setAlerts(prev => {
       const updated = prev.map(alert => 
         alert.id === alertId ? { ...alert, read: true } : alert
@@ -571,6 +716,16 @@ export default function AlertsPage() {
       calculateStats(updated);
       return updated;
     });
+  };
+
+  const toggleAlertExpansion = (alertId: string, currentlyExpanded: boolean) => {
+    if (currentlyExpanded) {
+      setExpandedAlert(null);
+      return;
+    }
+
+    setExpandedAlert(alertId);
+    markAsRead(alertId);
   };
 
   // Mark alert as acknowledged
@@ -641,7 +796,7 @@ export default function AlertsPage() {
       });
       setIncidentNodeError('');
     } catch {
-      setIncidentNodeError(`Nó "${incidentForm.location_node}" não está disponível para routing.`);
+      setIncidentNodeError(`A localização "${getIncidentLocationLabel(incidentForm.location_node)}" não está disponível para routing.`);
       return;
     }
 
@@ -666,11 +821,12 @@ export default function AlertsPage() {
       );
 
       setIncidentForm({
-        incident_type: 'medical',
+        incident_type: 'medic',
         location_node: DEFAULT_INCIDENT_NODE,
         severity: 'medium',
         description: '',
       });
+      setIncidentFloor(getIncidentLocation(DEFAULT_INCIDENT_NODE)?.floorId ?? 1);
 
       await fetchAlerts();
     } catch (error) {
@@ -682,7 +838,7 @@ export default function AlertsPage() {
 
   const loadCandidatesForIncident = async (
     incident: EmergencyIncidentAdmin,
-    department: 'security' | 'cleaning' | 'supervisor' | 'medical'
+    department: IncidentCategory
   ) => {
     try {
       setCandidateLoading(true);
@@ -693,11 +849,10 @@ export default function AlertsPage() {
         axios.get<ActiveDispatchEntry[]>(`${EMERGENCY_SERVICE}/dispatch/active`, { timeout: 4000 }).catch(() => ({ data: [] })),
       ]);
 
-      const roleMatchers: Record<typeof department, string[]> = {
+      const roleMatchers: Record<IncidentCategory, string[]> = {
         security: ['security'],
         cleaning: ['cleaning', 'maintenance'],
-        supervisor: ['supervisor'],
-        medical: ['medical', 'medic'],
+        medic: ['medical', 'medic'],
       };
 
       const busyStatuses = new Set(['dispatched', 'en_route', 'arrived']);
@@ -771,9 +926,9 @@ export default function AlertsPage() {
     }
 
     const defaultDepartment =
-      incident.incident_type === 'medical'
-        ? 'medical'
-        : incident.incident_type === 'fire' || incident.incident_type === 'smoke' || incident.incident_type === 'security'
+      incident.incident_type === 'medic' || incident.incident_type === 'medical'
+        ? 'medic'
+        : incident.incident_type === 'security'
         ? 'security'
         : 'cleaning';
 
@@ -805,7 +960,7 @@ export default function AlertsPage() {
       setNavigation({
         taskId: `incident-${incident.id}`,
         binId: incident.id,
-        binName: `${incident.incident_type.toUpperCase()} em node ${incident.location_node}`,
+        binName: `${incident.incident_type.toUpperCase()} em ${getIncidentLocationLabel(incident.location_node)}`,
         targetNode: incident.location_node,
         fromNode: candidate.location,
         waypoints: route.waypoints,
@@ -944,6 +1099,85 @@ export default function AlertsPage() {
     }
   };
 
+  const getSeverityLabel = (severity: string) => {
+    switch (severity) {
+      case 'critical': return 'Crítico';
+      case 'high': return 'Alto';
+      case 'medium': return 'Médio';
+      case 'low': return 'Baixo';
+      case 'info': return 'Informativo';
+      default: return 'Alerta';
+    }
+  };
+
+  const getTypeLabel = (type: string) => {
+    switch (type) {
+      case 'security': return 'Segurança';
+      case 'cleaning': return 'Limpeza';
+      case 'emergency': return 'Emergência';
+      case 'system': return 'Sistema';
+      case 'crowd': return 'Aglomeração';
+      case 'maintenance': return 'Manutenção';
+      default: return 'Operacional';
+    }
+  };
+
+  const getIncidentStatusLabel = (status: string) => {
+    switch (String(status || '').toLowerCase()) {
+      case 'active': return 'Por atribuir';
+      case 'responding': return 'Em resposta';
+      case 'resolved': return 'Resolvido';
+      case 'false_alarm': return 'Falso alarme';
+      default: return status || 'Sem estado';
+    }
+  };
+
+  const getDispatchStatusLabel = (status: string) => {
+    switch (String(status || '').toLowerCase()) {
+      case 'dispatched': return 'Aguardando aceitação';
+      case 'en_route': return 'A caminho';
+      case 'arrived': return 'No local';
+      case 'completed': return 'Concluído';
+      case 'declined': return 'Recusado';
+      case 'false_alarm': return 'Falso alarme';
+      default: return status || 'Sem estado';
+    }
+  };
+
+  const getAssignmentSummary = (dispatches: ActiveDispatchEntry[]) => {
+    if (dispatches.length === 0) {
+      return {
+        label: 'Sem equipa atribuída',
+        className: 'border-amber-200 bg-amber-50 text-amber-800',
+      };
+    }
+
+    const completed = dispatches.filter((dispatch) => String(dispatch.status).toLowerCase() === 'completed').length;
+    const active = dispatches.filter((dispatch) =>
+      ['dispatched', 'en_route', 'arrived'].includes(String(dispatch.status).toLowerCase())
+    ).length;
+
+    if (dispatches.length === 1) {
+      const dispatch = dispatches[0];
+      const responderName =
+        dispatch.incident_metadata?.responder_name ||
+        `Elemento ${dispatch.responder_id}`;
+
+      return {
+        label: `${responderName}: ${getDispatchStatusLabel(dispatch.status)}`,
+        className:
+          String(dispatch.status).toLowerCase() === 'completed'
+            ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+            : 'border-blue-200 bg-blue-50 text-blue-800',
+      };
+    }
+
+    return {
+      label: `${dispatches.length} elementos atribuídos · ${active} ativos · ${completed} concluídos`,
+      className: completed > 0 ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-blue-200 bg-blue-50 text-blue-800',
+    };
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -958,7 +1192,7 @@ export default function AlertsPage() {
   const completedCount = Math.max(0, stats.total - stats.unresolved);
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div className="w-full space-y-6">
       {/* Success toast */}
       {showSuccessToast && (
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[9999] flex items-center gap-3 bg-emerald-600 text-white px-5 py-3 rounded-xl shadow-xl animate-fade-in">
@@ -969,45 +1203,91 @@ export default function AlertsPage() {
 
       {/* Map picker modal */}
       {showMapPicker && (
-        <div className="fixed inset-0 z-[9998] bg-black/60 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden">
+        <div className="fixed inset-0 z-[9998] flex items-center justify-center bg-slate-950/45 p-4 backdrop-blur-md">
+          <div className="flex max-h-[92vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
             <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200">
-              <span className="font-bold text-gray-900">Escolher localização no mapa</span>
+              <div>
+                <span className="font-bold text-gray-900">Escolher localização no mapa</span>
+                <p className="mt-0.5 text-xs text-gray-500">
+                  Piso {incidentFloor} · clica num nó para definir o local do incidente.
+                </p>
+              </div>
               <button onClick={() => setShowMapPicker(false)} className="p-1 hover:bg-gray-100 rounded-lg">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
               </button>
             </div>
-            <div className="p-5">
-              <p className="text-sm text-gray-500 mb-4">Seleciona o nó mais próximo do incidente:</p>
-              <div className="grid grid-cols-5 gap-2">
-                {PGR_NODE_OPTIONS.map(node => (
-                  <button
-                    key={node}
-                    onClick={() => {
-                      setIncidentForm(prev => ({ ...prev, location_node: node }));
-                      setIncidentNodeError('');
-                      setShowMapPicker(false);
-                    }}
-                    className={`py-3 rounded-xl text-sm font-bold border-2 transition-colors ${
-                      incidentForm.location_node === node
-                        ? 'bg-indigo-600 text-white border-indigo-600'
-                        : 'bg-white text-gray-700 border-gray-200 hover:border-indigo-400 hover:bg-indigo-50'
-                    }`}
-                  >
-                    {node}
-                  </button>
-                ))}
+            <div className="min-h-0 flex-1 p-5">
+              <div className="relative overflow-hidden rounded-2xl border border-slate-200 bg-slate-50">
+                <div className="absolute right-4 top-4 z-[650] flex rounded-2xl border border-slate-200 bg-white/95 p-1 shadow-lg backdrop-blur">
+                  {incidentFloorOptions.map((floor) => (
+                    <button
+                      key={floor}
+                      type="button"
+                      onClick={() => {
+                        const firstLocation = incidentLocations.find((location) => location.floorId === floor);
+                        setIncidentFloor(floor);
+                        if (firstLocation) {
+                          setIncidentForm((prev) => ({ ...prev, location_node: firstLocation.nodeId }));
+                          setIncidentNodeError('');
+                        }
+                      }}
+                      className={`rounded-xl px-3 py-2 text-xs font-bold transition ${
+                        incidentFloor === floor
+                          ? 'bg-indigo-600 text-white shadow-sm'
+                          : 'text-slate-600 hover:bg-slate-100'
+                      }`}
+                    >
+                      Piso {floor}
+                    </button>
+                  ))}
+                </div>
+                <IndoorGisMap
+                  key={`incident-picker-${incidentFloor}`}
+                  floorId={incidentFloor}
+                  nodeSelectionMode="source"
+                  selectedNodeIds={[incidentForm.location_node]}
+                  onNodeSelect={(nodeId) => {
+                    const nodeLocation = incidentLocations.find((location) => location.nodeId === nodeId);
+                    setIncidentForm((prev) => ({ ...prev, location_node: nodeId }));
+                    setIncidentNodeError('');
+                    if (nodeLocation) setIncidentFloor(nodeLocation.floorId);
+                  }}
+                  heightClassName="h-[66vh] max-h-[620px] min-h-[440px]"
+                  showCameraControls={false}
+                  showHeatmap={false}
+                  showStaffMarkers={false}
+                />
               </div>
-              <div className="mt-4 p-3 bg-indigo-50 rounded-xl text-sm text-indigo-700">
-                📍 Selecionado: <span className="font-bold">{incidentForm.location_node}</span>
+            </div>
+
+            <div className="flex flex-col gap-3 border-t border-slate-100 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+              <div className="rounded-xl bg-indigo-50 px-4 py-3 text-sm text-indigo-800">
+                <span className="font-bold">Selecionado:</span>{' '}
+                {getIncidentLocationLabel(incidentForm.location_node)} · Nó {incidentForm.location_node}
+              </div>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowMapPicker(false)}
+                  className="rounded-xl border border-gray-200 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowMapPicker(false)}
+                  className="rounded-xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700"
+                >
+                  Usar localização
+                </button>
               </div>
             </div>
           </div>
         </div>
       )}
         {canManageIncidents && (
-          <div className="mb-6 max-w-xl">
-            <div className="rounded-2xl border border-amber-200 bg-[linear-gradient(180deg,#fffdf7,#fff7ea)] p-5">
+          <div className="grid gap-6 xl:grid-cols-[420px_minmax(0,1fr)]">
+            <div className="rounded-xl border border-amber-200 bg-[linear-gradient(180deg,#fffdf7,#fff7ea)] p-5 shadow-sm">
               <div className="flex items-center gap-2">
                 <Shield size={18} className="text-amber-700" />
                 <h2 className="text-lg font-semibold text-gray-900">Controlo do supervisor</h2>
@@ -1016,29 +1296,45 @@ export default function AlertsPage() {
                 Aqui a supervisão cria incidentes, faz dispatch manual e fecha ocorrências sem apagar histórico.
               </p>
 
-              <div className="mt-4 grid gap-3">
+              <div className="mt-5 grid gap-3">
                 <select
                   value={incidentForm.incident_type}
                   onChange={(e) => setIncidentForm((prev) => ({ ...prev, incident_type: e.target.value }))}
                   className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900"
                 >
-                  <option value="medical">medical</option>
-                  <option value="fire">fire</option>
-                  <option value="smoke">smoke</option>
                   <option value="security">security</option>
-                  <option value="structural">structural</option>
-                  <option value="other">other</option>
+                  <option value="medic">medic</option>
+                  <option value="cleaning">cleaning</option>
                 </select>
 
                 <div>
-                  <div className="flex gap-2">
+                  <div className="grid grid-cols-[120px_minmax(0,1fr)_auto] gap-2">
+                    <select
+                      value={incidentFloor}
+                      onChange={(e) => {
+                        const nextFloor = Number(e.target.value);
+                        const firstLocation = incidentLocations.find((location) => location.floorId === nextFloor);
+                        setIncidentFloor(nextFloor);
+                        if (firstLocation) {
+                          setIncidentForm(prev => ({ ...prev, location_node: firstLocation.nodeId }));
+                          setIncidentNodeError('');
+                        }
+                      }}
+                      className={`rounded-xl border px-3 py-2 text-sm font-semibold text-gray-900 ${incidentNodeError ? 'border-red-400 bg-red-50' : 'border-gray-200 bg-white'}`}
+                    >
+                      {incidentFloorOptions.map((floor) => (
+                        <option key={floor} value={floor}>Piso {floor}</option>
+                      ))}
+                    </select>
                     <select
                       value={incidentForm.location_node}
                       onChange={(e) => { setIncidentForm(prev => ({ ...prev, location_node: e.target.value })); setIncidentNodeError(''); }}
-                      className={`flex-1 rounded-xl border px-3 py-2 text-sm text-gray-900 ${incidentNodeError ? 'border-red-400 bg-red-50' : 'border-gray-200 bg-white'}`}
+                      className={`min-w-0 rounded-xl border px-3 py-2 text-sm text-gray-900 ${incidentNodeError ? 'border-red-400 bg-red-50' : 'border-gray-200 bg-white'}`}
                     >
-                      {PGR_NODE_OPTIONS.map(n => (
-                        <option key={n} value={n}>{n}</option>
+                      {incidentLocationsForFloor.map(location => (
+                        <option key={location.nodeId} value={location.nodeId}>
+                          {location.name}
+                        </option>
                       ))}
                     </select>
                     <button
@@ -1067,7 +1363,7 @@ export default function AlertsPage() {
                 <textarea
                   value={incidentForm.description}
                   onChange={(e) => setIncidentForm((prev) => ({ ...prev, description: e.target.value }))}
-                  rows={3}
+                  rows={2}
                   placeholder="Descrição operacional"
                   className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900"
                 />
@@ -1081,11 +1377,40 @@ export default function AlertsPage() {
                 </button>
               </div>
             </div>
+
+            <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+              <div className="flex items-center gap-2">
+                <Bell size={18} className="text-slate-700" />
+                <h2 className="text-lg font-semibold text-gray-900">Resumo operacional</h2>
+              </div>
+              <p className="mt-1 text-sm text-gray-500">
+                Estado atual das ocorrências visíveis para supervisão.
+              </p>
+
+              <div className="mt-5 grid grid-cols-2 gap-3 lg:grid-cols-4">
+                <div className="rounded-lg bg-red-50 px-4 py-3">
+                  <p className="text-xs font-semibold text-red-700">Críticos</p>
+                  <p className="mt-1 text-2xl font-black text-red-950">{stats.critical}</p>
+                </div>
+                <div className="rounded-lg bg-orange-50 px-4 py-3">
+                  <p className="text-xs font-semibold text-orange-700">Altos</p>
+                  <p className="mt-1 text-2xl font-black text-orange-950">{stats.high}</p>
+                </div>
+                <div className="rounded-lg bg-blue-50 px-4 py-3">
+                  <p className="text-xs font-semibold text-blue-700">Não lidos</p>
+                  <p className="mt-1 text-2xl font-black text-blue-950">{stats.unread}</p>
+                </div>
+                <div className="rounded-lg bg-emerald-50 px-4 py-3">
+                  <p className="text-xs font-semibold text-emerald-700">Concluídos</p>
+                  <p className="mt-1 text-2xl font-black text-emerald-950">{completedCount}</p>
+                </div>
+              </div>
+            </div>
           </div>
         )}
 
         {/* Header */}
-        <div className="flex flex-col md:flex-row md:items-center md:justify-between mb-6">
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between">
           <div>
             <h1 className="text-3xl font-bold text-gray-900">Alertas</h1>
             <p className="text-gray-600 mt-1">
@@ -1122,28 +1447,28 @@ export default function AlertsPage() {
         </div>
 
         {/* Stats Cards */}
-        <div className="grid grid-cols-2 md:grid-cols-6 gap-4 mb-6">
-          <div className="bg-white rounded-lg shadow-sm p-4 border-l-4 border-red-500">
+        <div className="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-6">
+          <div className="rounded-xl border border-gray-200 border-l-red-500 bg-white p-4 shadow-sm border-l-4">
             <p className="text-sm text-gray-600">Críticos</p>
             <p className="text-2xl font-bold text-gray-900">{stats.critical}</p>
           </div>
-          <div className="bg-white rounded-lg shadow-sm p-4 border-l-4 border-orange-500">
+          <div className="rounded-xl border border-gray-200 border-l-orange-500 bg-white p-4 shadow-sm border-l-4">
             <p className="text-sm text-gray-600">Altos</p>
             <p className="text-2xl font-bold text-gray-900">{stats.high}</p>
           </div>
-          <div className="bg-white rounded-lg shadow-sm p-4 border-l-4 border-yellow-500">
+          <div className="rounded-xl border border-gray-200 border-l-yellow-500 bg-white p-4 shadow-sm border-l-4">
             <p className="text-sm text-gray-600">Médios</p>
             <p className="text-2xl font-bold text-gray-900">{stats.medium}</p>
           </div>
-          <div className="bg-white rounded-lg shadow-sm p-4 border-l-4 border-blue-500">
+          <div className="rounded-xl border border-gray-200 border-l-blue-500 bg-white p-4 shadow-sm border-l-4">
             <p className="text-sm text-gray-600">Baixos</p>
             <p className="text-2xl font-bold text-gray-900">{stats.low}</p>
           </div>
-          <div className="bg-white rounded-lg shadow-sm p-4 border-l-4 border-gray-500">
+          <div className="rounded-xl border border-gray-200 border-l-gray-500 bg-white p-4 shadow-sm border-l-4">
             <p className="text-sm text-gray-600">Info</p>
             <p className="text-2xl font-bold text-gray-900">{stats.info}</p>
           </div>
-          <div className="bg-white rounded-lg shadow-sm p-4 border-l-4 border-emerald-500">
+          <div className="rounded-xl border border-gray-200 border-l-emerald-500 bg-white p-4 shadow-sm border-l-4">
             <p className="text-sm text-gray-600">Concluídos</p>
             <p className="text-2xl font-bold text-gray-900">{completedCount}</p>
           </div>
@@ -1151,7 +1476,7 @@ export default function AlertsPage() {
 
         {/* Filtros */}
         {showFilters && (
-          <div className="bg-white rounded-lg shadow-sm p-6 mb-6 border border-gray-200">
+          <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
             <div className="flex justify-between items-center mb-4">
               <h2 className="font-semibold text-gray-900">Filtros</h2>
               <button
@@ -1249,7 +1574,7 @@ export default function AlertsPage() {
 
         {/* Lista de Alertas */}
         {filteredAlerts.length === 0 ? (
-          <div className="bg-white rounded-lg shadow-sm p-12 text-center">
+          <div className="rounded-xl border border-gray-200 bg-white p-12 text-center shadow-sm">
             <Bell size={48} className="mx-auto text-gray-400 mb-4" />
             <h3 className="text-lg font-medium text-gray-900 mb-2">Sem alertas</h3>
             <p className="text-gray-600">
@@ -1265,6 +1590,7 @@ export default function AlertsPage() {
               const timeAgo = formatRelativeTime(alert.timestamp);
               const incidentForAlert = incidents.find((incident) => incident.id === alert.id);
               const dispatchesForAlert = incidentDispatches[alert.id] || [];
+              const assignmentSummary = getAssignmentSummary(dispatchesForAlert);
               const incidentClosed = isTerminalIncident(incidentForAlert);
               const canResolveThisIncident =
                 Boolean(incidentForAlert) &&
@@ -1295,7 +1621,7 @@ export default function AlertsPage() {
                     {/* Header do Alerta */}
                     <button
                       type="button"
-                      onClick={() => setExpandedAlert(isExpanded ? null : alert.id)}
+                      onClick={() => toggleAlertExpansion(alert.id, isExpanded)}
                       className="mb-3 flex w-full items-start justify-between rounded-xl text-left transition hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-blue-200"
                     >
                       <div className="flex items-start gap-3 flex-1">
@@ -1307,7 +1633,7 @@ export default function AlertsPage() {
                           <div className="flex items-center gap-2 mb-1">
                             <h3 className="font-semibold text-gray-900">{alert.title}</h3>
                             <span className={`px-2 py-0.5 text-xs rounded-full ${getSeverityColor(alert.severity)}`}>
-                              {alert.severity.toUpperCase()}
+                              {getSeverityLabel(alert.severity)}
                             </span>
                             {!alert.read && (
                               <span className="px-2 py-0.5 text-xs bg-blue-600 text-white rounded-full">
@@ -1317,6 +1643,11 @@ export default function AlertsPage() {
                           </div>
                           
                           <p className="text-gray-700 text-sm mb-2">{alert.description}</p>
+
+                          <span className={`mb-2 inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-semibold ${assignmentSummary.className}`}>
+                            <UserCog size={12} />
+                            {assignmentSummary.label}
+                          </span>
                           
                           <div className="flex flex-wrap items-center gap-3 text-xs text-gray-500">
                             <span className="flex items-center gap-1">
@@ -1330,7 +1661,7 @@ export default function AlertsPage() {
                             {alert.acknowledged && alert.acknowledged_by && (
                               <span className="flex items-center gap-1 text-green-600">
                                 <CheckCheck size={12} />
-                                Reconhecido por {alert.acknowledged_by.name}
+                                Visto por {alert.acknowledged_by.name}
                               </span>
                             )}
                             {alert.resolved && (
@@ -1354,23 +1685,35 @@ export default function AlertsPage() {
                       <div className="mt-4 pt-4 border-t border-gray-200">
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                           <div>
-                            <h4 className="text-sm font-medium text-gray-700 mb-2">Detalhes</h4>
+                            <h4 className="text-sm font-medium text-gray-700 mb-2">Informação da ocorrência</h4>
                             <dl className="space-y-2 text-sm">
                               <div className="flex justify-between">
-                                <dt className="text-gray-500">ID:</dt>
+                                <dt className="text-gray-500">Referência:</dt>
                                 <dd className="text-gray-900">{alert.id}</dd>
                               </div>
                               <div className="flex justify-between">
-                                <dt className="text-gray-500">Tipo:</dt>
-                                <dd className="text-gray-900 capitalize">{alert.type}</dd>
+                                <dt className="text-gray-500">Categoria:</dt>
+                                <dd className="text-gray-900">{getTypeLabel(alert.type)}</dd>
                               </div>
                               <div className="flex justify-between">
-                                <dt className="text-gray-500">Fonte:</dt>
-                                <dd className="text-gray-900 capitalize">{alert.source}</dd>
+                                <dt className="text-gray-500">Origem:</dt>
+                                <dd className="text-gray-900">
+                                  {alert.source === 'api' ? 'Serviço de emergência' : alert.source === 'websocket' ? 'Tempo real' : 'Sistema'}
+                                </dd>
                               </div>
                               <div className="flex justify-between">
-                                <dt className="text-gray-500">Timestamp:</dt>
-                                <dd className="text-gray-900">{new Date(alert.timestamp).toLocaleString()}</dd>
+                                <dt className="text-gray-500">Data da ocorrência:</dt>
+                                <dd className="text-gray-900">{new Date(alert.timestamp).toLocaleString('pt-PT')}</dd>
+                              </div>
+                              {incidentForAlert && (
+                                <div className="flex justify-between">
+                                  <dt className="text-gray-500">Estado do incidente:</dt>
+                                  <dd className="text-gray-900">{getIncidentStatusLabel(incidentForAlert.status)}</dd>
+                                </div>
+                              )}
+                              <div className="flex justify-between">
+                                <dt className="text-gray-500">Estado da notificação:</dt>
+                                <dd className="text-gray-900">{alert.read ? 'Vista' : 'Nova'}</dd>
                               </div>
                             </dl>
                           </div>
@@ -1378,16 +1721,16 @@ export default function AlertsPage() {
                           <div>
                             <h4 className="text-sm font-medium text-gray-700 mb-2">Localização</h4>
                             <dl className="space-y-2 text-sm">
-                              {alert.location_details?.node_id && (
-                                <div className="flex justify-between">
-                                  <dt className="text-gray-500">Node ID:</dt>
-                                  <dd className="text-gray-900">{alert.location_details.node_id}</dd>
-                                </div>
-                              )}
                               {alert.location_details?.area && (
                                 <div className="flex justify-between">
-                                  <dt className="text-gray-500">Área:</dt>
+                                  <dt className="text-gray-500">Localização:</dt>
                                   <dd className="text-gray-900">{alert.location_details.area}</dd>
+                                </div>
+                              )}
+                              {alert.location_details?.floor_id != null && (
+                                <div className="flex justify-between">
+                                  <dt className="text-gray-500">Piso:</dt>
+                                  <dd className="text-gray-900">{alert.location_details.floor_id}</dd>
                                 </div>
                               )}
                               {alert.location_details?.gate && (
@@ -1409,37 +1752,15 @@ export default function AlertsPage() {
                           </div>
                         </div>
 
-                        {/* Metadados adicionais */}
-                        {alert.metadata && Object.keys(alert.metadata).length > 0 && (
-                          <div className="mt-4">
-                            <h4 className="text-sm font-medium text-gray-700 mb-2">Metadados</h4>
-                            <div className="bg-gray-50 rounded-lg p-3">
-                              <pre className="text-xs text-gray-600 overflow-auto">
-                                {JSON.stringify(alert.metadata, null, 2)}
-                              </pre>
-                            </div>
-                          </div>
-                        )}
-
                         {/* Ações */}
                         <div className="flex flex-wrap gap-2 mt-4 pt-4 border-t border-gray-200">
-                          {!alert.read && (
-                            <button
-                              onClick={() => markAsRead(alert.id)}
-                              className="flex items-center gap-1 px-3 py-1.5 text-sm bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200"
-                            >
-                              <Eye size={14} />
-                              Marcar como lido
-                            </button>
-                          )}
-                          
                           {!alert.acknowledged && user?.permissions.canAcknowledgeAlerts && (
                             <button
                               onClick={() => acknowledgeAlert(alert.id)}
                               className="flex items-center gap-1 px-3 py-1.5 text-sm bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200"
                             >
                               <CheckCheck size={14} />
-                              Reconhecer
+                              Registar acompanhamento
                             </button>
                           )}
                           
@@ -1451,7 +1772,7 @@ export default function AlertsPage() {
                               className="flex items-center gap-1 px-3 py-1.5 text-sm bg-green-100 text-green-700 rounded-lg hover:bg-green-200 disabled:cursor-not-allowed disabled:opacity-50"
                             >
                               <CheckCircle size={14} />
-                              Marcar como resolvido
+                              Concluir incidente
                             </button>
                           )}
 
@@ -1515,10 +1836,10 @@ export default function AlertsPage() {
                                   const isDeclined = status === 'declined';
                                   const isFalseAlarm = status === 'false_alarm';
                                   const responderName =
-                                    dispatch.incident_metadata?.responder_name ||
-                                    `Staff ${dispatch.responder_id}`;
+                                            dispatch.incident_metadata?.responder_name ||
+                                            `Staff ${dispatch.responder_id}`;
 
-                                  return (
+                                          return (
                                     <div
                                       key={dispatch.id ?? `${dispatch.responder_id}-${dispatch.dispatched_at}`}
                                       className={`rounded-xl border px-3 py-2 text-sm ${
@@ -1551,7 +1872,7 @@ export default function AlertsPage() {
                                               : 'bg-gray-200 text-gray-700'
                                           }`}
                                         >
-                                          {isFalseAlarm ? 'Falso alarme' : isCompleted ? 'Concluído' : isDeclined ? 'Recusado' : status}
+                                          {getDispatchStatusLabel(status)}
                                         </span>
                                       </div>
 
@@ -1595,7 +1916,7 @@ export default function AlertsPage() {
                 <div>
                   <h3 className="text-lg font-semibold text-gray-900">Atribuir incidente</h3>
                   <p className="text-sm text-gray-500">
-                    {assigningIncident.incident_type} em {assigningIncident.location_node}
+                    {assigningIncident.incident_type} em {getIncidentLocationLabel(assigningIncident.location_node)}
                   </p>
                 </div>
                 <button
@@ -1612,7 +1933,7 @@ export default function AlertsPage() {
 
               <div className="px-6 py-5">
                 <div className="flex flex-wrap gap-2">
-                  {(['security', 'medical', 'cleaning', 'supervisor'] as const).map((department) => (
+                  {(['security', 'medic', 'cleaning'] as const).map((department) => (
                     <button
                       key={department}
                       onClick={() => {
@@ -1632,7 +1953,7 @@ export default function AlertsPage() {
 
                 <div className="mt-5 rounded-xl border border-gray-200 bg-gray-50 p-4">
                   <p className="text-sm text-gray-600">
-                    Disponibilidade baseada nos dispatches ativos. O ETA e a distância são calculados a partir da localização atual do staff até ao nó do incidente.
+                    Disponibilidade baseada nos dispatches ativos. O ETA e a distância são calculados a partir da localização atual do staff até à ocorrência.
                   </p>
                 </div>
 

@@ -69,6 +69,12 @@ services:
       - "5436:5432"
     volumes:
       - postgres_chat_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U admin -d chat -h localhost"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 10s
 
   postgres_emergency:
     image: postgres:15-alpine
@@ -251,10 +257,14 @@ services:
       dockerfile: Dockerfile
     container_name: chat-service
     depends_on:
-      - postgres_chat
-      - mosquitto
+      postgres_chat:
+        condition: service_healthy
+      mosquitto:
+        condition: service_healthy
     environment:
       DATABASE_URI: postgresql://admin:password@postgres_chat:5432/chat
+      DB_STARTUP_RETRIES: 30
+      DB_STARTUP_RETRY_DELAY: 2
     ports:
       - "8008:8000"
 

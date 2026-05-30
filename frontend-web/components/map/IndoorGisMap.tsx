@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useAuthStore } from '@/lib/stores/useAuthStore';
 import { api, mapCoordsToLatLng } from '@/lib/services/api';
 import {
@@ -115,6 +115,8 @@ interface IndoorGisMapProps {
   heightClassName?: string;
   showCameraControls?: boolean;
   showHeatmap?: boolean;
+  showStaffMarkers?: boolean;
+  staffFilterId?: string | number | null;
 }
 
 const coverageStyles: Record<CameraDensityLevel, { color: string; fillColor: string; fillOpacity: number }> = {
@@ -123,13 +125,6 @@ const coverageStyles: Record<CameraDensityLevel, { color: string; fillColor: str
   congested: { color: '#f97316', fillColor: '#fb923c', fillOpacity: 0.34 },
   critical: { color: '#ef4444', fillColor: '#f87171', fillOpacity: 0.44 },
 };
-
-const quickCameraActions: Array<{ level: CameraDensityLevel; label: string; peopleCount: number }> = [
-  { level: 'normal', label: 'Normal', peopleCount: 12 },
-  { level: 'busy', label: 'Busy', peopleCount: 29 },
-  { level: 'congested', label: 'Congested', peopleCount: 46 },
-  { level: 'critical', label: 'Critical', peopleCount: 65 },
-];
 
 const EMPTY_SELECTED_NODE_IDS: string[] = [];
 
@@ -158,6 +153,19 @@ function getCoverageStatus(
 
 function getBestFitLayer(...layers: import('leaflet').GeoJSON[]) {
   return layers.find((layer) => layer.getLayers().length > 0);
+}
+
+function getCombinedBounds(layers: import('leaflet').GeoJSON[]) {
+  let combined: import('leaflet').LatLngBounds | null = null;
+
+  layers.forEach((layer) => {
+    if (layer.getLayers().length === 0) return;
+    const bounds = layer.getBounds();
+    if (!bounds.isValid()) return;
+    combined = combined ? combined.extend(bounds) : bounds;
+  });
+
+  return combined;
 }
 
 type RouteEndpointKind = 'start' | 'end';
@@ -272,6 +280,8 @@ export function IndoorGisMap({
   heightClassName = 'h-[34rem] md:h-[38rem]',
   showCameraControls = true,
   showHeatmap = false,
+  showStaffMarkers = true,
+  staffFilterId = null,
 }: IndoorGisMapProps) {
   const { user } = useAuthStore();
   const containerRef = useRef<HTMLDivElement>(null);
@@ -280,49 +290,12 @@ export function IndoorGisMap({
   const lastFloorIdRef = useRef<number | null>(null);
   const lastRouteGeoJsonRef = useRef<any>(null);
   const hasFittedRef = useRef<boolean>(false);
-  const selectedCameraIdRef = useRef<number | null>(null);
   const [mapReady, setMapReady] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [cameraStatuses, setCameraStatuses] = useState<CameraStatus[]>([]);
-  const [selectedCamera, setSelectedCamera] = useState<CameraStatus | null>(null);
   const [refreshToken, setRefreshToken] = useState(0);
-  const [updatingLevel, setUpdatingLevel] = useState<CameraDensityLevel | null>(null);
-  const canManageCameraDensity = Boolean(user?.permissions.canManageCameraDensity);
   const canViewBins = Boolean(user?.permissions?.canViewBins || (user?.role && ['Cleaning', 'Supervisor'].includes(user.role)));
-
-  const selectCamera = useCallback((status: CameraStatus) => {
-    if (!canManageCameraDensity) return;
-
-    selectedCameraIdRef.current = status.camera_id;
-    setSelectedCamera(status);
-  }, [canManageCameraDensity]);
-
-  async function updateSelectedCamera(level: CameraDensityLevel, peopleCount: number) {
-    if (!selectedCamera || !canManageCameraDensity) return;
-
-    setUpdatingLevel(level);
-    setError(null);
-
-    try {
-      const updated = await gisApi.updateCameraStatus(selectedCamera.camera_id, {
-        people_count: peopleCount,
-        density_level: level,
-        queue_level: level,
-        status: 'online',
-      });
-
-      setSelectedCamera(updated);
-      setCameraStatuses((current) =>
-        current.map((status) => (status.camera_id === updated.camera_id ? updated : status))
-      );
-      setRefreshToken((value) => value + 1);
-    } catch {
-      setError('Could not update camera status.');
-    } finally {
-      setUpdatingLevel(null);
-    }
-  }
+  void showCameraControls;
 
   useEffect(() => {
     let cancelled = false;
@@ -369,16 +342,27 @@ export function IndoorGisMap({
   }, []);
 
   useEffect(() => {
-    selectedCameraIdRef.current = null;
-    setSelectedCamera(null);
-  }, [floorId, canManageCameraDensity]);
-
-  useEffect(() => {
     const timer = setInterval(() => {
       setRefreshToken((prev) => prev + 1);
     }, 6000); // refresh every 6s to keep positions active
     return () => clearInterval(timer);
   }, []);
+
+  useEffect(() => {
+    if (!mapReady || !mapRef.current) return;
+
+    const invalidate = () => {
+      mapRef.current?.invalidateSize(false);
+    };
+
+    const animationFrame = requestAnimationFrame(invalidate);
+    const timeout = window.setTimeout(invalidate, 250);
+
+    return () => {
+      cancelAnimationFrame(animationFrame);
+      window.clearTimeout(timeout);
+    };
+  }, [mapReady, heightClassName]);
 
   useEffect(() => {
     if (!mapReady || !mapRef.current) return;
@@ -486,44 +470,65 @@ export function IndoorGisMap({
         }).addTo(layerGroupRef.current);
 
         const cameraStatusLookup = buildCameraStatusLookup(cameraStatusResponse.statuses);
-        setCameraStatuses(cameraStatusResponse.statuses);
 
-        if (selectedCameraIdRef.current != null) {
-          setSelectedCamera(
-            cameraStatusResponse.statuses.find((status) => status.camera_id === selectedCameraIdRef.current) ?? null
-          );
+        if (showHeatmap) {
+          L.geoJSON(coverage as unknown as GeoJSON.GeoJsonObject, {
+            style: (feature) => {
+              const properties = feature?.properties as CameraCoverageProperties | undefined;
+              const status = properties ? getCoverageStatus(properties, cameraStatusLookup) : undefined;
+              const style = coverageStyles[status?.density_level ?? 'normal'];
+
+              return {
+                color: style.color,
+                weight: 1.5,
+                fillColor: style.fillColor,
+                fillOpacity: style.fillOpacity,
+                dashArray: status?.density_level === 'critical' ? undefined : '4 4',
+              };
+            },
+            onEachFeature: (feature, layer) => {
+              const properties = feature.properties as CameraCoverageProperties;
+              const status = getCoverageStatus(properties, cameraStatusLookup);
+              const label = status
+                ? `${status.camera_name ?? properties.monitored_area ?? `Coverage ${properties.id}`} · ${status.people_count} people · ${status.density_level}`
+                : properties.monitored_area ?? `Camera coverage ${properties.id}`;
+
+              layer.bindTooltip(label, {
+                sticky: true,
+              });
+
+              if (status) {
+                layer.bindPopup(`
+                  <div style="font-family: inherit; min-width: 180px; padding: 4px;">
+                    <strong style="display:block; margin-bottom:4px; color:#0f172a;">
+                      ${status.camera_name ?? properties.monitored_area ?? `Camera ${status.camera_id}`}
+                    </strong>
+                    <div style="font-size:12px; color:#475569; line-height:1.55;">
+                      <div><b>Área:</b> ${status.monitored_area ?? properties.monitored_area ?? 'Sem zona definida'}</div>
+                      <div><b>Piso:</b> ${status.floor_id}</div>
+                      <div><b>Pessoas:</b> ${status.people_count}</div>
+                      <div><b>Densidade:</b> ${status.density_level}</div>
+                      <div><b>Estado:</b> ${status.status}</div>
+                    </div>
+                  </div>
+                `);
+              } else {
+                layer.bindPopup(`
+                  <div style="font-family: inherit; min-width: 160px; padding: 4px;">
+                    <strong style="display:block; margin-bottom:4px; color:#0f172a;">
+                      ${properties.monitored_area ?? `Coverage ${properties.id}`}
+                    </strong>
+                    <div style="font-size:12px; color:#475569; line-height:1.55;">
+                      <div><b>Piso:</b> ${properties.floor_id}</div>
+                      <div><b>Câmara:</b> ${properties.camera_id ?? 'N/A'}</div>
+                      <div>Sem estado operacional associado.</div>
+                    </div>
+                  </div>
+                `);
+              }
+            },
+          }).addTo(layerGroupRef.current);
         }
-
-        L.geoJSON(coverage as unknown as GeoJSON.GeoJsonObject, {
-          style: (feature) => {
-            const properties = feature?.properties as CameraCoverageProperties | undefined;
-            const status = properties ? getCoverageStatus(properties, cameraStatusLookup) : undefined;
-            const style = coverageStyles[status?.density_level ?? 'normal'];
-
-            return {
-              color: style.color,
-              weight: 1.5,
-              fillColor: style.fillColor,
-              fillOpacity: style.fillOpacity,
-              dashArray: status?.density_level === 'critical' ? undefined : '4 4',
-            };
-          },
-          onEachFeature: (feature, layer) => {
-            const properties = feature.properties as CameraCoverageProperties;
-            const status = getCoverageStatus(properties, cameraStatusLookup);
-            const label = status
-              ? `${status.camera_name ?? properties.monitored_area ?? `Coverage ${properties.id}`} · ${status.people_count} people · ${status.density_level}`
-              : properties.monitored_area ?? `Camera coverage ${properties.id}`;
-
-            layer.bindTooltip(label, {
-              sticky: true,
-            });
-
-            if (status && canManageCameraDensity) {
-              layer.on('click', () => selectCamera(status));
-            }
-          },
-        }).addTo(layerGroupRef.current);
 
         L.geoJSON(impactedEdges as unknown as GeoJSON.GeoJsonObject, {
           style: (feature) => {
@@ -634,9 +639,19 @@ export function IndoorGisMap({
               }),
             })
               .bindTooltip(properties.camera_name ?? `Camera ${properties.id}`, { sticky: true })
-              .on('click', () => {
-                if (status && canManageCameraDensity) selectCamera(status);
-              });
+              .bindPopup(`
+                <div style="font-family: inherit; min-width: 180px; padding: 4px;">
+                  <strong style="display:block; margin-bottom:4px; color:#0f172a;">
+                    ${properties.camera_name ?? `Camera ${properties.id}`}
+                  </strong>
+                  <div style="font-size:12px; color:#475569; line-height:1.55;">
+                    <div><b>Piso:</b> ${properties.floor_id}</div>
+                    <div><b>Estado:</b> ${status?.status ?? properties.status ?? 'N/A'}</div>
+                    ${status ? `<div><b>Pessoas:</b> ${status.people_count}</div><div><b>Densidade:</b> ${status.density_level}</div>` : ''}
+                  </div>
+                </div>
+              `)
+              ;
           },
         }).addTo(layerGroupRef.current);
 
@@ -799,12 +814,14 @@ export function IndoorGisMap({
           : null;
 
         // Render staff member markers
-        if (staffMembers && staffMembers.length > 0) {
+        if (showStaffMarkers && staffMembers && staffMembers.length > 0) {
           const floorNodeIds = new Set(
             (nodes?.features || []).map((f: any) => String(f.properties?.node_id || f.properties?.id))
           );
 
-          staffMembers.forEach((member: any) => {
+          staffMembers
+            .filter((member: any) => staffFilterId == null || String(member.id) === String(staffFilterId))
+            .forEach((member: any) => {
             const pos = staffPositions.find((p: any) => String(p.staff_id) === String(member.id));
             if (!pos) return;
 
@@ -853,18 +870,18 @@ export function IndoorGisMap({
           lastRouteGeoJsonRef.current = routeGeoJson;
         }
 
-        const fitLayer = getBestFitLayer(routeLayer, roomLayer, corridorLayer, cameraLayer, transitionLayer, ...(poiLayer ? [poiLayer] : []), ...(nodeLayer ? [nodeLayer] : []));
-        if (fitLayer && !hasFittedRef.current) {
-          const bounds = fitLayer.getBounds();
-          if (bounds.isValid()) {
-            mapRef.current.fitBounds(bounds.pad(0.12), { animate: false });
+        if (!hasFittedRef.current) {
+          const bounds = nodeSelectionMode
+            ? getCombinedBounds([roomLayer, corridorLayer, transitionLayer, ...(nodeLayer ? [nodeLayer] : [])])
+            : getBestFitLayer(routeLayer, roomLayer, corridorLayer, cameraLayer, transitionLayer, ...(poiLayer ? [poiLayer] : []), ...(nodeLayer ? [nodeLayer] : []))?.getBounds();
+
+          if (bounds?.isValid()) {
+            mapRef.current.fitBounds(bounds.pad(nodeSelectionMode ? 0.28 : 0.12), { animate: false });
             hasFittedRef.current = true;
           }
         }
 
       } catch {
-        setCameraStatuses([]);
-        setSelectedCamera(null);
         setError('GIS layers unavailable. Showing operational fallback below.');
       } finally {
         if (!cancelled) setLoading(false);
@@ -876,7 +893,7 @@ export function IndoorGisMap({
     return () => {
       cancelled = true;
     };
-  }, [floorId, canManageCameraDensity, canViewBins, showHeatmap, mapReady, refreshToken, routeAffected, routeGeoJson, selectCamera, nodeSelectionMode, onNodeSelect, selectedNodeIds]);
+  }, [floorId, canViewBins, showHeatmap, showStaffMarkers, staffFilterId, mapReady, refreshToken, routeAffected, routeGeoJson, nodeSelectionMode, onNodeSelect, selectedNodeIds]);
 
   return (
     <div className="overflow-hidden rounded-[1.5rem] border border-slate-200 bg-slate-50">
@@ -903,76 +920,6 @@ export function IndoorGisMap({
         {error && (
           <div className="absolute left-4 top-4 z-[500] max-w-sm rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 shadow-sm">
             {error}
-          </div>
-        )}
-        {showCameraControls && canManageCameraDensity && (
-          <div className="absolute right-4 top-4 z-[500] w-[20rem] max-w-[calc(100%-2rem)] rounded-2xl border border-slate-200 bg-white/95 p-4 shadow-xl backdrop-blur">
-            <div className="mb-3 flex items-start justify-between gap-3">
-              <div>
-                <p className="text-[0.65rem] font-semibold uppercase tracking-[0.2em] text-orange-600">
-                  Supervisor control
-                </p>
-                <h3 className="mt-1 text-sm font-bold text-slate-950">Camera operations</h3>
-              </div>
-              <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[0.65rem] font-semibold text-slate-600">
-                {cameraStatuses.length} live
-              </span>
-            </div>
-
-            {selectedCamera ? (
-              <div className="space-y-3">
-                <div className="rounded-xl border border-slate-100 bg-slate-50 p-3">
-                  <p className="text-sm font-semibold text-slate-950">
-                    {selectedCamera.camera_name ?? `Camera ${selectedCamera.camera_id}`}
-                  </p>
-                  <p className="mt-1 text-xs text-slate-600">
-                    Floor {selectedCamera.floor_id} · {selectedCamera.monitored_area ?? 'Unmapped coverage'}
-                  </p>
-                  <div className="mt-3 grid grid-cols-3 gap-2 text-xs">
-                    <div className="rounded-lg bg-white p-2">
-                      <p className="text-slate-500">People</p>
-                      <p className="text-lg font-bold text-slate-950">{selectedCamera.people_count}</p>
-                    </div>
-                    <div className="rounded-lg bg-white p-2">
-                      <p className="text-slate-500">Density</p>
-                      <p className="font-bold capitalize text-slate-950">{selectedCamera.density_level}</p>
-                    </div>
-                    <div className="rounded-lg bg-white p-2">
-                      <p className="text-slate-500">Status</p>
-                      <p className="font-bold capitalize text-slate-950">{selectedCamera.status}</p>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-2">
-                  {quickCameraActions.map((action) => (
-                    <button
-                      key={action.level}
-                      type="button"
-                      disabled={updatingLevel != null}
-                      onClick={() => void updateSelectedCamera(action.level, action.peopleCount)}
-                      className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-left text-xs font-semibold text-slate-700 shadow-sm transition hover:border-orange-300 hover:bg-orange-50 disabled:cursor-not-allowed disabled:opacity-60"
-                    >
-                      <span
-                        className="mr-2 inline-block h-2.5 w-2.5 rounded-full"
-                        style={{ backgroundColor: coverageStyles[action.level].color }}
-                      />
-                      {updatingLevel === action.level ? 'Updating...' : action.label}
-                    </button>
-                  ))}
-                </div>
-
-                {['congested', 'critical'].includes(selectedCamera.density_level) && (
-                  <div className="rounded-xl border border-orange-200 bg-orange-50 px-3 py-2 text-xs font-medium text-orange-800">
-                    Routing impact active: routes will avoid this monitored area when possible.
-                  </div>
-                )}
-              </div>
-            ) : (
-              <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 p-3 text-sm text-slate-600">
-                Select a camera or coverage area on the map to manage its live state.
-              </div>
-            )}
           </div>
         )}
       </div>

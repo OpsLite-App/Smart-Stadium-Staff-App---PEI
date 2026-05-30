@@ -3,6 +3,7 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   allowedDevOrigins: ["http://192.168.1.138:3000"],
+  devIndicators: false,
   turbopack: {
     // The repo root also has a lockfile. Keep Turbopack scoped to this Next app
     // so CSS tooling resolves dependencies from frontend-web/node_modules.

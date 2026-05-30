@@ -2,7 +2,7 @@
 DATABASE SETUP for Emergency Service
 """
 
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker, Session
 from models import Base
 import os
@@ -21,6 +21,12 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 def init_db():
     """Initialize database tables"""
     Base.metadata.create_all(bind=engine)
+    if "postgresql" in DATABASE_URL:
+        with engine.begin() as connection:
+            # Existing dev volumes may already have the enum created without the
+            # new canonical categories. Keep this idempotent for shared Docker DBs.
+            for value in ("medic", "cleaning"):
+                connection.execute(text(f"ALTER TYPE incidenttype ADD VALUE IF NOT EXISTS '{value}'"))
     print("✅ Database tables created")
 
 

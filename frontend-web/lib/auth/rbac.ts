@@ -50,7 +50,7 @@ export function permissionsForRole(roleInput: string | undefined | null): Permis
     canViewMap: true,
     canUseNavigation: true,
     canViewAlerts: true,
-    canUseChat: !supervisor,
+    canUseChat: true,
     canUseEmergencyButton: security || cleaning || medical || supervisor,
     canViewTasks: !medical,
     canViewMedicalIncidents: medical,
@@ -74,6 +74,7 @@ export function mergePermissions(
   return {
     ...permissionsForRole(role),
     ...(serverPermissions ?? {}),
+    canUseChat: true,
   };
 }
 

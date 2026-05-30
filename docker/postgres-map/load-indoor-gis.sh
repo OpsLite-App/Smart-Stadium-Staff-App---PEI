@@ -6,6 +6,18 @@ echo "Loading indoor GIS backup into ${POSTGRES_DB}..."
 psql -v ON_ERROR_STOP=1 \
   --username "$POSTGRES_USER" \
   --dbname "$POSTGRES_DB" \
+  -c "
+DROP EXTENSION IF EXISTS postgis_tiger_geocoder CASCADE;
+DROP EXTENSION IF EXISTS postgis_topology CASCADE;
+DROP SCHEMA IF EXISTS indoor CASCADE;
+DROP SCHEMA IF EXISTS tiger CASCADE;
+DROP SCHEMA IF EXISTS tiger_data CASCADE;
+DROP SCHEMA IF EXISTS topology CASCADE;
+"
+
+psql -v ON_ERROR_STOP=1 \
+  --username "$POSTGRES_USER" \
+  --dbname "$POSTGRES_DB" \
   -f /docker-entrypoint-initdb.d-data/indoor_gis_backup.sql
 
 psql -v ON_ERROR_STOP=1 \
@@ -27,8 +39,11 @@ BEGIN
      OR to_regclass('indoor.nodes') IS NULL
      OR to_regclass('indoor.edges') IS NULL
      OR to_regclass('indoor.pois') IS NULL
+     OR to_regclass('indoor.corridors_polygons') IS NULL
+     OR to_regclass('indoor.rooms_polygons') IS NULL
      OR to_regclass('indoor.camera_infrastructure') IS NULL
-     OR to_regclass('indoor.camera_coverage') IS NULL THEN
+     OR to_regclass('indoor.camera_coverage') IS NULL
+     OR to_regclass('indoor.vertical_transitions') IS NULL THEN
     RAISE EXCEPTION 'Indoor GIS import is incomplete; required indoor tables are missing';
   END IF;
 END

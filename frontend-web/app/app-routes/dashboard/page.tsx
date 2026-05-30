@@ -129,6 +129,46 @@ function isOpenTask(task: MaintenanceTask) {
   return ['assigned', 'in_progress'].includes(status);
 }
 
+function incidentMatchesRole(incident: EmergencyIncident, role?: string | null) {
+  const normalizedRole = String(role ?? '').toLowerCase();
+  const type = String(incident.incident_type ?? '').toLowerCase();
+
+  if (normalizedRole.includes('supervisor')) return true;
+  if (normalizedRole.includes('medical') || normalizedRole.includes('medic')) {
+    return ['medic', 'medical', 'health'].some((value) => type.includes(value));
+  }
+  if (normalizedRole.includes('clean')) {
+    return ['cleaning', 'maintenance', 'bin', 'trash', 'lixeira', 'wc'].some((value) => type.includes(value));
+  }
+  if (normalizedRole.includes('security')) {
+    return ['security', 'fire', 'smoke', 'emergency', 'crowd', 'evacuation', 'other'].some((value) => type.includes(value));
+  }
+
+  return true;
+}
+
+function dispatchMatchesRole(dispatch: IncidentDispatch, role?: string | null) {
+  const normalizedRole = String(role ?? '').toLowerCase();
+  const responderRole = String(dispatch.responder_role ?? '').toLowerCase();
+
+  if (normalizedRole.includes('supervisor')) return true;
+  if (normalizedRole.includes('medical') || normalizedRole.includes('medic')) return responderRole.includes('medic') || responderRole.includes('medical');
+  if (normalizedRole.includes('clean')) return responderRole.includes('clean') || responderRole.includes('maintenance');
+  if (normalizedRole.includes('security')) return responderRole.includes('security');
+
+  return true;
+}
+
+function canSeeCleaningWork(role?: string | null) {
+  const normalizedRole = String(role ?? '').toLowerCase();
+  return normalizedRole.includes('supervisor') || normalizedRole.includes('clean');
+}
+
+function canSeeCrowdMonitoring(role?: string | null) {
+  const normalizedRole = String(role ?? '').toLowerCase();
+  return normalizedRole.includes('supervisor') || normalizedRole.includes('security');
+}
+
 function formatEta(seconds: number) {
   if (!seconds || seconds <= 0) return 'ETA N/A';
   return `ETA ${Math.ceil(seconds / 60)} min`;
@@ -245,15 +285,19 @@ export default function DashboardPage() {
   };
 
   const derived = useMemo(() => {
-    const openIncidents = incidents.filter(isOpenIncident);
+    const visibleIncidents = incidents.filter((incident) => incidentMatchesRole(incident, user?.role));
+    const openIncidents = visibleIncidents.filter(isOpenIncident);
     const criticalIncidents = openIncidents.filter((incident) => toSeverity(incident.severity) === 'critical');
-    const latestDispatches = Array.from(getLatestDispatchesByResponder(dispatches).values());
+    const visibleDispatches = dispatches.filter((dispatch) => dispatchMatchesRole(dispatch, user?.role));
+    const latestDispatches = Array.from(getLatestDispatchesByResponder(visibleDispatches).values());
     const activeDispatches = latestDispatches.filter(isActiveDispatch);
     const pendingDispatches = latestDispatches.filter((dispatch) => String(dispatch.status).toLowerCase() === 'dispatched');
-    const completedDispatches = dispatches.filter((dispatch) => String(dispatch.status).toLowerCase() === 'completed');
-    const openTasks = tasks.filter(isOpenTask);
+    const completedDispatches = visibleDispatches.filter((dispatch) => String(dispatch.status).toLowerCase() === 'completed');
+    const openTasks = canSeeCleaningWork(user?.role) ? tasks.filter(isOpenTask) : [];
     const criticalCameras = cameraStatuses.filter((camera) => camera.density_level === 'critical');
-    const riskyCameras = cameraStatuses.filter((camera) => ['busy', 'congested', 'critical'].includes(camera.density_level));
+    const riskyCameras = canSeeCrowdMonitoring(user?.role)
+      ? cameraStatuses.filter((camera) => ['busy', 'congested', 'critical'].includes(camera.density_level))
+      : [];
     const busyStaffIds = new Set(activeDispatches.map((dispatch) => String(dispatch.responder_id)));
     const staffInOperation = staff.filter((member) => busyStaffIds.has(String(member.id))).length;
 
@@ -306,7 +350,7 @@ export default function DashboardPage() {
       staffInOperation,
       timeline,
     };
-  }, [cameraStatuses, dispatches, incidents, staff, tasks]);
+  }, [cameraStatuses, dispatches, incidents, staff, tasks, user?.role]);
 
   const teamRows = useMemo(() => {
     const dispatchByResponder = getLatestDispatchesByResponder(dispatches);
@@ -327,7 +371,7 @@ export default function DashboardPage() {
   }, [dispatches, staff]);
 
   return (
-    <div className="mx-auto max-w-7xl space-y-6 px-4 py-8 sm:px-6 lg:px-8">
+    <div className="w-full space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <p className="text-xs font-bold uppercase tracking-[0.22em] text-orange-600">Supervisão</p>
@@ -356,7 +400,7 @@ export default function DashboardPage() {
       )}
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+        <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
           <div className="flex items-center justify-between">
             <span className="text-sm text-gray-500">Staff em operação</span>
             <Users className="text-blue-600" size={20} />
@@ -365,7 +409,7 @@ export default function DashboardPage() {
           <p className="mt-1 text-xs text-gray-500">Total registado: {staff.length}</p>
         </div>
 
-        <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+        <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
           <div className="flex items-center justify-between">
             <span className="text-sm text-gray-500">Incidentes abertos</span>
             <Shield className="text-red-600" size={20} />
@@ -374,7 +418,7 @@ export default function DashboardPage() {
           <p className="mt-1 text-xs text-gray-500">Críticos: {derived.criticalIncidents.length}</p>
         </div>
 
-        <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+        <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
           <div className="flex items-center justify-between">
             <span className="text-sm text-gray-500">Dispatches ativos</span>
             <Radio className="text-orange-600" size={20} />
@@ -383,7 +427,7 @@ export default function DashboardPage() {
           <p className="mt-1 text-xs text-gray-500">Pendentes de aceitar: {derived.pendingDispatches.length}</p>
         </div>
 
-        <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+        <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
           <div className="flex items-center justify-between">
             <span className="text-sm text-gray-500">Operações pendentes</span>
             <Trash2 className="text-emerald-600" size={20} />
@@ -393,8 +437,8 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
-        <div className="rounded-2xl border border-gray-200 bg-white shadow-sm xl:col-span-2">
+      <div className="grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,2fr)_minmax(360px,0.9fr)]">
+        <div className="rounded-xl border border-gray-200 bg-white shadow-sm">
           <div className="flex items-center gap-2 border-b border-gray-100 px-5 py-4">
             <AlertTriangle size={18} className="text-gray-700" />
             <h2 className="text-lg font-bold text-gray-950">Feed operacional</h2>
@@ -406,7 +450,7 @@ export default function DashboardPage() {
               <p className="text-sm text-gray-500">Sem operações ativas neste momento.</p>
             ) : (
               derived.timeline.map((item) => (
-                <div key={item.id} className="rounded-xl border border-gray-100 p-3">
+                <div key={item.id} className="rounded-lg border border-gray-100 p-4">
                   <div className="flex items-center justify-between gap-2">
                     <p className="font-semibold text-gray-900">{item.title}</p>
                     <span className={`rounded-full border px-2 py-0.5 text-xs font-bold ${severityColor(item.severity)}`}>
@@ -424,7 +468,7 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        <div className="rounded-2xl border border-gray-200 bg-white shadow-sm">
+        <div className="rounded-xl border border-gray-200 bg-white shadow-sm">
           <div className="flex items-center gap-2 border-b border-gray-100 px-5 py-4">
             <Video size={18} className="text-gray-700" />
             <h2 className="text-lg font-bold text-gray-950">Estado da equipa</h2>
@@ -436,7 +480,7 @@ export default function DashboardPage() {
               <p className="text-sm text-gray-500">Sem staff registado.</p>
             ) : (
               teamRows.map((member) => (
-                <div key={member.id} className="rounded-xl bg-gray-50 px-3 py-2">
+                <div key={member.id} className="rounded-lg bg-gray-50 px-4 py-3">
                   <div className="flex items-center justify-between gap-2">
                     <div>
                       <p className="text-sm font-semibold text-gray-900">{member.name || `Staff ${member.id}`}</p>
@@ -459,7 +503,7 @@ export default function DashboardPage() {
       </div>
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-        <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+        <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
           <div className="flex items-center gap-2">
             <CheckCircle size={18} className="text-emerald-600" />
             <h3 className="font-bold text-gray-950">Concluídos</h3>
@@ -468,7 +512,7 @@ export default function DashboardPage() {
           <p className="text-sm text-gray-500">Dispatches com relatório submetido.</p>
         </div>
 
-        <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+        <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
           <div className="flex items-center gap-2">
             <Video size={18} className="text-orange-600" />
             <h3 className="font-bold text-gray-950">Câmaras em risco</h3>
@@ -477,7 +521,7 @@ export default function DashboardPage() {
           <p className="text-sm text-gray-500">Críticas: {derived.criticalCameras.length}</p>
         </div>
 
-        <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+        <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
           <div className="flex items-center gap-2">
             <Trash2 size={18} className="text-slate-600" />
             <h3 className="font-bold text-gray-950">Manutenção</h3>

@@ -19,14 +19,15 @@ import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { Surface } from '@/components/ui/Surface';
 import {
   indoorRoutingService,
-  type EdgeOverride,
   type GraphStatus,
   type IndoorRouteGeoJsonResponse,
   type OperationalEvent,
 } from '@/lib/services/indoorRouting';
-import { api } from '@/lib/services/api';
-import { gisApi, type CameraStatus } from '@/lib/services/gisApi';
+import { api, EMERGENCY_SERVICE } from '@/lib/services/api';
+import { gisApi, type CameraStatus, type ImpactedEdgeProperties } from '@/lib/services/gisApi';
 import { useNavigationStore } from '@/lib/stores/useNavigationStore';
+import { useAuthStore } from '@/lib/stores/useAuthStore';
+import axios from 'axios';
 
 type FloorId = '0' | '1' | '2';
 type NotificationLevel = 'info' | 'warning' | 'critical';
@@ -107,11 +108,12 @@ function getNotificationIcon(kind: NotificationKind, level: NotificationLevel) {
 }
 
 export default function MapPage() {
+  const { user } = useAuthStore();
   const [selectedFloor, setSelectedFloor] = useState<FloorId>('1');
   const [showHeatmap, setShowHeatmap] = useState(true);
   const [graphStatus, setGraphStatus] = useState<GraphStatus | null>(null);
   const [events, setEvents] = useState<OperationalEvent[]>([]);
-  const [edgeOverrides, setEdgeOverrides] = useState<EdgeOverride[]>([]);
+  const [floorImpactedEdges, setFloorImpactedEdges] = useState<ImpactedEdgeProperties[]>([]);
   const [cameraStatuses, setCameraStatuses] = useState<CameraStatus[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -120,21 +122,28 @@ export default function MapPage() {
   const [routeGeoJson, setRouteGeoJson] = useState<IndoorRouteGeoJsonResponse | null>(null);
   const [routeError, setRouteError] = useState<string | null>(null);
 
-  const { active: activeNav, setNavigation } = useNavigationStore();
+  const { active: activeNav, setNavigation, clearNavigation } = useNavigationStore();
 
   const loadMonitoring = async () => {
     try {
       setError(null);
-      const [status, liveEvents, overrides] = await Promise.all([
+      const [status, liveEvents] = await Promise.all([
         indoorRoutingService.getGraphStatus(),
         indoorRoutingService.getEvents().catch(() => []),
-        indoorRoutingService.getEdgeOverrides().catch(() => []),
       ]);
       setGraphStatus(status);
       setEvents(liveEvents);
-      setEdgeOverrides(overrides);
     } catch {
       setError('Não foi possível carregar a monitorização do mapa neste momento.');
+    }
+  };
+
+  const loadFloorImpactedEdges = async (floor: FloorId) => {
+    try {
+      const response = await gisApi.getImpactedEdges({ floorId: Number(floor) });
+      setFloorImpactedEdges(response.features.map((feature) => feature.properties));
+    } catch {
+      setFloorImpactedEdges([]);
     }
   };
 
@@ -150,7 +159,7 @@ export default function MapPage() {
   useEffect(() => {
     const init = async () => {
       setLoading(true);
-      await Promise.all([loadMonitoring(), loadCameraStatuses(selectedFloor)]);
+      await Promise.all([loadMonitoring(), loadCameraStatuses(selectedFloor), loadFloorImpactedEdges(selectedFloor)]);
       setLoading(false);
     };
 
@@ -158,6 +167,7 @@ export default function MapPage() {
     const timer = setInterval(() => {
       void loadMonitoring();
       void loadCameraStatuses(selectedFloor);
+      void loadFloorImpactedEdges(selectedFloor);
     }, 20000);
 
     return () => clearInterval(timer);
@@ -207,10 +217,81 @@ export default function MapPage() {
     };
   }, [activeNav]);
 
+  useEffect(() => {
+    if (!activeNav || !user?.id) return;
+
+    let cancelled = false;
+    const navigationToValidate = activeNav;
+    const userId = String(user.id);
+    const userRole = String(user.role ?? '');
+
+    async function validateActiveNavigation() {
+      const navigationTaskId = String(navigationToValidate.taskId ?? '');
+      const navigationBinId = String(navigationToValidate.binId ?? '');
+      const isBinNavigation = navigationTaskId.startsWith('bin-nav-');
+
+      const [tasksResult, dispatchesResult, binAlertsResult] = await Promise.allSettled([
+        api.getMyTasks(userId),
+        axios.get(`${EMERGENCY_SERVICE}/dispatch/active`, { timeout: 5000 }).then((response) => response.data ?? []),
+        api.getBinAlerts(),
+      ]);
+
+      if (cancelled) return;
+
+      const taskStillActive =
+        tasksResult.status === 'fulfilled' &&
+        !isBinNavigation &&
+        tasksResult.value.some((task: any) => String(task.id) === navigationTaskId);
+
+      const dispatchStillActive =
+        dispatchesResult.status === 'fulfilled' &&
+        (dispatchesResult.value as any[]).some((dispatch) => {
+          const isMine =
+            String(dispatch.responder_id) === userId ||
+            String(dispatch.responder_id) === `STAFF_${userRole.toUpperCase()}_${userId.padStart(3, '0')}`;
+          const status = String(dispatch.status ?? '').toLowerCase();
+          return (
+            isMine &&
+            ['dispatched', 'en_route', 'arrived'].includes(status) &&
+            (String(dispatch.id) === navigationTaskId || String(dispatch.incident_id) === navigationBinId)
+          );
+        });
+
+      const binStillActive =
+        binAlertsResult.status === 'fulfilled' &&
+        isBinNavigation &&
+        (binAlertsResult.value as any[]).some((alert) => {
+          const status = String(alert.status ?? '').toLowerCase();
+          return (
+            !['completed', 'cancelled', 'done'].includes(status) &&
+            !alert.completed_at &&
+            (String(alert.id) === navigationBinId || String(alert.bin_id) === navigationBinId)
+          );
+        });
+
+      const validatedAnySource =
+        tasksResult.status === 'fulfilled' ||
+        dispatchesResult.status === 'fulfilled' ||
+        binAlertsResult.status === 'fulfilled';
+
+      if (validatedAnySource && !taskStillActive && !dispatchStillActive && !binStillActive) {
+        clearNavigation();
+        setRouteGeoJson(null);
+        setRouteError(null);
+      }
+    }
+
+    void validateActiveNavigation();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeNav, clearNavigation, user?.id, user?.role]);
+
   const handleRefresh = async () => {
     try {
       setRefreshing(true);
-      await Promise.all([loadMonitoring(), loadCameraStatuses(selectedFloor)]);
+      await Promise.all([loadMonitoring(), loadCameraStatuses(selectedFloor), loadFloorImpactedEdges(selectedFloor)]);
     } finally {
       setRefreshing(false);
     }
@@ -236,7 +317,7 @@ export default function MapPage() {
         etaSeconds: route.eta_seconds,
       });
       setRouteGeoJson(geoJsonRoute);
-      await Promise.all([loadMonitoring(), loadCameraStatuses(selectedFloor)]);
+      await Promise.all([loadMonitoring(), loadCameraStatuses(selectedFloor), loadFloorImpactedEdges(selectedFloor)]);
     } finally {
       setRouteRefreshing(false);
     }
@@ -252,9 +333,9 @@ export default function MapPage() {
     [activeEvents, selectedFloor]
   );
 
-  const blockedOverrides = useMemo(
-    () => edgeOverrides.filter((override) => override.is_active && override.is_blocked),
-    [edgeOverrides]
+  const blockedImpactedEdges = useMemo(
+    () => floorImpactedEdges.filter((edge) => edge.is_blocked),
+    [floorImpactedEdges]
   );
 
   const crowdCameraStatuses = useMemo(
@@ -269,28 +350,29 @@ export default function MapPage() {
 
   const circulationNotifications = useMemo<CirculationNotification[]>(() => {
     const notifications: CirculationNotification[] = [];
-    const blockedByEdge = new Map<number, EdgeOverride[]>();
+    const blockedByEdge = new Map<number, ImpactedEdgeProperties[]>();
 
-    blockedOverrides.forEach((override) => {
-      const existing = blockedByEdge.get(override.edge_id) ?? [];
-      existing.push(override);
-      blockedByEdge.set(override.edge_id, existing);
+    blockedImpactedEdges.forEach((edge) => {
+      const existing = blockedByEdge.get(edge.edge_id) ?? [];
+      existing.push(edge);
+      blockedByEdge.set(edge.edge_id, existing);
     });
 
-    blockedByEdge.forEach((overrides, edgeId) => {
-      const primaryOverride = overrides
+    blockedByEdge.forEach((edges, edgeId) => {
+      const primaryEdge = edges
         .slice()
         .sort((a, b) => b.severity - a.severity || b.id - a.id)[0];
-      const repeatedBlocks = overrides.length > 1 ? ` (${overrides.length} bloqueios ativos)` : '';
+      const repeatedBlocks = edges.length > 1 ? ` (${edges.length} bloqueios ativos)` : '';
 
       notifications.push({
         id: `blocked-${edgeId}`,
         kind: 'blocked-path',
         level: 'critical',
         title: 'Corredor fechado',
-        detail: `${primaryOverride.reason || `Aresta ${edgeId} bloqueada para circulação.`}${repeatedBlocks}`,
+        detail: `${primaryEdge.reason || `Aresta ${edgeId} bloqueada para circulação.`}${repeatedBlocks}`,
+        floorId: primaryEdge.floor_id,
         edgeId,
-        timestamp: primaryOverride.starts_at,
+        timestamp: primaryEdge.updated_at,
       });
     });
 
@@ -333,12 +415,18 @@ export default function MapPage() {
 
     const levelWeight: Record<NotificationLevel, number> = { critical: 3, warning: 2, info: 1 };
     return notifications.sort((a, b) => levelWeight[b.level] - levelWeight[a.level]);
-  }, [blockedOverrides, crowdCameraStatuses, floorEvents, routeGeoJson]);
+  }, [blockedImpactedEdges, crowdCameraStatuses, floorEvents, routeGeoJson]);
 
   const routeAffected = Boolean(
     routeGeoJson?.summary.impacted_edge_count ||
-      blockedOverrides.some((override) => routeImpactedEdgeIds.has(override.edge_id))
+      blockedImpactedEdges.some((edge) => routeImpactedEdgeIds.has(edge.edge_id))
   );
+
+  const handleClearActiveRoute = () => {
+    clearNavigation();
+    setRouteGeoJson(null);
+    setRouteError(null);
+  };
 
   const criticalCount = circulationNotifications.filter((item) => item.level === 'critical').length;
   const warningCount = circulationNotifications.filter((item) => item.level === 'warning').length;
@@ -422,6 +510,13 @@ export default function MapPage() {
                       mudança de piso
                     </span>
                   )}
+                  <button
+                    type="button"
+                    onClick={handleClearActiveRoute}
+                    className="rounded-xl border border-blue-200 bg-white px-3 py-2 text-xs font-bold text-blue-700 hover:bg-blue-100"
+                  >
+                    Limpar rota
+                  </button>
                 </div>
                 {routeError && <p className="mt-2 text-sm text-red-700">{routeError}</p>}
               </div>

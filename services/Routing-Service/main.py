@@ -534,6 +534,13 @@ async def create_operational_event(payload: OperationalEventCreate):
     return service.create_operational_event(payload)
 
 
+@app.post("/api/graph/events/deactivate-by-source")
+async def deactivate_operational_events_by_source(source: str = Query(...)):
+    """Deactivate active operational events created by a specific source."""
+    service = require_pgrouting_service()
+    return service.deactivate_operational_events_by_source(source)
+
+
 # ========== GIS LAYER ENDPOINTS ==========
 
 @app.get("/api/gis/rooms")

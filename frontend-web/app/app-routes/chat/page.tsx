@@ -1,6 +1,7 @@
 'use client';
 
 import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import axios from 'axios';
 import {
   AlertTriangle,
@@ -145,6 +146,7 @@ function readStorageKey(userId?: number) {
 
 export default function ChatPage() {
   const { user } = useAuthStore();
+  const searchParams = useSearchParams();
   const [rooms, setRooms] = useState<ChatRoom[]>(SYSTEM_ROOMS);
   const [selectedRoom, setSelectedRoom] = useState<ChatRoom | null>(null);
   const [messagesByRoom, setMessagesByRoom] = useState<Record<string, ChatApiMessage[]>>({});
@@ -287,6 +289,22 @@ export default function ChatPage() {
     void fetchMessages(room.id).then((messageList) => markRoomAsRead(room.id, messageList));
   };
 
+  useEffect(() => {
+    if (loadingRooms || rooms.length === 0 || !user?.id) return;
+
+    const staffId = searchParams.get('staffId');
+    const roomId = searchParams.get('room');
+    const requestedRoom = staffId
+      ? rooms.find((room) => room.kind === 'direct' && String(room.peer?.id) === String(staffId))
+      : roomId
+        ? rooms.find((room) => room.id === roomId)
+        : null;
+
+    if (requestedRoom && selectedRoom?.id !== requestedRoom.id) {
+      handleSelectRoom(requestedRoom);
+    }
+  }, [loadingRooms, rooms, searchParams, selectedRoom?.id, user?.id]);
+
   const handleSend = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!selectedRoom || !user || !messageText.trim()) return;
@@ -325,47 +343,50 @@ export default function ChatPage() {
   };
 
   const lastMessageForRoom = (roomId: string) => messagesByRoom[roomId]?.at(-1);
+  const chatHeightClass = user?.role === 'Supervisor'
+    ? 'h-[calc(100dvh-10rem)]'
+    : 'h-[calc(100dvh-4rem)]';
 
   return (
-    <div className="grid h-[calc(100vh-4rem)] grid-cols-1 bg-slate-100 md:grid-cols-[24rem_minmax(0,1fr)]">
-      <aside className={`${selectedRoom ? 'hidden md:flex' : 'flex'} min-w-0 flex-col border-r border-slate-200 bg-white`}>
-        <div className="border-b border-slate-200 p-5">
+    <div className={`grid ${chatHeightClass} overflow-hidden grid-cols-1 bg-slate-100 md:grid-cols-[30rem_minmax(0,1fr)]`}>
+      <aside className={`${selectedRoom ? 'hidden md:flex' : 'flex'} min-h-0 min-w-0 flex-col border-r border-slate-200 bg-white`}>
+        <div className="border-b border-slate-200 p-7">
           <div className="flex items-start justify-between gap-3">
             <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">Comunicação</p>
-              <h1 className="mt-1 text-2xl font-bold text-slate-950">Chat operacional</h1>
-              <p className="mt-1 text-sm text-slate-500">Mensagens reais persistidas no chat-service.</p>
+              <p className="text-sm font-semibold uppercase tracking-[0.22em] text-slate-500">Comunicação</p>
+              <h1 className="mt-2 text-4xl font-black tracking-tight text-slate-950">Chat operacional</h1>
+              <p className="mt-2 text-base text-slate-500">Mensagens reais persistidas no chat-service.</p>
             </div>
             <button
               type="button"
               onClick={() => void loadRooms()}
-              className="rounded-xl border border-slate-200 p-2 text-slate-600 hover:bg-slate-50"
+              className="rounded-2xl border border-slate-200 p-3 text-slate-600 hover:bg-slate-50"
               title="Atualizar"
             >
-              <RefreshCw size={18} className={loadingRooms ? 'animate-spin' : ''} />
+              <RefreshCw size={22} className={loadingRooms ? 'animate-spin' : ''} />
             </button>
           </div>
 
-          <div className="relative mt-5">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={17} />
+          <div className="relative mt-7">
+            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={21} />
             <input
               value={searchTerm}
               onChange={(event) => setSearchTerm(event.target.value)}
               placeholder="Pesquisar canal ou contacto..."
-              className="w-full rounded-2xl border border-slate-200 bg-slate-50 py-3 pl-10 pr-4 text-sm outline-none transition focus:border-blue-300 focus:bg-white focus:ring-4 focus:ring-blue-50"
+              className="w-full rounded-2xl border border-slate-200 bg-slate-50 py-4 pl-12 pr-5 text-base text-slate-950 outline-none transition placeholder:text-slate-400 focus:border-blue-300 focus:bg-white focus:ring-4 focus:ring-blue-50"
             />
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-3">
+        <div className="flex-1 overflow-y-auto p-4">
           {loadingRooms && rooms.length === SYSTEM_ROOMS.length ? (
-            <div className="flex h-40 items-center justify-center text-sm text-slate-500">A carregar conversas...</div>
+            <div className="flex h-40 items-center justify-center text-base text-slate-500">A carregar conversas...</div>
           ) : visibleRooms.length === 0 ? (
-            <div className="rounded-2xl border border-dashed border-slate-200 p-6 text-center text-sm text-slate-500">
+            <div className="rounded-2xl border border-dashed border-slate-200 p-8 text-center text-base text-slate-500">
               Nenhuma conversa encontrada.
             </div>
           ) : (
-            <div className="space-y-2">
+            <div className="space-y-3">
               {visibleRooms.map((room) => {
                 const Icon = roomIcon(room);
                 const lastMessage = lastMessageForRoom(room.id);
@@ -377,7 +398,7 @@ export default function ChatPage() {
                     key={room.id}
                     type="button"
                     onClick={() => handleSelectRoom(room)}
-                    className={`w-full rounded-2xl border p-3 text-left transition ${
+                    className={`w-full rounded-3xl border p-4 text-left transition ${
                       active
                         ? 'border-blue-200 bg-blue-50 shadow-sm'
                         : unread
@@ -385,26 +406,26 @@ export default function ChatPage() {
                           : 'border-transparent hover:border-slate-200 hover:bg-slate-50'
                     }`}
                   >
-                    <div className="flex items-start gap-3">
-                      <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border ${roomTone(room)}`}>
-                        {room.kind === 'direct' ? <span className="text-sm font-bold">{initials(room.name)}</span> : <Icon size={19} />}
+                    <div className="flex items-start gap-4">
+                      <div className={`flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl border ${roomTone(room)}`}>
+                        {room.kind === 'direct' ? <span className="text-base font-black">{initials(room.name)}</span> : <Icon size={23} />}
                       </div>
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center justify-between gap-2">
                           <div className="flex min-w-0 items-center gap-2">
-                            <p className={`truncate font-semibold ${unread ? 'text-blue-950' : 'text-slate-950'}`}>
+                            <p className={`truncate text-lg font-bold ${unread ? 'text-blue-950' : 'text-slate-950'}`}>
                               {room.name}
                             </p>
                             {unread && <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-blue-600" />}
                           </div>
                           {lastMessage && (
-                            <span className={`shrink-0 text-xs ${unread ? 'font-semibold text-blue-700' : 'text-slate-400'}`}>
+                            <span className={`shrink-0 text-sm ${unread ? 'font-bold text-blue-700' : 'text-slate-400'}`}>
                               {formatTime(lastMessage.ts)}
                             </span>
                           )}
                         </div>
-                        <p className="mt-0.5 truncate text-xs text-slate-500">{room.description}</p>
-                        <p className={`mt-2 truncate text-sm ${unread ? 'font-semibold text-slate-900' : 'text-slate-600'}`}>
+                        <p className="mt-1 truncate text-sm text-slate-500">{room.description}</p>
+                        <p className={`mt-3 truncate text-base ${unread ? 'font-bold text-slate-900' : 'text-slate-600'}`}>
                           {lastMessage ? `${lastMessage.sender_name}: ${lastMessage.text}` : 'Sem mensagens ainda'}
                         </p>
                       </div>
@@ -417,11 +438,11 @@ export default function ChatPage() {
         </div>
       </aside>
 
-      <main className={`${selectedRoom ? 'flex' : 'hidden md:flex'} min-w-0 flex-col bg-white`}>
+      <main className={`${selectedRoom ? 'flex' : 'hidden md:flex'} min-h-0 min-w-0 flex-col bg-white`}>
         {selectedRoom ? (
           <>
-            <header className="flex items-center justify-between gap-4 border-b border-slate-200 px-5 py-4">
-              <div className="flex min-w-0 items-center gap-3">
+            <header className="flex items-center justify-between gap-4 border-b border-slate-200 px-8 py-6">
+              <div className="flex min-w-0 items-center gap-4">
                 <button
                   type="button"
                   onClick={() => setSelectedRoom(null)}
@@ -429,55 +450,55 @@ export default function ChatPage() {
                 >
                   Voltar
                 </button>
-                <div className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border ${roomTone(selectedRoom)}`}>
+                <div className={`flex h-16 w-16 shrink-0 items-center justify-center rounded-3xl border ${roomTone(selectedRoom)}`}>
                   {selectedRoom.kind === 'direct' ? (
-                    <span className="font-bold">{initials(selectedRoom.name)}</span>
+                    <span className="text-lg font-black">{initials(selectedRoom.name)}</span>
                   ) : (
                     (() => {
                       const Icon = roomIcon(selectedRoom);
-                      return <Icon size={20} />;
+                      return <Icon size={26} />;
                     })()
                   )}
                 </div>
                 <div className="min-w-0">
-                  <h2 className="truncate text-lg font-bold text-slate-950">{selectedRoom.name}</h2>
-                  <p className="truncate text-sm text-slate-500">{selectedRoom.description}</p>
+                  <h2 className="truncate text-2xl font-black text-slate-950">{selectedRoom.name}</h2>
+                  <p className="mt-1 truncate text-base text-slate-500">{selectedRoom.description}</p>
                 </div>
               </div>
-              <div className="hidden items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700 sm:flex">
-                <CheckCircle2 size={14} />
+              <div className="hidden items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm font-bold text-emerald-700 sm:flex">
+                <CheckCircle2 size={16} />
                 Serviço real
               </div>
             </header>
 
             {error && (
-              <div className="mx-5 mt-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+              <div className="mx-8 mt-5 rounded-2xl border border-red-200 bg-red-50 px-5 py-4 text-base text-red-700">
                 {error}
               </div>
             )}
 
-            <section className="flex-1 overflow-y-auto bg-[linear-gradient(180deg,#f8fafc,#eef2f7)] px-5 py-6">
+            <section className="flex-1 overflow-y-auto bg-[linear-gradient(180deg,#f8fafc,#eef2f7)] px-8 py-8">
               {loadingMessages ? (
-                <div className="flex h-full items-center justify-center text-sm text-slate-500">A carregar mensagens...</div>
+                <div className="flex h-full items-center justify-center text-base text-slate-500">A carregar mensagens...</div>
               ) : selectedMessages.length === 0 ? (
-                <div className="mx-auto mt-20 max-w-sm rounded-3xl border border-dashed border-slate-300 bg-white/80 p-8 text-center shadow-sm backdrop-blur">
-                  <MessageCircle className="mx-auto text-slate-300" size={42} />
-                  <h3 className="mt-4 text-lg font-semibold text-slate-950">Sem mensagens</h3>
-                  <p className="mt-2 text-sm text-slate-500">
+                <div className="mx-auto mt-24 max-w-lg rounded-3xl border border-dashed border-slate-300 bg-white/80 p-10 text-center shadow-sm backdrop-blur">
+                  <MessageCircle className="mx-auto text-slate-300" size={52} />
+                  <h3 className="mt-5 text-2xl font-black text-slate-950">Sem mensagens</h3>
+                  <p className="mt-3 text-base text-slate-500">
                     Esta conversa ainda não tem histórico real. Envia a primeira mensagem para criar registo na base de dados.
                   </p>
                 </div>
               ) : (
-                <div className="mx-auto max-w-4xl space-y-4">
+                <div className="w-full space-y-5">
                   {selectedMessages.map((message) => {
                     const own = String(user?.id ?? '') === String(message.sender_id);
 
                     return (
                       <div key={message.id} className={`flex ${own ? 'justify-end' : 'justify-start'}`}>
-                        <div className={`max-w-[82%] rounded-3xl px-4 py-3 shadow-sm ${own ? 'bg-blue-600 text-white' : 'bg-white text-slate-900'}`}>
-                          {!own && <p className="mb-1 text-xs font-semibold text-slate-500">{message.sender_name}</p>}
-                          <p className="whitespace-pre-wrap text-sm leading-6">{message.text}</p>
-                          <p className={`mt-2 text-right text-[0.7rem] ${own ? 'text-blue-100' : 'text-slate-400'}`}>
+                        <div className={`max-w-[min(48rem,78%)] rounded-[1.75rem] px-5 py-4 shadow-sm ${own ? 'bg-blue-600 text-white' : 'bg-white text-slate-900'}`}>
+                          {!own && <p className="mb-1.5 text-sm font-bold text-slate-500">{message.sender_name}</p>}
+                          <p className="whitespace-pre-wrap text-base leading-7 xl:text-lg">{message.text}</p>
+                          <p className={`mt-3 text-right text-xs ${own ? 'text-blue-100' : 'text-slate-400'}`}>
                             {formatDateTime(message.ts)}
                           </p>
                         </div>
@@ -489,14 +510,14 @@ export default function ChatPage() {
               )}
             </section>
 
-            <form onSubmit={handleSend} className="border-t border-slate-200 bg-white p-4">
-              <div className="mx-auto flex max-w-4xl items-end gap-3">
+            <form onSubmit={handleSend} className="border-t border-slate-200 bg-white p-6">
+              <div className="mx-auto flex max-w-6xl items-end gap-4">
                 <textarea
                   value={messageText}
                   onChange={(event) => setMessageText(event.target.value)}
                   placeholder="Escrever mensagem operacional..."
                   rows={1}
-                  className="max-h-36 min-h-[3rem] flex-1 resize-none rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none transition focus:border-blue-300 focus:bg-white focus:ring-4 focus:ring-blue-50"
+                  className="max-h-44 min-h-[4rem] flex-1 resize-none rounded-3xl border border-slate-200 bg-slate-50 px-5 py-4 text-base text-slate-950 outline-none transition placeholder:text-slate-400 focus:border-blue-300 focus:bg-white focus:ring-4 focus:ring-blue-50 xl:text-lg"
                   onKeyDown={(event) => {
                     if (event.key === 'Enter' && !event.shiftKey) {
                       event.preventDefault();
@@ -507,22 +528,22 @@ export default function ChatPage() {
                 <button
                   type="submit"
                   disabled={sending || !messageText.trim()}
-                  className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-blue-600 text-white shadow-sm transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+                  className="flex h-16 w-16 shrink-0 items-center justify-center rounded-3xl bg-blue-600 text-white shadow-sm transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
                   title="Enviar"
                 >
-                  {sending ? <RefreshCw className="animate-spin" size={18} /> : <Send size={18} />}
+                  {sending ? <RefreshCw className="animate-spin" size={22} /> : <Send size={22} />}
                 </button>
               </div>
             </form>
           </>
         ) : (
-          <div className="flex flex-1 items-center justify-center bg-slate-50 px-6">
-            <div className="max-w-sm text-center">
-              <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-3xl bg-white text-slate-300 shadow-sm">
-                <MessageCircle size={36} />
+          <div className="flex flex-1 items-center justify-center bg-slate-50 px-8">
+            <div className="max-w-md text-center">
+              <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-[2rem] bg-white text-slate-300 shadow-sm">
+                <MessageCircle size={44} />
               </div>
-              <h2 className="mt-5 text-xl font-bold text-slate-950">Seleciona uma conversa</h2>
-              <p className="mt-2 text-sm text-slate-500">
+              <h2 className="mt-6 text-3xl font-black text-slate-950">Seleciona uma conversa</h2>
+              <p className="mt-3 text-base text-slate-500">
                 Escolhe um canal operacional ou uma conversa direta com staff real.
               </p>
             </div>

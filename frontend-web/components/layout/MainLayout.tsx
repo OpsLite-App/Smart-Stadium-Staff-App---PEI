@@ -118,37 +118,37 @@ export function MainLayout({ children }: MainLayoutProps) {
           </div>
         </div>
 
-        <div className="hidden lg:grid lg:grid-cols-[280px_1fr] min-h-screen">
-          <aside className="border-r border-gray-200 bg-white">
+        <div className="hidden lg:grid lg:grid-cols-[300px_minmax(0,1fr)] h-screen overflow-hidden">
+          <aside className="h-screen overflow-hidden border-r border-gray-200 bg-white">
             <div className="flex h-full flex-col">
-              <div className="border-b border-gray-100 px-6 py-6">
+              <div className="border-b border-gray-100 px-6 py-5">
                 <div className="flex items-center gap-3">
-                  <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-amber-500 text-sm font-bold text-white shadow-sm">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-500 text-sm font-bold text-white shadow-sm">
                     O
                   </div>
                   <div>
-                    <p className="text-lg font-semibold text-gray-900">OpsLite</p>
+                    <p className="text-base font-semibold text-gray-900">OpsLite</p>
                     <p className="text-xs uppercase tracking-[0.18em] text-amber-600">Supervisor Web</p>
                   </div>
                 </div>
               </div>
 
-              <div className="px-4 py-5">
-                <div className="rounded-2xl bg-[linear-gradient(135deg,#111827,#1f2937)] px-4 py-4 text-white">
+              <div className="px-5 py-5">
+                <div className="rounded-xl bg-[linear-gradient(135deg,#111827,#1f2937)] px-5 py-5 text-white">
                   <p className="text-xs uppercase tracking-[0.18em] text-gray-300">Operações</p>
-                  <p className="mt-2 text-2xl font-semibold">Controlo central</p>
-                  <p className="mt-2 text-sm text-gray-300">
+                  <p className="mt-2 text-xl font-semibold">Controlo central</p>
+                  <p className="mt-2 text-sm leading-5 text-gray-300">
                     Monitorização, equipa e decisões em tempo real.
                   </p>
                 </div>
               </div>
 
-              <nav className="flex-1 space-y-1 px-4">
+              <nav className="flex-1 space-y-1 px-5">
                 {navigation.map((item) => (
                   <button
                     key={item.name}
                     onClick={() => router.push(item.href)}
-                    className={`flex w-full items-center gap-3 rounded-2xl px-4 py-3 text-sm font-medium transition-colors ${
+                    className={`flex w-full items-center gap-3 rounded-xl px-4 py-3 text-sm font-medium transition-colors ${
                       item.current
                         ? 'bg-amber-50 text-amber-800'
                         : 'text-gray-700 hover:bg-gray-50'
@@ -160,8 +160,8 @@ export function MainLayout({ children }: MainLayoutProps) {
                 ))}
               </nav>
 
-              <div className="border-t border-gray-100 px-4 py-5">
-                <div className="mb-4 rounded-2xl bg-gray-50 px-4 py-3">
+              <div className="border-t border-gray-100 px-5 py-5">
+                <div className="mb-4 rounded-xl bg-gray-50 px-4 py-3">
                   <p className="truncate text-sm font-medium text-gray-900">{user.email || 'Utilizador'}</p>
                   <p className="text-xs text-gray-500">{user.role}</p>
                 </div>
@@ -170,7 +170,7 @@ export function MainLayout({ children }: MainLayoutProps) {
                     logout();
                     router.push('/auth-routes/login');
                   }}
-                  className="flex w-full items-center gap-3 rounded-2xl px-4 py-3 text-sm font-medium text-red-600 hover:bg-red-50"
+                  className="flex w-full items-center gap-3 rounded-xl px-4 py-3 text-sm font-medium text-red-600 hover:bg-red-50"
                 >
                   <LogOut size={18} />
                   Sair
@@ -179,12 +179,12 @@ export function MainLayout({ children }: MainLayoutProps) {
             </div>
           </aside>
 
-          <main className="min-w-0">
-            <div className="border-b border-gray-200 bg-white/80 px-8 py-5 backdrop-blur">
+          <main className="min-w-0 overflow-y-auto">
+            <div className="border-b border-gray-200 bg-white/80 px-8 py-5 backdrop-blur 2xl:px-10">
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-xs uppercase tracking-[0.18em] text-gray-500">Supervisão</p>
-                  <h1 className="mt-1 text-2xl font-semibold text-gray-900">Centro de operações</h1>
+                  <h1 className="mt-1 text-xl font-semibold text-gray-900">Centro de operações</h1>
                 </div>
                 <div className="rounded-full border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm font-medium text-emerald-700">
                   Web workspace ativo
@@ -192,7 +192,7 @@ export function MainLayout({ children }: MainLayoutProps) {
               </div>
             </div>
 
-            <div className="px-8 py-8">{children}</div>
+            <div className="px-8 py-8 2xl:px-10">{children}</div>
           </main>
         </div>
       </div>

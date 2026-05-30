@@ -32,7 +32,7 @@ Unknown roles default to `Security`.
 | View map | Yes | Yes | Yes | Yes |
 | Use navigation | Yes | Yes | Yes | Yes |
 | View alerts | Yes | Yes | Yes | Yes |
-| Use chat | Yes | Yes | Yes | No |
+| Use chat | Yes | Yes | Yes | Yes |
 | Emergency / evacuation | Yes | Yes | Yes | Yes |
 | View tasks | Yes | Yes | No | No |
 | Medical incidents | No | No | Yes | No |
@@ -46,6 +46,20 @@ Unknown roles default to `Security`.
 | Dispatch incidents | No | No | No | Yes |
 | Resolve incidents | No | No | Yes | Yes |
 | Manage camera density | No | No | No | Yes |
+
+## Incident Categories
+
+Operational incident categories are restricted to:
+
+| Category | Routed to |
+| --- | --- |
+| `security` | Security team |
+| `medic` | Medical team |
+| `cleaning` | Cleaning team |
+
+Legacy values such as `medical`, `fire`, `smoke`, `maintenance` and `other`
+may still appear in old database rows, but new incident creation and dispatch
+requests must use only the three categories above.
 
 ## Implementation Notes
 

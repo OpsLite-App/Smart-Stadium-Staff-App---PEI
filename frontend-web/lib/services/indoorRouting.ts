@@ -80,6 +80,19 @@ export interface EdgeOverride {
   is_active: boolean;
 }
 
+function isWithinActiveWindow(item: { starts_at?: string | null; ends_at?: string | null; is_active: boolean }) {
+  if (!item.is_active) return false;
+
+  const now = Date.now();
+  const startsAt = item.starts_at ? Date.parse(item.starts_at) : null;
+  const endsAt = item.ends_at ? Date.parse(item.ends_at) : null;
+
+  if (startsAt != null && Number.isFinite(startsAt) && startsAt > now) return false;
+  if (endsAt != null && Number.isFinite(endsAt) && endsAt < now) return false;
+
+  return true;
+}
+
 export const indoorRoutingService = {
   async getPois(): Promise<Poi[]> {
     const response = await axios.get<Poi[]>(`${ROUTING_BASE}/pois`, {
@@ -144,13 +157,13 @@ export const indoorRoutingService = {
     const response = await axios.get<OperationalEvent[]>(`${ROUTING_BASE}/graph/events`, {
       timeout: 8000,
     });
-    return response.data ?? [];
+    return (response.data ?? []).filter(isWithinActiveWindow);
   },
 
   async getEdgeOverrides(): Promise<EdgeOverride[]> {
     const response = await axios.get<EdgeOverride[]>(`${ROUTING_BASE}/graph/edge-overrides`, {
       timeout: 8000,
     });
-    return response.data ?? [];
+    return (response.data ?? []).filter(isWithinActiveWindow);
   },
 };

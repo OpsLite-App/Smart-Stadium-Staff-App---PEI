@@ -207,7 +207,7 @@ class EventProcessor:
         details = event.get("details", "").lower()
 
         # Determine role
-        role = "medical" if any(x in details for x in ["medical", "faint", "injury"]) else "security"
+        role = "medic" if any(x in details for x in ["medical", "medic", "faint", "injury"]) else "security"
 
         incident_payload = {
             "incident_type": role,

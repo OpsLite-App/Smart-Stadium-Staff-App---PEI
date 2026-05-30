@@ -2,8 +2,11 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { useAuthStore } from '@/lib/stores/useAuthStore';
 import { api } from '@/lib/services/api';
+import { useNavigationStore } from '@/lib/stores/useNavigationStore';
+import { IndoorGisMap } from '@/components/map/IndoorGisMap';
 import {
   User,
   Users,
@@ -142,6 +145,8 @@ function toTeamRole(role: string | undefined): TeamMember['role'] {
 
 export default function TeamPage() {
   const { user } = useAuthStore();
+  const router = useRouter();
+  const { currentNode, setNavigation } = useNavigationStore();
   const [members, setMembers] = useState<TeamMember[]>([]);
   const [filteredMembers, setFilteredMembers] = useState<TeamMember[]>([]);
   const [loading, setLoading] = useState(true);
@@ -170,6 +175,7 @@ export default function TeamPage() {
   // Estados para UI
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedMember, setSelectedMember] = useState<TeamMember | null>(null);
+  const [locatingMember, setLocatingMember] = useState<TeamMember | null>(null);
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [showFilters, setShowFilters] = useState(false);
   const [showGroups, setShowGroups] = useState(false);
@@ -187,6 +193,57 @@ export default function TeamPage() {
 
   // Grupos de equipa (gerados dinamicamente)
   const [groups, setGroups] = useState<TeamGroup[]>([]);
+
+  const numericNode = (value?: string | null) => {
+    if (!value) return null;
+    const match = String(value).match(/\d+/);
+    return match ? match[0] : null;
+  };
+
+  const handleSendMessage = (member: TeamMember) => {
+    router.push(`/app-routes/chat?staffId=${encodeURIComponent(String(member.id))}`);
+  };
+
+  const handleLocateMember = (member: TeamMember) => {
+    setLocatingMember(member);
+  };
+
+  const getMemberFloor = (member: TeamMember) => {
+    const node = Number(numericNode(member.location_details?.node_id || member.location));
+    return node >= 70 ? 2 : 1;
+  };
+
+  const handleNavigateToMember = async (member: TeamMember) => {
+    const targetNode = numericNode(member.location_details?.node_id || member.location);
+    const fromNode = numericNode(currentNode) || '62';
+
+    if (!targetNode) return;
+
+    try {
+      const route = await api.getRoute(fromNode, targetNode);
+      setNavigation({
+        taskId: `staff-location-${member.id}`,
+        binId: String(member.id),
+        binName: `Localizar ${member.name}`,
+        targetNode,
+        fromNode,
+        waypoints: route.waypoints,
+        etaSeconds: route.eta_seconds,
+      });
+    } catch {
+      setNavigation({
+        taskId: `staff-location-${member.id}`,
+        binId: String(member.id),
+        binName: `Localizar ${member.name}`,
+        targetNode,
+        fromNode,
+        waypoints: [],
+        etaSeconds: 0,
+      });
+    }
+
+    router.push('/app-routes/map');
+  };
 
   // Carregar membros da equipa
   const fetchTeamMembers = async () => {
@@ -610,9 +667,9 @@ export default function TeamPage() {
   }
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div className="w-full space-y-6">
         {/* Header */}
-        <div className="flex flex-col md:flex-row md:items-center md:justify-between mb-6">
+        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <div>
             <h1 className="text-3xl font-bold text-gray-900">Equipa</h1>
             <p className="text-gray-600 mt-1">
@@ -620,7 +677,7 @@ export default function TeamPage() {
             </p>
           </div>
 
-          <div className="flex gap-2 mt-4 md:mt-0">
+          <div className="flex flex-wrap gap-2">
             <button
               onClick={() => setViewMode(viewMode === 'grid' ? 'list' : 'grid')}
               className="p-2 bg-white border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50"
@@ -656,7 +713,7 @@ export default function TeamPage() {
         </div>
 
         {/* Barra de Pesquisa */}
-        <div className="mb-6">
+        <div>
           <div className="relative">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
             <input
@@ -664,14 +721,14 @@ export default function TeamPage() {
               placeholder="Pesquisar por nome, email ou função..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#4F46E5] focus:border-transparent"
+              className="w-full rounded-xl border border-gray-300 py-3 pl-10 pr-4 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-[#4F46E5]"
             />
           </div>
         </div>
 
         {/* Filtros */}
         {showFilters && (
-          <div className="bg-white rounded-lg shadow-sm p-6 mb-6 border border-gray-200">
+          <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
             <div className="flex justify-between items-center mb-4">
               <h2 className="font-semibold text-gray-900">Filtros</h2>
               <button
@@ -689,7 +746,7 @@ export default function TeamPage() {
               </button>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+            <div className="grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-4">
               {/* Filtro por Role */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -823,9 +880,9 @@ export default function TeamPage() {
 
         {/* Grupos */}
         {showGroups && (
-          <div className="mb-6">
+          <div>
             <h2 className="text-lg font-semibold text-gray-900 mb-4">Grupos por Função</h2>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
               {groups.map((group) => {
                 const GroupIcon = getRoleIcon(group.role);
                 const roleColor = getRoleColor(group.role).split(' ')[0];
@@ -833,7 +890,7 @@ export default function TeamPage() {
                 return (
                   <div
                     key={group.id}
-                    className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 cursor-pointer hover:shadow-md transition-shadow"
+                    className="cursor-pointer rounded-xl border border-gray-200 bg-white p-4 shadow-sm transition-shadow hover:shadow-md"
                     onClick={() => setExpandedGroup(expandedGroup === group.id ? null : group.id)}
                   >
                     <div className="flex items-center justify-between mb-3">
@@ -874,7 +931,7 @@ export default function TeamPage() {
 
         {/* Lista de Membros */}
         {filteredMembers.length === 0 ? (
-          <div className="bg-white rounded-lg shadow-sm p-12 text-center">
+          <div className="rounded-xl bg-white p-12 text-center shadow-sm">
             <Users size={48} className="mx-auto text-gray-400 mb-4" />
             <h3 className="text-lg font-medium text-gray-900 mb-2">Sem membros</h3>
             <p className="text-gray-600">
@@ -883,7 +940,7 @@ export default function TeamPage() {
           </div>
         ) : viewMode === 'grid' ? (
           // Visualização em Grid
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
             {filteredMembers.map((member) => {
               const RoleIcon = getRoleIcon(member.role);
               const BatteryIcon = getBatteryIcon(member.device.battery);
@@ -891,7 +948,7 @@ export default function TeamPage() {
               return (
                 <div
                   key={member.id}
-                  className="bg-white rounded-lg shadow-sm border border-gray-200 hover:shadow-md transition-shadow cursor-pointer"
+                  className="cursor-pointer rounded-xl border border-gray-200 bg-white shadow-sm transition-shadow hover:shadow-md"
                   onClick={() => setSelectedMember(member)}
                 >
                   <div className="p-6">
@@ -967,7 +1024,7 @@ export default function TeamPage() {
           </div>
         ) : (
           // Visualização em Lista
-          <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+          <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
                 <tr>
@@ -1060,8 +1117,8 @@ export default function TeamPage() {
 
         {/* Modal de Detalhes do Membro */}
         {selectedMember && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-            <div className="bg-white rounded-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/20 p-4 backdrop-blur-sm">
+            <div className="max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-xl bg-white shadow-2xl ring-1 ring-slate-900/10">
               <div className="p-6">
                 {/* Header do Modal */}
                 <div className="flex items-center justify-between mb-6">
@@ -1240,13 +1297,81 @@ export default function TeamPage() {
 
                 {/* Ações */}
                 <div className="flex gap-3">
-                  <button className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-[#4F46E5] text-white rounded-lg hover:bg-[#4338CA]">
+                  <button
+                    type="button"
+                    onClick={() => handleSendMessage(selectedMember)}
+                    className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-[#4F46E5] text-white rounded-lg hover:bg-[#4338CA]"
+                  >
                     <MessageSquare size={18} />
                     Enviar Mensagem
                   </button>
-                  <button className="flex-1 flex items-center justify-center gap-2 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50">
+                  <button
+                    type="button"
+                    onClick={() => void handleLocateMember(selectedMember)}
+                    className="flex-1 flex items-center justify-center gap-2 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
+                  >
                     <Navigation size={18} />
                     Localizar
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+        {locatingMember && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 p-4 backdrop-blur-md">
+            <div className="flex max-h-[92vh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
+              <div className="flex items-center justify-between border-b border-gray-200 px-6 py-4">
+                <div>
+                  <p className="text-xs font-bold uppercase tracking-[0.18em] text-indigo-600">Localização da equipa</p>
+                  <h3 className="mt-1 text-xl font-black text-gray-900">{locatingMember.name}</h3>
+                  <p className="mt-1 text-sm text-gray-500">
+                    {getRoleName(locatingMember.role)} · localização {locatingMember.location}
+                  </p>
+                </div>
+                <div className="flex items-center gap-3">
+                  <span className="rounded-full border border-indigo-100 bg-indigo-50 px-4 py-2 text-sm font-black text-indigo-700">
+                    Piso {getMemberFloor(locatingMember)}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setLocatingMember(null)}
+                    className="rounded-xl p-2 text-gray-500 hover:bg-gray-100"
+                  >
+                    <XCircle size={20} />
+                  </button>
+                </div>
+              </div>
+
+              <div className="p-5">
+                <IndoorGisMap
+                  floorId={getMemberFloor(locatingMember)}
+                  heightClassName="h-[62vh] min-h-[32rem]"
+                  showHeatmap={false}
+                  showCameraControls={false}
+                  showStaffMarkers
+                  staffFilterId={locatingMember.id}
+                />
+              </div>
+
+              <div className="flex flex-col gap-3 border-t border-gray-100 px-6 py-4 sm:flex-row sm:items-center sm:justify-between">
+                <div className="rounded-xl bg-indigo-50 px-4 py-3 text-sm text-indigo-800">
+                  <span className="font-bold">A mostrar apenas:</span> {locatingMember.name} · Piso {getMemberFloor(locatingMember)}
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setLocatingMember(null)}
+                    className="rounded-xl border border-gray-200 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50"
+                  >
+                    Fechar
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void handleNavigateToMember(locatingMember)}
+                    className="rounded-xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700"
+                  >
+                    Abrir rota no mapa
                   </button>
                 </div>
               </div>

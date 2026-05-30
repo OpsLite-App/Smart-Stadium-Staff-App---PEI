@@ -31,7 +31,7 @@ public final class RoleAccess {
     permissions.put("canViewMap", true);
     permissions.put("canUseNavigation", true);
     permissions.put("canViewAlerts", true);
-    permissions.put("canUseChat", !supervisor);
+    permissions.put("canUseChat", true);
     permissions.put("canUseEmergencyButton", security || cleaning || medical || supervisor);
     permissions.put("canViewTasks", !medical);
     permissions.put("canViewMedicalIncidents", medical);

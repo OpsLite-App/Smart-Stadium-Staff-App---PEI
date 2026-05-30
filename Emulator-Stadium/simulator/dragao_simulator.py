@@ -16,7 +16,7 @@ import random
 import time
 import uuid
 from collections import defaultdict
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -40,6 +40,7 @@ SIM_SCENARIO = os.getenv("SIM_SCENARIO", "matchday")
 SIM_TICK_SECONDS = float(os.getenv("SIM_TICK_SECONDS", "1"))
 SIM_OUTPUT_FILE = os.getenv("SIM_OUTPUT_FILE", "stadium_events_integrated.json")
 USE_CROWD_MODELS = os.getenv("EMULATOR_USE_MODELS", "false").lower() in {"1", "true", "yes"}
+SIM_CLOSURE_TTL_SECONDS = int(os.getenv("SIM_CLOSURE_TTL_SECONDS", "180"))
 
 if os.getenv("SIM_SEED"):
     random.seed(int(os.environ["SIM_SEED"]))
@@ -476,6 +477,8 @@ class OpsLiteEventGenerator:
             pass
 
     def _post_node_closure(self, node_id: int, reason: str, severity: float):
+        ends_at = (datetime.now(timezone.utc) + timedelta(seconds=SIM_CLOSURE_TTL_SECONDS)).isoformat()
+
         try:
             response = requests.post(
                 f"{ROUTING_SERVICE_URL}/api/graph/node-closures",
@@ -484,6 +487,7 @@ class OpsLiteEventGenerator:
                     "reason": reason,
                     "source": "emulator-stadium",
                     "severity": severity,
+                    "ends_at": ends_at,
                     "is_active": True,
                 },
                 timeout=3,
@@ -553,6 +557,21 @@ class OpsLiteEventGenerator:
                 pass
 
 
+def clear_previous_emulator_closures():
+    try:
+        response = requests.post(
+            f"{ROUTING_SERVICE_URL}/api/graph/edge-overrides/deactivate-by-source",
+            params={"source": "emulator-stadium"},
+            timeout=3,
+        )
+        if response.status_code == 200:
+            print(f"Cleared previous emulator closures: {response.json().get('deactivated', 0)}")
+        elif response.status_code >= 400:
+            print(f"Could not clear previous emulator closures: {response.status_code}")
+    except Exception as exc:
+        print(f"Could not clear previous emulator closures: {exc}")
+
+
 def run_integrated_simulation(duration_seconds: int):
     print("=" * 68)
     print("OpsLite Stadium Emulator")
@@ -560,7 +579,10 @@ def run_integrated_simulation(duration_seconds: int):
     print(f"routing-service: {ROUTING_SERVICE_URL}")
     print(f"mqtt: {MQTT_BROKER}:{MQTT_PORT}")
     print(f"scenario: {SIM_SCENARIO}, duration: {duration_seconds}s")
+    print(f"simulated closure TTL: {SIM_CLOSURE_TTL_SECONDS}s")
     print("=" * 68)
+
+    clear_previous_emulator_closures()
 
     mqtt_pub = MQTTPublisher(MQTT_BROKER, MQTT_PORT)
     generator = OpsLiteEventGenerator(mqtt_pub)

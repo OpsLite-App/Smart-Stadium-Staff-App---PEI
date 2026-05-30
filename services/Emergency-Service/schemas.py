@@ -3,16 +3,29 @@ PYDANTIC SCHEMAS for Emergency Service
 Request/Response models for API endpoints
 """
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from typing import Optional, List, Dict, Any
 from datetime import datetime
 
 
 # ========== INCIDENT SCHEMAS ==========
 
+INCIDENT_CATEGORY_ALIASES = {
+    "security": "security",
+    "medic": "medic",
+    "cleaning": "cleaning",
+}
+
+
+def normalize_incident_category(value: str) -> str:
+    normalized = str(value or "").strip().lower()
+    if normalized not in INCIDENT_CATEGORY_ALIASES:
+        raise ValueError("Incident category must be one of: security, medic, cleaning")
+    return INCIDENT_CATEGORY_ALIASES[normalized]
+
 class IncidentCreate(BaseModel):
     """Create new incident"""
-    incident_type: str = Field(..., description="Type: fire, smoke, gas_leak, structural, electrical")
+    incident_type: str = Field(..., description="Category: security, medic, cleaning")
     location_node: str = Field(..., description="Node ID of incident location")
     severity: str = Field(default="medium", description="Severity: low, medium, high, critical")
     description: Optional[str] = Field(None, description="Incident description")
@@ -22,6 +35,11 @@ class IncidentCreate(BaseModel):
     sensor_id: Optional[str] = Field(None, description="Sensor ID if detected by sensor")
     reported_by: Optional[str] = Field(None, description="Staff ID who reported")
     incident_metadata: Dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("incident_type")
+    @classmethod
+    def validate_incident_type(cls, value: str) -> str:
+        return normalize_incident_category(value)
 
 
 class IncidentUpdate(BaseModel):
@@ -110,17 +128,27 @@ class SensorAlertResponse(BaseModel):
 class DispatchRequest(BaseModel):
     """Request responder dispatch"""
     incident_id: str = Field(..., description="Incident ID")
-    responder_role: str = Field(..., description="Required role: security, supervisor, maintenance")
+    responder_role: str = Field(..., description="Required role: security, medic, cleaning")
     num_responders: int = Field(default=1, ge=1, le=10, description="Number of responders to dispatch")
+
+    @field_validator("responder_role")
+    @classmethod
+    def validate_responder_role(cls, value: str) -> str:
+        return normalize_incident_category(value)
 
 
 class ManualDispatchRequest(BaseModel):
     """Request dispatch to a specific responder chosen by a supervisor"""
     incident_id: str = Field(..., description="Incident ID")
     responder_id: str = Field(..., description="Selected responder ID")
-    responder_role: str = Field(..., description="Responder role: security, supervisor, maintenance, medical")
+    responder_role: str = Field(..., description="Responder role: security, medic, cleaning")
     current_position: str = Field(..., description="Current responder node/location")
     responder_name: Optional[str] = Field(None, description="Optional responder display name")
+
+    @field_validator("responder_role")
+    @classmethod
+    def validate_responder_role(cls, value: str) -> str:
+        return normalize_incident_category(value)
 
 
 class DispatchResponse(BaseModel):

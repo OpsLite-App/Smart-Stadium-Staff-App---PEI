@@ -134,7 +134,7 @@ def handle_manual_alarm(event: dict, incident_manager, db):
     from schemas import IncidentCreate
     
     incident_data = IncidentCreate(
-        incident_type="fire",
+        incident_type="security",
         location_node=event.get('location_node'),
         severity="high",
         description="Manual fire alarm activated",

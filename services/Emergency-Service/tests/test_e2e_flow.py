@@ -79,6 +79,6 @@ def test_full_fire_alarm_flow(e2e_setup):
         None
     )
     assert fire_incident is not None
-    assert fire_incident["incident_type"] == "fire"
+    assert fire_incident["incident_type"] == "security"
     assert fire_incident["severity"] == "high"   # production hardcodes "high"
 

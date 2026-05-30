@@ -199,7 +199,7 @@ export default function MedicalIncidentsPage() {
       // pode mudar o estado para "responding", por isso não podemos pedir só
       // status=active ou o incidente desaparece da vista do médico.
       const incidentsRes = await axios.get(`${EMERGENCY_SERVICE}/incidents`, {
-        params: { incident_type: 'medical' },
+        params: { incident_type: 'medic' },
         timeout: 5000,
       });
       
@@ -250,7 +250,7 @@ const handleAcceptIncident = async (incident: MedicalIncident) => {
     const dispatchRes = await axios.post(`${EMERGENCY_SERVICE}/dispatch/manual`, {
       incident_id: incident.id,
       responder_id: String(user?.id),
-      responder_role: 'medical',
+      responder_role: 'medic',
       current_position: currentLocation,
       responder_name: user?.email?.split('@')[0] || 'Médico',
     }, {

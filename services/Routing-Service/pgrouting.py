@@ -70,6 +70,8 @@ class NodeClosureCreate(BaseModel):
     reason: Optional[str] = None
     source: str = "manual"
     severity: float = 1.0
+    starts_at: Optional[str] = None
+    ends_at: Optional[str] = None
     is_active: bool = True
 
 
@@ -863,8 +865,8 @@ class PgRoutingService:
                             payload.reason,
                             payload.source,
                             payload.severity,
-                            None,
-                            None,
+                            payload.starts_at,
+                            payload.ends_at,
                             payload.is_active,
                         ),
                     ).fetchone()
@@ -888,6 +890,27 @@ class PgRoutingService:
             conn.commit()
 
         return {"source": source, "deactivated": len(row)}
+
+    def deactivate_operational_events_by_source(self, source: str) -> Dict:
+        """Deactivate live operational events created by a specific subsystem/source."""
+        with get_connection() as conn:
+            rows = conn.execute(
+                """
+                UPDATE operational_events
+                SET is_active = FALSE,
+                    status = 'resolved',
+                    ends_at = COALESCE(ends_at, NOW()),
+                    updated_at = NOW()
+                WHERE source = %s
+                  AND is_active = TRUE
+                  AND status = 'active'
+                RETURNING id
+                """,
+                (source,),
+            ).fetchall()
+            conn.commit()
+
+        return {"source": source, "deactivated": len(rows)}
 
     def create_operational_event(self, payload: OperationalEventCreate) -> OperationalEventResponse:
         """Create a minimal operational event for monitoring."""

@@ -104,7 +104,7 @@ function getDispatchTarget(dispatch: IncidentDispatch) {
 export default function TasksPage() {
   const { t } = useTranslation();
   const { user } = useAuthStore();
-  const { setNavigation } = useNavigationStore();
+  const { active: activeNavigation, setNavigation, clearNavigation } = useNavigationStore();
 
   const [tasks, setTasks] = useState<MaintenanceTask[]>([]);
   const [dispatches, setDispatches] = useState<IncidentDispatch[]>([]);
@@ -132,6 +132,22 @@ export default function TasksPage() {
   // Nearest tasks state
   const [nearestTasks, setNearestTasks] = useState<NearestTaskInfo[]>([]);
   const [nearestLoading, setNearestLoading] = useState(false);
+
+  const clearCurrentRouteIfMatches = useCallback((ids: Array<string | number | undefined | null>) => {
+    if (!activeNavigation) return;
+
+    const targetIds = new Set(ids.filter((id) => id != null).map((id) => String(id)));
+    if (
+      targetIds.has(activeNavigation.taskId) ||
+      targetIds.has(activeNavigation.binId) ||
+      targetIds.has(activeNavigation.targetNode)
+    ) {
+      clearNavigation();
+      setRouteModal(null);
+      setRouteModalGeoJson(null);
+      setRouteModalError(null);
+    }
+  }, [activeNavigation, clearNavigation]);
 
   // Ocupado se tiver pelo menos uma tarefa/dispatch aceite
   const isBusy = Object.values(taskStatus).some(s => s === 'accepted') ||
@@ -327,6 +343,7 @@ export default function TasksPage() {
     try {
       await api.refuseTask(taskId);
       setTaskStatus(prev => ({ ...prev, [taskId]: 'refused' }));
+      clearCurrentRouteIfMatches([taskId]);
       await fetchTasks();
     } catch {
       alert(t('common.complete_error'));
@@ -500,6 +517,7 @@ export default function TasksPage() {
     try {
       await api.completeTask(taskId);
       setTaskStatus(prev => ({ ...prev, [taskId]: 'done' }));
+      clearCurrentRouteIfMatches([taskId]);
     } catch {
       alert(t('common.complete_error'));
     } finally {
@@ -512,6 +530,8 @@ export default function TasksPage() {
     try {
       await api.updateTaskStatus(taskId, 'completed');
       setTaskStatus(prev => ({ ...prev, [taskId]: 'done' }));
+      const task = tasks.find((item) => item.id === taskId);
+      clearCurrentRouteIfMatches([taskId, task?.main_metadata?.bin_id, task?.location_node]);
       await fetchTasks();
     } catch {
       alert(t('common.complete_error'));
@@ -523,8 +543,10 @@ export default function TasksPage() {
   const handleEmptyBinAlert = async (alertId: string) => {
     setActionLoading(`empty-bin-${alertId}`);
     try {
+      const alert = binAlerts.find((item) => String(item.id) === String(alertId));
       await api.updateTaskStatus(alertId, 'completed');
       setBinAlerts(prev => prev.filter(alert => alert.id !== alertId));
+      clearCurrentRouteIfMatches([alertId, alert?.bin_id, alert?.location_node]);
       await fetchTasks();
     } catch {
       alert(t('common.complete_error'));
@@ -604,6 +626,7 @@ export default function TasksPage() {
     try {
       await api.refuseDispatch(dispatchId);
       setDispatchStatus(prev => ({ ...prev, [dispatchId]: 'refused' }));
+      clearCurrentRouteIfMatches([dispatchId]);
       await fetchTasks();
     } catch {
       alert('Não foi possível recusar este incidente.');
@@ -691,9 +714,17 @@ export default function TasksPage() {
       if (completionTarget.kind === 'task') {
         await api.completeTask(completionTarget.id, completionNotes.trim());
         setTaskStatus(prev => ({ ...prev, [completionTarget.id]: 'done' }));
+        const task = tasks.find((item) => item.id === completionTarget.id);
+        clearCurrentRouteIfMatches([completionTarget.id, task?.main_metadata?.bin_id, task?.location_node]);
       } else {
         await api.completeDispatch(completionTarget.id, completionNotes.trim());
         setDispatchStatus(prev => ({ ...prev, [completionTarget.id]: 'done' }));
+        const dispatch = dispatches.find((item) => item.id === completionTarget.id);
+        clearCurrentRouteIfMatches([
+          completionTarget.id,
+          dispatch?.incident_id,
+          dispatch ? getDispatchTarget(dispatch) : undefined,
+        ]);
       }
 
       setCompletionTarget(null);
@@ -708,6 +739,20 @@ export default function TasksPage() {
 
   const activeTasks = tasks.filter(t => t.task_type !== 'bin_full' && taskStatus[t.id] !== 'refused' && taskStatus[t.id] !== 'done');
   const activeDispatches = dispatches.filter(d => !['refused', 'done'].includes(dispatchStatus[d.id] ?? ''));
+  const highlightedNearestTask = nearestTasks[0] ?? null;
+  const highlightedDispatch = highlightedNearestTask?.type === 'dispatch'
+    ? activeDispatches.find((dispatch) => dispatch.id === highlightedNearestTask.id)
+    : null;
+  const highlightedDispatchStatus = highlightedDispatch
+    ? dispatchStatus[highlightedDispatch.id] ?? (isAcceptedStatus(highlightedDispatch.status) ? 'accepted' : 'pending')
+    : null;
+  const visibleDispatches = highlightedNearestTask?.type === 'dispatch'
+    ? activeDispatches.filter((dispatch) => dispatch.id !== highlightedNearestTask.id)
+    : activeDispatches;
+  const visibleTasks = highlightedNearestTask?.type === 'bin'
+    ? activeTasks.filter((task) => task.id !== highlightedNearestTask.id && task.location_node !== highlightedNearestTask.node)
+    : activeTasks;
+  const hasVisibleOperations = visibleDispatches.length + visibleTasks.length > 0;
   const totalCount = activeTasks.length + activeDispatches.length;
 
   return (
@@ -761,7 +806,7 @@ export default function TasksPage() {
       </div>
 
       {/* Nearest Task Recommendation Section */}
-      {nearestTasks.length > 0 && (
+      {highlightedNearestTask && (
         <div className="mb-6 rounded-3xl border border-blue-100 bg-gradient-to-r from-blue-50/50 to-indigo-50/50 p-6 shadow-sm backdrop-blur-md">
           <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
             <div className="flex items-start gap-4">
@@ -777,21 +822,21 @@ export default function TasksPage() {
                   Mais Próxima de Si
                 </span>
                 <h3 className="mt-1 text-lg font-black text-slate-900">
-                  {nearestTasks[0].title}
+                  {highlightedNearestTask.title}
                 </h3>
                 <p className="mt-1 text-sm text-slate-600">
-                  Localização: <span className="font-extrabold text-slate-900">Nó {nearestTasks[0].node}</span>
+                  Localização: <span className="font-extrabold text-slate-900">Nó {highlightedNearestTask.node}</span>
                   {' · '}
-                  Distância: <span className="font-extrabold text-blue-700">{nearestTasks[0].distance}m</span>
+                  Distância: <span className="font-extrabold text-blue-700">{highlightedNearestTask.distance}m</span>
                   {' · '}
-                  Caminhada: <span className="font-extrabold text-indigo-700">{Math.round(nearestTasks[0].etaSeconds / 60)} min</span>
+                  Caminhada: <span className="font-extrabold text-indigo-700">{Math.round(highlightedNearestTask.etaSeconds / 60)} min</span>
                 </p>
               </div>
             </div>
             <div className="flex flex-wrap gap-2 md:self-center">
               <button
                 onClick={async () => {
-                  const tNode = nearestTasks[0].node;
+                  const tNode = highlightedNearestTask.node;
                   let fNode = getDefaultStartNode(user?.role);
                   try {
                     if (user?.id) {
@@ -800,7 +845,7 @@ export default function TasksPage() {
                     }
                   } catch {}
                   setRouteModal({
-                    title: nearestTasks[0].title,
+                    title: highlightedNearestTask.title,
                     fromNode: fNode,
                     toNode: tNode
                   });
@@ -822,24 +867,39 @@ export default function TasksPage() {
                 Ver Rota
               </button>
 
-              {nearestTasks[0].type === 'bin' ? (
+              {highlightedNearestTask.type === 'bin' ? (
                 <button
-                  disabled={actionLoading === `empty-bin-${nearestTasks[0].id}`}
-                  onClick={() => void handleEmptyBinAlert(nearestTasks[0].id)}
+                  disabled={actionLoading === `empty-bin-${highlightedNearestTask.id}`}
+                  onClick={() => void handleEmptyBinAlert(highlightedNearestTask.id)}
                   className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-5 py-2.5 text-sm font-bold text-slate-700 shadow-sm transition-all duration-200 hover:bg-slate-50 hover:text-slate-900"
                 >
                   <Trash2 size={16} className="text-red-500" />
                   Esvaziar Lixeira
                 </button>
               ) : (
-                <button
-                  disabled={actionLoading === `accept-${nearestTasks[0].id}`}
-                  onClick={() => void handleAcceptTask(nearestTasks[0].id)}
-                  className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-5 py-2.5 text-sm font-bold text-slate-700 shadow-sm transition-all duration-200 hover:bg-slate-50 hover:text-slate-900"
-                >
-                  <Check size={16} className="text-emerald-500" />
-                  Aceitar Incidente
-                </button>
+                highlightedDispatchStatus === 'accepted' ? (
+                  <button
+                    disabled={!highlightedDispatch || !!actionLoading}
+                    onClick={() => highlightedDispatch && openCompletionDialog({
+                      kind: 'dispatch',
+                      id: highlightedDispatch.id,
+                      title: `${highlightedDispatch.incident_type ?? 'Incidente'} em ${getDispatchTarget(highlightedDispatch)}`,
+                    })}
+                    className="flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-5 py-2.5 text-sm font-bold text-emerald-700 shadow-sm transition-all duration-200 hover:bg-emerald-100 disabled:opacity-50"
+                  >
+                    <CheckCircle size={16} />
+                    Concluir tarefa
+                  </button>
+                ) : (
+                  <button
+                    disabled={actionLoading === `accept-dispatch-${highlightedNearestTask.id}`}
+                    onClick={() => void handleAcceptDispatch(highlightedNearestTask.id)}
+                    className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-5 py-2.5 text-sm font-bold text-slate-700 shadow-sm transition-all duration-200 hover:bg-slate-50 hover:text-slate-900"
+                  >
+                    <Check size={16} className="text-emerald-500" />
+                    Aceitar Incidente
+                  </button>
+                )
               )}
             </div>
           </div>
@@ -927,14 +987,14 @@ export default function TasksPage() {
             <p className="font-medium text-gray-700">{t('tasks.empty_title')}</p>
             <p className="text-sm text-gray-400 mt-1">{t('tasks.empty_subtitle')}</p>
           </div>
-        ) : (
+        ) : !hasVisibleOperations ? null : (
           <div className="grid gap-5 xl:grid-cols-[1.1fr_0.9fr]">
-            {activeDispatches.length > 0 && (
+            {visibleDispatches.length > 0 && (
               <div className="space-y-3">
                 <p className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-red-500">
                   <AlertTriangle size={14} /> {t('tasks.section_incidents')}
                 </p>
-                {activeDispatches.map(d => {
+                {visibleDispatches.map(d => {
                   const isFalseAlarm = isFalseAlarmStatus(d.status);
                   const status = isFalseAlarm
                     ? 'false_alarm'
@@ -1029,12 +1089,12 @@ export default function TasksPage() {
               </div>
             )}
 
-            {activeTasks.length > 0 && (
+            {visibleTasks.length > 0 && (
               <div className="space-y-3">
                 <p className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-blue-500">
                   <ClipboardList size={14} /> {t('tasks.section_maintenance')}
                 </p>
-                {activeTasks.map(task => {
+                {visibleTasks.map(task => {
                   const status = taskStatus[task.id] ?? (isAcceptedStatus(task.status) ? 'accepted' : 'pending');
                   const isBinTask = task.task_type === 'bin_full' || task.description?.toLowerCase().includes('lixeira');
                   return (

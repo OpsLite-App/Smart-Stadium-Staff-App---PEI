@@ -44,7 +44,7 @@ def client():
 
 def test_create_incident_api(client):
     incident_payload = {
-        "incident_type": "fire",
+        "incident_type": "security",
         "location_node": "ZONE_A_01",
         "severity": "high",
         "description": "Fumo detetado",
@@ -56,7 +56,7 @@ def test_create_incident_api(client):
 
     assert response.status_code == 201  # Created
     data = response.json()
-    assert data["incident_type"] == "fire"
+    assert data["incident_type"] == "security"
     assert "id" in data
 
 def test_get_stats_api(client):

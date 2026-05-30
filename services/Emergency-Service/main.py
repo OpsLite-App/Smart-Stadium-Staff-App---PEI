@@ -21,7 +21,7 @@ from schemas import (
     EvacuationRequest, EvacuationResponse,
     GlobalEvacuationCreate, GlobalEvacuationResponse, EvacuationSafeRequest,
     DispatchRequest, DispatchResponse, ManualDispatchRequest,
-    SensorAlertCreate, SensorAlertResponse,
+    SensorAlertCreate, SensorAlertResponse, normalize_incident_category,
     IncidentStatistics, ActiveIncidentsResponse
 )
 from database import get_db, init_db
@@ -264,17 +264,6 @@ async def create_incident(
         if dispatches:
             print(f"✅ Auto-dispatched {len(dispatches)} responders to incident {created_incident.id}")
     
-    # Trigger evacuation if critical fire
-    if created_incident.incident_type == "fire" and created_incident.severity == "critical":
-        evac_request = EvacuationRequest(
-            incident_id=created_incident.id,
-            affected_zones=[created_incident.affected_area] if created_incident.affected_area else [],
-            evacuation_type="partial",
-            reason=f"Critical fire at {created_incident.location_node}"
-        )
-        await evacuation_coordinator.initiate_evacuation(db, evac_request)
-        print(f"🚨 Evacuation triggered for incident {created_incident.id}")
-    
     return created_incident
 
 
@@ -293,7 +282,10 @@ def get_incidents(
     if severity:
         filters['severity'] = severity
     if incident_type:
-        filters['incident_type'] = incident_type
+        try:
+            filters['incident_type'] = normalize_incident_category(incident_type)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
     
     incidents = incident_manager.get_incidents(db, **filters)
     incidents = incidents[:limit]
@@ -449,8 +441,8 @@ async def dispatch_specific_responder(
     auth_role = normalize_role(_auth.get("role"))
     if auth_role == "medical":
         auth_user_id = str(_auth.get("user_id") or _auth.get("id") or "")
-        if request.responder_role.lower() != "medical" or request.responder_id != auth_user_id:
-            raise HTTPException(status_code=403, detail="Medical users can only self-assign medical dispatches")
+        if request.responder_role.lower() != "medic" or request.responder_id != auth_user_id:
+            raise HTTPException(status_code=403, detail="Medical users can only self-assign medic dispatches")
 
     try:
         dispatch = await incident_manager.dispatch_specific_responder(db, request)
@@ -628,13 +620,18 @@ async def _notify_routing_evacuation_event(evacuation: EvacuationZone) -> None:
 
 async def _clear_routing_evacuation_closures(evacuation_id: str) -> None:
     try:
+        source = _evacuation_source(evacuation_id)
         async with httpx.AsyncClient(timeout=5.0) as client:
             await client.post(
                 f"{ROUTING_SERVICE_URL}/api/graph/edge-overrides/deactivate-by-source",
-                params={"source": _evacuation_source(evacuation_id)},
+                params={"source": source},
+            )
+            await client.post(
+                f"{ROUTING_SERVICE_URL}/api/graph/events/deactivate-by-source",
+                params={"source": source},
             )
     except Exception as exc:
-        print(f"⚠️ Failed to clear evacuation closures: {exc}")
+        print(f"⚠️ Failed to clear evacuation routing state: {exc}")
 
 
 @app.post("/api/emergency/evacuation/global", response_model=GlobalEvacuationResponse, status_code=201)

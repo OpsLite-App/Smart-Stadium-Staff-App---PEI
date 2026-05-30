@@ -15,7 +15,8 @@ class StaffRole(Enum):
     SECURITY = "security"
     CLEANING = "cleaning"
     SUPERVISOR = "supervisor"
-    MEDICAL = "medical"
+    MEDIC = "medic"
+    MEDICAL = "medical"  # legacy compatibility
 
 
 class StaffStatus(Enum):
@@ -50,7 +51,7 @@ class IncidentRequest:
     """
     id: str
     location: str  # Node ID
-    type: str  # "medical", "fire", "fight", "injury", etc.
+    type: str  # "security", "medic", "cleaning"
     priority: str  # "low", "medium", "high", "critical"
     required_role: StaffRole
     timestamp: str
@@ -369,7 +370,7 @@ def create_mock_staff_tracker(num_per_role: int = 3) -> StaffTracker:
     
     staff_id = 1
     
-    for role in StaffRole:
+    for role in (StaffRole.SECURITY, StaffRole.CLEANING, StaffRole.SUPERVISOR, StaffRole.MEDIC):
         for i in range(num_per_role):
             # Distribute staff across different positions
             position_idx = (staff_id - 1) % len(entrance_nodes)
@@ -402,7 +403,7 @@ async def example_usage():
     incident = IncidentRequest(
         id="inc-001",
         location="62",
-        type="medical",
+        type="medic",
         priority="high",
         required_role=StaffRole.SECURITY,
         timestamp="2025-10-06T19:22:00Z"

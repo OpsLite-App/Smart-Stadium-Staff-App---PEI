@@ -97,15 +97,15 @@ export default function EmergencyPage() {
   const [routeFloorId, setRouteFloorId] = useState(1);
   const [locallyConfirmedToken, setLocallyConfirmedToken] = useState<string | null>(null);
   const [form, setForm] = useState({
-    title: 'Evacuação do edifício',
+    title: '',
     description: '',
-    emergency_type: 'fire',
-    severity: 'critical',
-    source_node: '62',
+    emergency_type: '',
+    severity: '',
+    source_node: '',
     floor_id: '1',
     affected_nodes: '',
-    affected_zones: 'Entrada IT',
-    instructions: 'Segue a rota indicada para a saída segura. Confirma quando estiveres em segurança.',
+    affected_zones: '',
+    instructions: '',
   });
 
   const safeConfirmed = useMemo(() => {
@@ -174,11 +174,11 @@ export default function EmergencyPage() {
 
     try {
       const created = await api.createGlobalEvacuation({
-        title: form.title,
+        title: form.title.trim(),
         description: form.description || undefined,
         emergency_type: form.emergency_type,
         severity: form.severity,
-        source_node: form.source_node,
+        source_node: form.source_node.trim(),
         floor_id: form.floor_id ? Number(form.floor_id) : undefined,
         affected_nodes: splitList(form.affected_nodes),
         affected_zones: splitList(form.affected_zones),
@@ -239,6 +239,14 @@ export default function EmergencyPage() {
     [blockedNodeIds, form.source_node]
   );
   const formFloorId = Number(form.floor_id) || 1;
+  const isCreatingEvacuation = isSupervisor && !evacuation.active;
+  const canCreateEvacuation = Boolean(
+    form.title.trim() &&
+    form.description.trim() &&
+    form.emergency_type &&
+    form.severity &&
+    form.source_node.trim()
+  );
   const confirmedCount = evacuation.evacuated_count ?? Object.keys(evacuation.confirmations ?? {}).length;
   const affectedZones = evacuation.affected_zones ?? [];
   const activeBlockedNodes = evacuation.affected_nodes ?? [];
@@ -275,9 +283,8 @@ export default function EmergencyPage() {
   }, [nodePickMode]);
 
   return (
-    <div className="min-h-screen bg-slate-50 px-4 py-6 lg:px-8">
-      <div className="mx-auto max-w-6xl space-y-6">
-        <header className="rounded-[2rem] border border-red-100 bg-white p-6 shadow-sm">
+    <div className="w-full space-y-6">
+        <header className="rounded-xl border border-red-100 bg-white p-6 shadow-sm">
           <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
             <div>
               <p className="text-xs font-bold uppercase tracking-[0.24em] text-red-600">Emergência</p>
@@ -303,10 +310,10 @@ export default function EmergencyPage() {
           </div>
         )}
 
-        <div className="grid gap-5 lg:grid-cols-[25rem_1fr]">
+        <div className="grid gap-6 xl:grid-cols-[440px_minmax(0,1fr)]">
           <section className="space-y-6">
             {isSupervisor && evacuation.active && (
-              <div className="rounded-[1.75rem] border border-red-200 bg-white p-5 shadow-sm">
+              <div className="rounded-xl border border-red-200 bg-white p-5 shadow-sm">
                 <div className="mb-5 flex items-start justify-between gap-4">
                   <div className="flex min-w-0 items-start gap-3">
                     <div className="rounded-2xl bg-red-100 p-3 text-red-700">
@@ -401,7 +408,7 @@ export default function EmergencyPage() {
             )}
 
             {isSupervisor && !evacuation.active && (
-              <form onSubmit={handleCreateEvacuation} className="rounded-[1.75rem] border border-red-200 bg-white p-5 shadow-sm">
+              <form onSubmit={handleCreateEvacuation} className="rounded-xl border border-red-200 bg-white p-5 shadow-sm">
                 <div className="mb-5 flex items-start gap-3">
                   <div className="rounded-2xl bg-red-100 p-3 text-red-700">
                     <AlertTriangle size={20} />
@@ -429,6 +436,7 @@ export default function EmergencyPage() {
                     <div>
                       <label className={labelClass}>Tipo</label>
                       <select className={fieldClass} value={form.emergency_type} onChange={(e) => setForm((prev) => ({ ...prev, emergency_type: e.target.value }))}>
+                        <option value="" disabled>Seleciona o tipo</option>
                         <option value="fire">Incêndio</option>
                         <option value="gas">Gás/Fumo</option>
                         <option value="structural">Estrutural</option>
@@ -439,6 +447,7 @@ export default function EmergencyPage() {
                     <div>
                       <label className={labelClass}>Gravidade</label>
                       <select className={fieldClass} value={form.severity} onChange={(e) => setForm((prev) => ({ ...prev, severity: e.target.value }))}>
+                        <option value="" disabled>Seleciona a gravidade</option>
                         <option value="critical">Crítico</option>
                         <option value="high">Alto</option>
                       </select>
@@ -448,7 +457,7 @@ export default function EmergencyPage() {
                   <div className="grid grid-cols-2 gap-3">
                     <div>
                       <label className={labelClass}>Nó do problema</label>
-                      <input className={fieldClass} value={form.source_node} onChange={(e) => setForm((prev) => ({ ...prev, source_node: e.target.value }))} placeholder="62" required />
+                      <input className={fieldClass} value={form.source_node} onChange={(e) => setForm((prev) => ({ ...prev, source_node: e.target.value }))} placeholder="Seleciona no mapa ou escreve o nó" required />
                     </div>
                     <div>
                       <label className={labelClass}>Piso</label>
@@ -468,12 +477,12 @@ export default function EmergencyPage() {
                     </p>
                   </div>
 
-                  <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                  <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
                     <div className="mb-3 flex items-center justify-between gap-3">
                       <div>
-                        <p className="text-xs font-black uppercase tracking-[0.14em] text-slate-600">Escolher no mapa</p>
+                        <p className="text-xs font-black uppercase tracking-[0.14em] text-slate-600">Selecionar na layer GIS</p>
                         <p className="mt-1 text-xs text-slate-500">
-                          Clica num nó para {nodePickMode === 'source' ? 'definir o problema' : 'adicionar/remover bloqueio'}.
+                          Usa o mapa grande à direita para clicar nos nós reais do piso selecionado.
                         </p>
                       </div>
                       <div className="flex rounded-xl bg-white p-1 shadow-sm">
@@ -493,17 +502,7 @@ export default function EmergencyPage() {
                         </button>
                       </div>
                     </div>
-
-                    <IndoorGisMap
-                      floorId={formFloorId}
-                      nodeSelectionMode={nodePickMode}
-                      selectedNodeIds={selectedNodeIds}
-                      onNodeSelect={handleNodeSelect}
-                      heightClassName="h-80"
-                      showCameraControls={false}
-                    />
-
-                    <div className="mt-3 flex flex-wrap gap-2 text-xs font-bold">
+                    <div className="flex flex-wrap gap-2 text-xs font-bold">
                       <span className="rounded-full bg-red-100 px-3 py-1 text-red-800">Problema: {form.source_node || 'não definido'}</span>
                       <span className="rounded-full bg-orange-100 px-3 py-1 text-orange-800">
                         Bloqueados: {blockedNodeIds.length ? blockedNodeIds.join(', ') : 'nenhum'}
@@ -513,22 +512,22 @@ export default function EmergencyPage() {
 
                   <div>
                     <label className={labelClass}>Zona afetada</label>
-                    <input className={fieldClass} value={form.affected_zones} onChange={(e) => setForm((prev) => ({ ...prev, affected_zones: e.target.value }))} placeholder="Ex: Entrada IT" />
+                    <input className={fieldClass} value={form.affected_zones} onChange={(e) => setForm((prev) => ({ ...prev, affected_zones: e.target.value }))} placeholder="Opcional. Ex: Sala de estudo, corredor central" />
                   </div>
 
                   <div>
                     <label className={labelClass}>Instruções</label>
-                    <textarea className={`${fieldClass} min-h-20 resize-y`} value={form.instructions} onChange={(e) => setForm((prev) => ({ ...prev, instructions: e.target.value }))} placeholder="Instruções para os utilizadores" />
+                    <textarea className={`${fieldClass} min-h-20 resize-y`} value={form.instructions} onChange={(e) => setForm((prev) => ({ ...prev, instructions: e.target.value }))} placeholder="Opcional. Ex: Seguir a rota indicada e confirmar segurança no exterior." />
                   </div>
 
-                  <button disabled={submitting} className="w-full rounded-xl bg-red-600 px-4 py-3 text-sm font-black text-white shadow-sm hover:bg-red-700 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-500">
+                  <button disabled={submitting || !canCreateEvacuation} className="w-full rounded-xl bg-red-600 px-4 py-3 text-sm font-black text-white shadow-sm hover:bg-red-700 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-500">
                     {submitting ? 'A processar...' : 'Ativar evacuação'}
                   </button>
                 </div>
               </form>
             )}
 
-            <div className="rounded-[2rem] border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
               <h2 className="text-lg font-black text-slate-950">Estado atual</h2>
               {evacuation.active ? (
                 <div className="mt-4 space-y-4">
@@ -579,16 +578,33 @@ export default function EmergencyPage() {
             </div>
           </section>
 
-          <section className="rounded-[2rem] border border-slate-200 bg-white p-5 shadow-sm">
-            <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <section className="flex min-h-[calc(100vh-9rem)] flex-col rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="mb-4 flex shrink-0 flex-col gap-3 md:flex-row md:items-center md:justify-between">
               <div>
-                <h2 className="text-lg font-black text-slate-950">Rota de evacuação</h2>
+                <h2 className="text-lg font-black text-slate-950">
+                  {isCreatingEvacuation ? 'Layer GIS da emergência' : 'Rota de evacuação'}
+                </h2>
                 <p className="text-sm text-slate-500">
-                  {currentLocation ? `A partir da tua posição atual` : 'A aguardar localização atual'} · saída segura no nó {evacuation.exit_node || EXIT_NODE}
+                  {isCreatingEvacuation
+                    ? `Clica num nó para ${nodePickMode === 'source' ? 'definir o problema' : 'adicionar/remover bloqueio'} no ${FLOOR_OPTIONS.find((floor) => floor.id === formFloorId)?.label ?? `Piso ${formFloorId}`}.`
+                    : `${currentLocation ? 'A partir da tua posição atual' : 'A aguardar localização atual'} · saída segura no nó ${evacuation.exit_node || EXIT_NODE}`}
                 </p>
               </div>
               <div className="flex flex-wrap items-center gap-2">
-                {availableRouteFloors.length > 0 && (
+                {isCreatingEvacuation ? (
+                  <div className="flex rounded-2xl bg-slate-100 p-1">
+                    {FLOOR_OPTIONS.map((floor) => (
+                      <button
+                        key={floor.id}
+                        type="button"
+                        onClick={() => setForm((prev) => ({ ...prev, floor_id: String(floor.id) }))}
+                        className={`rounded-xl px-3 py-2 text-xs font-black transition ${formFloorId === floor.id ? 'bg-white text-slate-950 shadow-sm' : 'text-slate-500 hover:text-slate-900'}`}
+                      >
+                        {floor.label}
+                      </button>
+                    ))}
+                  </div>
+                ) : availableRouteFloors.length > 0 && (
                   <div className="flex rounded-2xl bg-slate-100 p-1">
                     {availableRouteFloors.map((floor) => (
                       <button
@@ -608,10 +624,33 @@ export default function EmergencyPage() {
               </div>
             </div>
 
-            {evacuation.active && routeGeoJson ? (
+            {isCreatingEvacuation ? (
+              <div className="flex min-h-0 flex-1 flex-col space-y-3">
+                <IndoorGisMap
+                  floorId={formFloorId}
+                  nodeSelectionMode={nodePickMode}
+                  selectedNodeIds={selectedNodeIds}
+                  onNodeSelect={handleNodeSelect}
+                  heightClassName="h-[calc(100vh-19rem)] min-h-[34rem]"
+                  showCameraControls={false}
+                  showStaffMarkers={false}
+                />
+                <div className="flex flex-wrap gap-2 text-xs font-bold">
+                  <span className="rounded-full bg-red-100 px-3 py-1.5 text-red-800">
+                    Problema: {form.source_node || 'não definido'}
+                  </span>
+                  <span className="rounded-full bg-orange-100 px-3 py-1.5 text-orange-800">
+                    Bloqueados: {blockedNodeIds.length ? blockedNodeIds.join(', ') : 'nenhum'}
+                  </span>
+                  <span className="rounded-full bg-slate-100 px-3 py-1.5 text-slate-700">
+                    Modo: {nodePickMode === 'source' ? 'definir problema' : 'bloquear nós'}
+                  </span>
+                </div>
+              </div>
+            ) : evacuation.active && routeGeoJson ? (
               <IndoorGisMap floorId={routeFloorId} routeGeoJson={routeGeoJson} routeAffected={false} />
             ) : (
-              <div className="flex min-h-[30rem] items-center justify-center rounded-[1.5rem] border border-dashed border-slate-200 bg-slate-50 p-8 text-center">
+              <div className="flex min-h-[30rem] items-center justify-center rounded-xl border border-dashed border-slate-200 bg-slate-50 p-8 text-center">
                 <div>
                   <MapPin className="mx-auto text-slate-400" size={32} />
                   <p className="mt-3 text-sm font-bold text-slate-700">Sem rota ativa para mostrar</p>
@@ -621,7 +660,6 @@ export default function EmergencyPage() {
             )}
           </section>
         </div>
-      </div>
     </div>
   );
 }

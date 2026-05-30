@@ -17,6 +17,7 @@ from models import (
 from schemas import (
     IncidentCreate, IncidentUpdate, IncidentResponse,
     SensorAlertCreate, SensorAlertResponse,
+    normalize_incident_category,
     DispatchResponse, ManualDispatchRequest
 )
 from nearest_responder import (
@@ -31,6 +32,20 @@ class IncidentManager:
 
     TERMINAL_INCIDENT_STATUSES = {IncidentStatus.RESOLVED, IncidentStatus.FALSE_ALARM}
     OPEN_DISPATCH_STATUSES = {"dispatched", "en_route", "arrived"}
+
+    LEGACY_INCIDENT_CATEGORY_ALIASES = {
+        "fire": "security",
+        "smoke": "security",
+        "gas_leak": "security",
+        "structural": "security",
+        "electrical": "security",
+        "chemical": "security",
+        "bomb_threat": "security",
+        "other": "security",
+        "medical": "medic",
+        "maintenance": "cleaning",
+        "bin": "cleaning",
+    }
     
     def __init__(self, routing_service_url: str):
         self.routing_service_url = routing_service_url
@@ -43,9 +58,10 @@ class IncidentManager:
     
     def create_incident(self, db: Session, incident_data: IncidentCreate) -> IncidentResponse:
         """Create new emergency incident"""
+        incident_type = normalize_incident_category(incident_data.incident_type)
         incident = EmergencyIncident(
             id=f"inc-{uuid.uuid4().hex[:8]}",
-            incident_type=IncidentType(incident_data.incident_type),
+            incident_type=IncidentType(incident_type),
             location_node=incident_data.location_node,
             severity=IncidentSeverity(incident_data.severity),
             description=incident_data.description,
@@ -62,13 +78,6 @@ class IncidentManager:
         db.commit()
         db.refresh(incident)
         
-        # Se for fire critical, criar evacuação E atualizar campo
-        if incident_data.incident_type == "fire" and incident_data.severity == "critical":
-            # Este método deveria retornar o incidente atualizado
-            incident.evacuation_triggered = True
-            db.commit()
-            db.refresh(incident)
-        
         # Log creation
         self._log_event(db, incident.id, "created", f"Incident created: {incident.incident_type.value}")
         
@@ -81,14 +90,14 @@ class IncidentManager:
         
         # Map sensor type to incident type
         sensor_to_incident = {
-            "smoke": "smoke",
-            "fire": "fire",
-            "heat": "fire",
-            "gas": "gas_leak",
-            "co2": "gas_leak"
+            "smoke": "security",
+            "fire": "security",
+            "heat": "security",
+            "gas": "security",
+            "co2": "security",
         }
         
-        incident_type = sensor_to_incident.get(alert.sensor_type, "other")
+        incident_type = sensor_to_incident.get(alert.sensor_type, "security")
         
         # Create sensor alert record
         sensor_alert = SensorAlert(
@@ -151,7 +160,14 @@ class IncidentManager:
             query = query.filter(EmergencyIncident.severity == IncidentSeverity(filters['severity']))
         
         if 'incident_type' in filters:
-            query = query.filter(EmergencyIncident.incident_type == IncidentType(filters['incident_type']))
+            incident_type = normalize_incident_category(filters['incident_type'])
+            matching_values = [IncidentType(incident_type)]
+            legacy_matches = [
+                IncidentType(value)
+                for value, canonical in self.LEGACY_INCIDENT_CATEGORY_ALIASES.items()
+                if canonical == incident_type and value in IncidentType._value2member_map_
+            ]
+            query = query.filter(EmergencyIncident.incident_type.in_(matching_values + legacy_matches))
         
         query = query.order_by(EmergencyIncident.created_at.desc())
         incidents = query.all()
@@ -346,7 +362,7 @@ class IncidentManager:
             location=incident_db.location_node,
             type=incident_db.incident_type.value,
             priority=incident_db.severity.value,
-            required_role=StaffRole(responder_role.lower()),
+            required_role=StaffRole(normalize_incident_category(responder_role)),
             timestamp=incident_db.created_at.isoformat()
         )
         
@@ -370,7 +386,7 @@ class IncidentManager:
                 id=f"dispatch-{uuid.uuid4().hex[:8]}",
                 incident_id=incident_id,
                 responder_id=assignment.staff_id,
-                responder_role=responder_role,
+                responder_role=normalize_incident_category(responder_role),
                 route_nodes=assignment.path,
                 route_distance=assignment.distance,
                 eta_seconds=assignment.eta_seconds
@@ -456,7 +472,7 @@ class IncidentManager:
             id=f"dispatch-{uuid.uuid4().hex[:8]}",
             incident_id=request.incident_id,
             responder_id=request.responder_id,
-            responder_role=request.responder_role,
+            responder_role=normalize_incident_category(request.responder_role),
             route_nodes=route_data.get("path", []),
             route_distance=route_data.get("distance", 0),
             eta_seconds=route_data.get("eta_seconds", 0),
@@ -683,7 +699,7 @@ class IncidentManager:
             if incident.status in [IncidentStatus.ACTIVE, IncidentStatus.INVESTIGATING, IncidentStatus.RESPONDING]:
                 stats["active_incidents"] += 1
             
-            itype = incident.incident_type.value
+            itype = self.LEGACY_INCIDENT_CATEGORY_ALIASES.get(incident.incident_type.value, incident.incident_type.value)
             stats["by_type"][itype] = stats["by_type"].get(itype, 0) + 1
             
             severity = incident.severity.value
@@ -724,7 +740,7 @@ class IncidentManager:
         return [
             {
                 "incident_id": i.id,
-                "incident_type": i.incident_type.value,
+                "incident_type": self.LEGACY_INCIDENT_CATEGORY_ALIASES.get(i.incident_type.value, i.incident_type.value),
                 "severity": i.severity.value,
                 "status": i.status.value,
                 "timestamp": i.created_at.isoformat(),
@@ -737,9 +753,13 @@ class IncidentManager:
     
     def _incident_to_response(self, incident: EmergencyIncident) -> IncidentResponse:
         """Convert model to response"""
+        incident_type = self.LEGACY_INCIDENT_CATEGORY_ALIASES.get(
+            incident.incident_type.value,
+            incident.incident_type.value,
+        )
         return IncidentResponse(
             id=incident.id,
-            incident_type=incident.incident_type.value,
+            incident_type=incident_type,
             status=incident.status.value,
             severity=incident.severity.value,
             location_node=incident.location_node,
@@ -765,11 +785,15 @@ class IncidentManager:
     
     def _dispatch_to_response(self, dispatch: ResponderDispatch) -> DispatchResponse:
         """Convert dispatch to response"""
+        responder_role = self.LEGACY_INCIDENT_CATEGORY_ALIASES.get(
+            str(dispatch.responder_role).lower(),
+            dispatch.responder_role,
+        )
         return DispatchResponse(
             id=dispatch.id,
             incident_id=dispatch.incident_id,
             responder_id=dispatch.responder_id,
-            responder_role=dispatch.responder_role,
+            responder_role=responder_role,
             route_nodes=dispatch.route_nodes,
             route_distance=dispatch.route_distance or 0,
             eta_seconds=dispatch.eta_seconds or 0,
