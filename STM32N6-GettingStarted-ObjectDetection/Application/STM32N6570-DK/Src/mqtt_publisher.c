@@ -10,41 +10,38 @@
  */
 
 #include "mqtt_publisher.h"
-#include "core_mqtt.h"       /* coreMQTT */
-#include "lwip/sockets.h"    /* LwIP BSD socket API */
-#include "lwip/netdb.h"
 #include "stm32n6xx_hal.h"
 #include <stdio.h>
 #include <string.h>
 
-/* ── Estado interno ── */
-static MQTTContext_t   mqtt_ctx;
-static MQTTFixedBuffer_t mqtt_buf;
-static uint8_t         mqtt_network_buf[1024];
-static int             mqtt_socket = -1;
-static uint32_t        publish_interval_ms = 5000; /* publica a cada 5s */
-static uint32_t        last_publish_tick   = 0;
+#ifdef USE_MQTT
+#include "core_mqtt.h"       /* coreMQTT */
+#include "lwip/sockets.h"    /* LwIP BSD socket API */
+#include "lwip/netdb.h"
+#endif
 
-/* ── Transport callbacks para coreMQTT (LwIP sockets) ── */
-
-static int32_t transport_recv(NetworkContext_t *ctx, void *buf, size_t len)
-{
-    (void)ctx;
-    return (int32_t)recv(mqtt_socket, buf, len, MSG_DONTWAIT);
-}
-
-static int32_t transport_send(NetworkContext_t *ctx, const void *buf, size_t len)
-{
-    (void)ctx;
-    return (int32_t)send(mqtt_socket, buf, len, 0);
-}
-
-static uint32_t get_time_ms(void)
-{
-    return HAL_GetTick();
-}
+/* NOTE: coreMQTT and LwIP-dependent state and callbacks are defined
+ * only when `USE_MQTT` is enabled. When `USE_MQTT` is not defined
+ * the file provides lightweight stub implementations so the app
+ * can build without networking dependencies.
+ */
 
 /* ── Implementação pública ── */
+
+#ifndef USE_MQTT
+int MQTT_Publisher_Init(void)
+{
+    /* Stub implementation when coreMQTT is not available. */
+    (void)0;
+    return 0;
+}
+
+void MQTT_Publisher_SendCount(uint32_t person_count)
+{
+    (void)person_count; /* no-op */
+}
+
+#else /* USE_MQTT */
 
 int MQTT_Publisher_Init(void)
 {
@@ -151,3 +148,5 @@ void MQTT_Publisher_SendCount(uint32_t person_count)
     /* Processar ACKs pendentes */
     MQTT_ProcessLoop(&mqtt_ctx);
 }
+
+#endif /* USE_MQTT */

@@ -36,3 +36,10 @@ val2017/*
 *.d
 *.su
 *.cyclo
+
+person_dataset/
+person_dataset_1k/
+
+*.a
+*.lst
+

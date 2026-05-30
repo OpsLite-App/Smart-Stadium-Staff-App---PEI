@@ -101,6 +101,7 @@ C_SOURCES += ../../Middlewares/stm32-mw-camera/sensors/cmw_vd1943.c
 C_SOURCES += ../../Middlewares/stm32-mw-camera/sensors/cmw_ov5640.c
 C_SOURCES += Src/crop_img.c
 C_SOURCES += Src/app_camerapipeline.c
+C_SOURCES += Src/mqtt_publisher.c
 C_SOURCES += ../../Middlewares/stm32-mw-camera/ISP_Library/isp/Src/isp_algo.c
 C_SOURCES += ../../Middlewares/stm32-mw-camera/ISP_Library/isp/Src/isp_awb_algo.c
 C_SOURCES += ../../Middlewares/stm32-mw-camera/ISP_Library/isp/Src/isp_ae_algo.c
@@ -202,8 +203,8 @@ C_INCLUDES += -I../../Middlewares/stedgeai-lib/Npu/Devices/STM32N6xx
 C_INCLUDES += -I../../STM32Cube_FW_N6/Utilities/lcd
 C_INCLUDES += -I../../STM32Cube_FW_N6/Drivers/BSP/Components/aps256xx
 
-ASFLAGS = $(MCU) $(AS_DEFS) $(AS_INCLUDES) $(OPT) -Wall -fstack-usage -fdata-sections -ffunction-sections -fcyclomatic-complexity
-CFLAGS = $(MCU) $(C_DEFS) $(C_INCLUDES) $(OPT) -Wall -fstack-usage -fdata-sections -ffunction-sections -fcyclomatic-complexity
+ASFLAGS = $(MCU) $(AS_DEFS) $(AS_INCLUDES) $(OPT) -Wall -fstack-usage -fdata-sections -ffunction-sections
+CFLAGS  = $(MCU) $(C_DEFS) $(C_INCLUDES) $(OPT) -Wall -fstack-usage -fdata-sections -ffunction-sections
 # Generate dependency information
 CFLAGS += -MMD -MP -MF"$(@:%.o=%.d)"
 

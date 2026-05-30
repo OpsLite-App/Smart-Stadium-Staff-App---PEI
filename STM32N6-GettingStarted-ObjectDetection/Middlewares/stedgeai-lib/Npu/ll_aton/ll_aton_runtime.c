@@ -17,6 +17,7 @@
  ******************************************************************************
  */
 
+#define __STDC_FORMAT_MACROS
 #include <inttypes.h>
 #include <limits.h>
 #include <stdbool.h>
@@ -768,7 +769,7 @@ LL_ATON_RT_RetValues_t LL_ATON_RT_RunEpochBlock(NN_Instance_TypeDef *nn_instance
 }
 
 /*** ATON Irq Handler ***/
-#define IRQ_ERR_MSG() LL_ATON_PRINTF("ATON_STD_IRQHandler()@%d: irqs=0x%" PRIx64 "\n", __LINE__, (uint64_t)irqs)
+#define IRQ_ERR_MSG() LL_ATON_PRINTF("ATON_STD_IRQHandler()@%d: irqs=0x%llx\n", __LINE__, (unsigned long long)(irqs))
 
 // REMEMBER: mask out all interrupt from parameter `irqs` you do NOT want to be handled in beyond function
 #if (ATON_INTCTRL_INTS(0) > 32)
