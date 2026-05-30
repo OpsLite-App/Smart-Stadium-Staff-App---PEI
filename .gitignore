@@ -24,3 +24,15 @@ backend/auth-service/target/
 ws-gateway/target/
 
 STM32N6-GettingStarted-ObjectDetection-main
+/COCO
+
+# Ignore large datasets and extracted folders
+train2017/
+val2017/
+train2017/*
+val2017/*
+
+*.o
+*.d
+*.su
+*.cyclo
