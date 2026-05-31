@@ -19,7 +19,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (p.startsWith('/auth-routes')) return;
     }
 
-    console.log('Restaurando sessão a partir do cookie de autenticação');
+    console.debug('[Auth Provider] Restoring session from authentication cookie');
 
     try {
       const data = await api.me();
@@ -33,9 +33,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         id: data.user_id,
         permissions: mergePermissions(serverRole, data.permissions),
       });
-      console.log('Sessão restaurada com sucesso');
+      console.debug('[Auth Provider] Session restored');
     } catch (error) {
-      console.warn('Não foi possível restaurar a sessão:', error);
+      console.warn('[Auth Provider] Session restoration failed:', error);
       // If we're already on an auth route, don't force a redirect (avoids reload loop)
       if (typeof window !== 'undefined') {
         const p = window.location.pathname || '';

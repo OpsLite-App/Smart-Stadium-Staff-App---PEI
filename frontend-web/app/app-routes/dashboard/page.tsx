@@ -375,7 +375,7 @@ export default function DashboardPage() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <p className="text-xs font-bold uppercase tracking-[0.22em] text-orange-600">Supervisão</p>
-          <h1 className="mt-1 text-3xl font-black text-gray-950">Dashboard de Supervisão</h1>
+          <h1 className="mt-1 text-3xl font-black text-gray-950">Painel de supervisão</h1>
           <p className="mt-1 text-sm text-gray-500">Dados reais dos serviços operacionais, incidentes e GIS.</p>
         </div>
         <div className="flex items-center gap-3">
@@ -402,7 +402,7 @@ export default function DashboardPage() {
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
         <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
           <div className="flex items-center justify-between">
-            <span className="text-sm text-gray-500">Staff em operação</span>
+            <span className="text-sm text-gray-500">Equipa em operação</span>
             <Users className="text-blue-600" size={20} />
           </div>
           <p className="mt-2 text-3xl font-black text-gray-950">{loading ? '...' : derived.staffInOperation}</p>
@@ -420,7 +420,7 @@ export default function DashboardPage() {
 
         <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
           <div className="flex items-center justify-between">
-            <span className="text-sm text-gray-500">Dispatches ativos</span>
+            <span className="text-sm text-gray-500">Despachos ativos</span>
             <Radio className="text-orange-600" size={20} />
           </div>
           <p className="mt-2 text-3xl font-black text-gray-950">{loading ? '...' : derived.activeDispatches.length}</p>
@@ -509,7 +509,7 @@ export default function DashboardPage() {
             <h3 className="font-bold text-gray-950">Concluídos</h3>
           </div>
           <p className="mt-2 text-2xl font-black text-gray-950">{derived.completedDispatches.length}</p>
-          <p className="text-sm text-gray-500">Dispatches com relatório submetido.</p>
+          <p className="text-sm text-gray-500">Despachos com relatório submetido.</p>
         </div>
 
         <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">

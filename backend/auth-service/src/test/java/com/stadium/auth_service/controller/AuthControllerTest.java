@@ -3,6 +3,7 @@ package com.stadium.auth_service.controller;
 import com.stadium.auth_service.dto.LoginRequest;
 import com.stadium.auth_service.dto.LoginResponse;
 import com.stadium.auth_service.entity.User;
+import com.stadium.auth_service.service.KeycloakAuthClient;
 import com.stadium.auth_service.service.UserService;
 import com.stadium.auth_service.util.JwtUtil;
 import org.junit.jupiter.api.BeforeEach;
@@ -31,6 +32,9 @@ class AuthControllerTest {
     
     @Mock
     private JwtUtil jwtUtil;
+
+    @Mock
+    private KeycloakAuthClient keycloakAuthClient;
     
     @Mock
     private Authentication authentication;
@@ -39,7 +43,7 @@ class AuthControllerTest {
     
     @BeforeEach
     void setUp() {
-        authController = new AuthController(userService, jwtUtil);
+        authController = new AuthController(userService, jwtUtil, keycloakAuthClient);
     }
     
     @Test
@@ -129,6 +133,34 @@ class AuthControllerTest {
         assertTrue(response.getBody() instanceof Map);
         Map<?, ?> body = (Map<?, ?>) response.getBody();
         assertEquals("user_not_active", body.get("error"));
+    }
+
+    @Test
+    void login_shouldUseKeycloakRoleWhenIdentityProviderIsEnabled() {
+        LoginRequest request = new LoginRequest();
+        request.setUsername("test@example.com");
+        request.setPassword("password123");
+
+        User mockUser = User.builder()
+                .id(1)
+                .username("test@example.com")
+                .password("encodedPassword")
+                .role("security")
+                .status("active")
+                .build();
+
+        when(userService.findByUsername("test@example.com")).thenReturn(Optional.of(mockUser));
+        when(keycloakAuthClient.isEnabled()).thenReturn(true);
+        when(keycloakAuthClient.authenticate("test@example.com", "password123"))
+                .thenReturn(new KeycloakAuthClient.AuthenticationResult("keycloak.token", "Supervisor"));
+        when(jwtUtil.generateToken(1, "test@example.com", "Supervisor")).thenReturn("internal.jwt.token");
+
+        ResponseEntity<?> response = authController.login(request, null);
+
+        assertEquals(HttpStatus.OK, response.getStatusCode());
+        assertTrue(response.getBody() instanceof LoginResponse);
+        assertEquals("Supervisor", ((LoginResponse) response.getBody()).getRole());
+        verify(userService, never()).checkPassword(any(), any());
     }
     
     @Test

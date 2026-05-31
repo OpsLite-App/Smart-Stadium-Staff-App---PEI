@@ -29,6 +29,7 @@ from database import get_db, init_db
 from incident_manager import IncidentManager
 from evacuation_coordinator import EvacuationCoordinator
 from realtime_events import RealtimeEventBus
+from tracing_config import configure_tracing
 
 app = FastAPI(
     title="Stadium Emergency Service",
@@ -43,6 +44,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+configure_tracing(app)
 
 # ========== CONFIGURATION ==========
 
@@ -128,12 +130,12 @@ async def startup():
     global incident_manager, evacuation_coordinator
     
     print("\n" + "="*60)
-    print("🚨 EMERGENCY SERVICE - STARTING")
+    print("[INFO] Emergency Service starting")
     print("="*60)
     
     # Initialize database
     init_db()
-    print("✅ Database initialized")
+    print("[INFO] Database initialized")
     
     # Initialize managers (they will call Routing Service)
     incident_manager = IncidentManager(ROUTING_SERVICE_URL)
@@ -141,16 +143,16 @@ async def startup():
         ROUTING_SERVICE_URL,
         CONGESTION_SERVICE_URL
     )
-    print("✅ Incident manager initialized")
-    print("✅ Evacuation coordinator initialized")
+    print("[INFO] Incident manager initialized")
+    print("[INFO] Evacuation coordinator initialized")
     
     # Start background tasks
     asyncio.create_task(check_incident_escalation())
     asyncio.create_task(update_evacuation_routes())
-    print("✅ Background tasks started")
+    print("[INFO] Background tasks started")
     
     print("\n" + "="*60)
-    print("✅ EMERGENCY SERVICE READY")
+    print("[INFO] Emergency Service ready")
     print(f"   - Routing Service: {ROUTING_SERVICE_URL}")
     print(f"   - Congestion Service: {CONGESTION_SERVICE_URL}")
     print("="*60 + "\n")
@@ -169,14 +171,14 @@ async def check_incident_escalation():
             
             for incident in active:
                 if incident_manager.should_escalate(incident):
-                    print(f"⚠️  Incident {incident.id} needs escalation!")
+                    print(f"[WARNING] Incident requires escalation: incident_id={incident.id}")
                     escalated = incident_manager.escalate_incident(db, incident.id)
                     if escalated:
                         publish_operational_event("incident.escalated", escalated)
             
             db.close()
         except Exception as e:
-            print(f"❌ Escalation check error: {e}")
+            print(f"[ERROR] Escalation check failed: {e}")
 
 
 async def update_evacuation_routes():
@@ -193,7 +195,7 @@ async def update_evacuation_routes():
             
             db.close()
         except Exception as e:
-            print(f"❌ Route update error: {e}")
+            print(f"[ERROR] Route update failed: {e}")
 
 
 # ========== HEALTH & STATUS ==========
@@ -270,6 +272,27 @@ async def stream_emergency_events(
     )
 
 
+@app.get("/api/emergency/audit/status")
+def get_operational_audit_status(
+    _auth: dict = Depends(require_roles("supervisor"))
+):
+    """Return Redis Stream and SSE subscriber status for supervisors."""
+    return realtime_events.status()
+
+
+@app.get("/api/emergency/audit/events")
+def get_operational_audit_events(
+    limit: int = Query(100, ge=1, le=500),
+    event_type: Optional[str] = Query(None),
+    _auth: dict = Depends(require_roles("supervisor"))
+):
+    """Return recent operational audit events, newest first."""
+    return {
+        "stream": realtime_events.status(),
+        "events": realtime_events.list_events(limit=limit, event_type=event_type),
+    }
+
+
 # ========== INCIDENT MANAGEMENT ==========
 
 @app.post("/api/emergency/incidents", response_model=IncidentResponse, status_code=201)
@@ -288,7 +311,7 @@ async def create_incident(
     if auto_dispatch and created_incident.severity in ["high", "critical"]:
         dispatches = await incident_manager.auto_dispatch_responders(db, created_incident.id)
         if dispatches:
-            print(f"✅ Auto-dispatched {len(dispatches)} responders to incident {created_incident.id}")
+            print(f"[INFO] Responders auto-dispatched: incident_id={created_incident.id} count={len(dispatches)}")
             publish_operational_event("dispatch.created", {
                 "incident_id": created_incident.id,
                 "dispatches": dispatches,
@@ -425,7 +448,7 @@ async def create_sensor_alert(alert: SensorAlertCreate, db: Session = Depends(ge
                 })
         except Exception as e:
             # Dispatch failures must not break sensor alert ingestion.
-            print(f"⚠️  Auto-dispatch failed for incident {incident.id}: {e}")
+            print(f"[WARNING] Auto-dispatch failed: incident_id={incident.id} error={e}")
     
     return incident
 
@@ -642,7 +665,7 @@ async def _notify_routing_node_closure(node_id: str, source: str, reason: str) -
         )
 
     if response.status_code >= 400:
-        print(f"⚠️ Failed to close node {node_id}: {response.text}")
+        print(f"[WARNING] Failed to close routing node: node_id={node_id} response={response.text}")
         return []
 
     return response.json()
@@ -666,7 +689,7 @@ async def _notify_routing_evacuation_event(evacuation: EvacuationZone) -> None:
                 },
             )
     except Exception as exc:
-        print(f"⚠️ Failed to publish evacuation event: {exc}")
+        print(f"[WARNING] Failed to publish evacuation event: {exc}")
 
 
 async def _clear_routing_evacuation_closures(evacuation_id: str) -> None:
@@ -682,7 +705,7 @@ async def _clear_routing_evacuation_closures(evacuation_id: str) -> None:
                 params={"source": source},
             )
     except Exception as exc:
-        print(f"⚠️ Failed to clear evacuation routing state: {exc}")
+        print(f"[WARNING] Failed to clear evacuation routing state: {exc}")
 
 
 @app.post("/api/emergency/evacuation/global", response_model=GlobalEvacuationResponse, status_code=201)

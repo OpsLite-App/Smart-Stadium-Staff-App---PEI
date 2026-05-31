@@ -29,7 +29,7 @@ try:
     CACHE_AVAILABLE = True
 except ImportError:
     CACHE_AVAILABLE = False
-    print("⚠️  Redis cache not available - proceeding without caching")
+    print("[WARNING] Redis cache unavailable; continuing without caching")
 
 try:
     from prometheus_client import CONTENT_TYPE_LATEST, Counter, Histogram, generate_latest
@@ -166,7 +166,7 @@ def on_mqtt_message(client, userdata, msg):
         event = json.loads(msg.payload.decode())
         event_type = event.get("event_type")
         
-        logger.info(f"📊 Evento: {event_type}")
+        logger.debug("Received congestion event: type=%s", event_type)
         
         if event_type == "crowd_density":
             area_id = event.get("area_id")
@@ -181,10 +181,10 @@ def on_mqtt_message(client, userdata, msg):
             x = location.get("x")  # latitude
             y = location.get("y")  # longitude
             
-            logger.info(f"📍 {area_id}: ({x}, {y}) - {occupancy_rate}%")
+            logger.debug("Congestion update: area_id=%s x=%s y=%s occupancy_rate=%s", area_id, x, y, occupancy_rate)
             
             if x is None or y is None:
-                logger.warning(f"⚠️ {area_id}: Sem coordenadas!")
+                logger.warning("Congestion update has no coordinates: area_id=%s", area_id)
                 return
             
             # Determine status
@@ -215,7 +215,7 @@ def on_mqtt_message(client, userdata, msg):
                 "floor_id": floor_id
             }
             
-            logger.info(f"✅ {area_id} guardado. Total áreas: {len(crowd_data)}")
+            logger.debug("Congestion area stored: area_id=%s total_areas=%s", area_id, len(crowd_data))
             
             # Invalidate heatmap cache on new data
             invalidate_heatmap_cache()
@@ -231,7 +231,7 @@ def on_mqtt_message(client, userdata, msg):
                 historical_data[area_id] = historical_data[area_id][-MAX_HISTORY:]
             
     except Exception as e:
-        logger.error(f"❌ Erro no MQTT: {e}")
+        logger.error("MQTT message processing failed: %s", e)
         import traceback
         traceback.print_exc()
 
@@ -245,7 +245,7 @@ def start_mqtt_listener():
         client.on_message = on_mqtt_message
         
         def on_disconnect(client, userdata, rc):
-            print(f"⚠️  MQTT disconnected (rc={rc})")
+            print(f"[WARNING] MQTT disconnected: return_code={rc}")
 
         client.on_disconnect = on_disconnect
         try:
@@ -289,7 +289,7 @@ async def cleanup_stale_data():
 @app.on_event("startup")
 async def startup():
     """Initialize service"""
-    print("\n📊 Congestion Service starting...")
+    print("\n[INFO] Congestion Service starting")
     
     # Start MQTT listener
     start_mqtt_listener()
@@ -299,7 +299,7 @@ async def startup():
     asyncio.create_task(cleanup_stale_data())
     print("✓ Cleanup task started")
     
-    print("✅ Congestion Service ready\n")
+    print("[INFO] Congestion Service ready\n")
 
 
 # ========== ENDPOINTS ==========
@@ -350,7 +350,7 @@ def get_heatmap():
     # Cache for 30 seconds
     if redis_cache:
         redis_cache.set(cache_key, response.model_dump(), ttl=30)
-        logger.info(f"💾 Cached: {cache_key} (TTL: 30s)")
+        logger.debug("Heatmap cached: key=%s ttl_seconds=30", cache_key)
     
     return response
 
@@ -440,10 +440,10 @@ def get_heatmap_points(floor_id: Optional[int] = Query(None, description="Filter
                             "floor_id": point_floor
                         })
         except Exception as e:
-            logger.warning(f"⚠️ Map Service não disponível: {e}")
+            logger.warning("Map Service unavailable: %s", e)
             # Continua com os pontos que já temos
         
-        logger.info(f"✅ Gerados {len(points)} pontos de heatmap")
+        logger.debug("Heatmap points generated: count=%s", len(points))
         
         response = {
             "timestamp": datetime.now().isoformat(),
@@ -454,12 +454,12 @@ def get_heatmap_points(floor_id: Optional[int] = Query(None, description="Filter
         # Cache for 30 seconds
         if redis_cache:
             redis_cache.set(cache_key, response, ttl=30)
-            logger.info(f"💾 Cached: {cache_key} (TTL: 30s)")
+            logger.debug("Heatmap cached: key=%s ttl_seconds=30", cache_key)
         
         return response
     
     except Exception as e:
-        logger.error(f"❌ Erro ao gerar heatmap points: {e}")
+        logger.error("Failed to generate heatmap points: %s", e)
         return {"points": [], "count": 0, "error": str(e)}
     
 @app.get("/api/heatmap/{area_id}", response_model=CrowdDensity)

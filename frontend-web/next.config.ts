@@ -9,6 +9,10 @@ const QUEUEING_SERVICE_URL = process.env.QUEUEING_SERVICE_URL || "http://127.0.0
 const ROUTING_SERVICE_URL = process.env.ROUTING_SERVICE_URL || "http://127.0.0.1:8002";
 const CHAT_SERVICE_URL = process.env.CHAT_SERVICE_URL || "http://127.0.0.1:8008";
 const POSITIONING_SERVICE_URL = process.env.POSITIONING_SERVICE_URL || "http://127.0.0.1:8004";
+const API_GATEWAY_URL = process.env.API_GATEWAY_URL;
+
+const destination = (gatewayPath: string, directUrl: string, directPath: string) =>
+  API_GATEWAY_URL ? `${API_GATEWAY_URL}${gatewayPath}` : `${directUrl}${directPath}`;
 
 const nextConfig: NextConfig = {
   allowedDevOrigins: ["http://192.168.1.138:3000"],
@@ -24,51 +28,51 @@ const nextConfig: NextConfig = {
       // next.config.ts
       {
         source: "/api/auth/:path*",
-        destination: `${AUTH_SERVICE_URL}/auth/:path*`,
+        destination: destination("/api/auth/:path*", AUTH_SERVICE_URL, "/auth/:path*"),
       },
       {
         source: "/api/congestion/alerts/:path*",
-        destination: `${CONGESTION_SERVICE_URL}/api/congestion/alerts/:path*`,
+        destination: destination("/api/congestion/alerts/:path*", CONGESTION_SERVICE_URL, "/api/congestion/alerts/:path*"),
       },
       {
         source: "/api/congestion/:path*",
-        destination: `${CONGESTION_SERVICE_URL}/api/:path*`,
+        destination: destination("/api/congestion/:path*", CONGESTION_SERVICE_URL, "/api/:path*"),
       },
       {
         source: "/api/emergency/sensors/alerts/:path*",
-        destination: `${EMERGENCY_SERVICE_URL}/api/emergency/sensors/alerts/:path*`,
+        destination: destination("/api/emergency/sensors/alerts/:path*", EMERGENCY_SERVICE_URL, "/api/emergency/sensors/alerts/:path*"),
       },
       {
         source: "/api/emergency/sensors/alert/:path*",
-        destination: `${EMERGENCY_SERVICE_URL}/api/emergency/sensors/alert/:path*`,
+        destination: destination("/api/emergency/sensors/alert/:path*", EMERGENCY_SERVICE_URL, "/api/emergency/sensors/alert/:path*"),
       },
       {
         source: "/api/emergency/:path*",
-        destination: `${EMERGENCY_SERVICE_URL}/api/emergency/:path*`,
+        destination: destination("/api/emergency/:path*", EMERGENCY_SERVICE_URL, "/api/emergency/:path*"),
       },
       {
         source: "/api/maintenance/:path*",
-        destination: `${MAINTENANCE_SERVICE_URL}/api/maintenance/:path*`,
+        destination: destination("/api/maintenance/:path*", MAINTENANCE_SERVICE_URL, "/api/maintenance/:path*"),
       },
       {
         source: "/api/queueing/:path*",
-        destination: `${QUEUEING_SERVICE_URL}/api/queue/:path*`,
+        destination: destination("/api/queueing/:path*", QUEUEING_SERVICE_URL, "/api/queue/:path*"),
       },
       {
         source: "/api/routing/:path*",
-        destination: `${ROUTING_SERVICE_URL}/api/:path*`,
+        destination: destination("/api/routing/:path*", ROUTING_SERVICE_URL, "/api/:path*"),
       },
       {
         source: "/api/gis/:path*",
-        destination: `${ROUTING_SERVICE_URL}/api/gis/:path*`,
+        destination: destination("/api/gis/:path*", ROUTING_SERVICE_URL, "/api/gis/:path*"),
       },
       {
         source: "/api/chat/:path*",
-        destination: `${CHAT_SERVICE_URL}/:path*`,
+        destination: destination("/api/chat/:path*", CHAT_SERVICE_URL, "/:path*"),
       },
       {
         source: "/api/positioning/:path*",
-        destination: `${POSITIONING_SERVICE_URL}/:path*`,
+        destination: destination("/api/positioning/:path*", POSITIONING_SERVICE_URL, "/:path*"),
       },
     ];
   },

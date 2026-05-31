@@ -41,7 +41,7 @@ export function PoiSelect({
         disabled={disabled}
         className="w-full rounded-xl border border-gray-300 bg-white px-4 py-3 text-sm text-gray-900 shadow-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100 disabled:cursor-not-allowed disabled:bg-gray-100"
       >
-        <option value="">Select a POI</option>
+        <option value="">Selecionar um POI</option>
         {options.map((poi) => (
           <option key={poi.id} value={String(poi.id)}>
             {formatPoiOption(poi)}

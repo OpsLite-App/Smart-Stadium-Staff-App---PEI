@@ -52,7 +52,7 @@ class IncidentManager:
         
         # Initialize staff tracker
         self.staff_tracker = create_mock_staff_tracker(num_per_role=3)
-        print(f"✅ Staff tracker initialized with {len(self.staff_tracker.staff)} staff members")
+        print(f"[INFO] Staff tracker initialized: staff_count={len(self.staff_tracker.staff)}")
     
     # ========== INCIDENT CREATION ==========
     
@@ -81,7 +81,7 @@ class IncidentManager:
         # Log creation
         self._log_event(db, incident.id, "created", f"Incident created: {incident.incident_type.value}")
         
-        print(f"🚨 Created incident {incident.id}: {incident.incident_type.value} @ {incident.location_node} [{incident.severity.value}]")
+        print(f"[INFO] Incident created: incident_id={incident.id} type={incident.incident_type.value} location_node={incident.location_node} severity={incident.severity.value}")
         
         return self._incident_to_response(incident)
     
@@ -308,7 +308,7 @@ class IncidentManager:
             f"Escalated from {current_severity.value} to {new_severity.value}"
         )
         
-        print(f"⬆️  Incident {incident_id} escalated to {new_severity.value}")
+        print(f"[WARNING] Incident escalated: incident_id={incident_id} severity={new_severity.value}")
         
         return self._incident_to_response(incident)
     
@@ -350,7 +350,7 @@ class IncidentManager:
         ).first()
         
         if not incident_db:
-            print(f"❌ Incident {incident_id} not found")
+            print(f"[ERROR] Incident not found: incident_id={incident_id}")
             return []
 
         if incident_db.status in self.TERMINAL_INCIDENT_STATUSES:
@@ -375,7 +375,7 @@ class IncidentManager:
         )
         
         if not assignments:
-            print(f"❌ No available {responder_role} responders found")
+            print(f"[WARNING] No responders available: role={responder_role}")
             return []
         
         # Create dispatches in DB
@@ -409,7 +409,7 @@ class IncidentManager:
             f"Dispatched {len(dispatches)} {responder_role} responders"
         )
         
-        print(f"✅ Dispatched {len(dispatches)} {responder_role} to incident {incident_id}")
+        print(f"[INFO] Responders dispatched: incident_id={incident_id} role={responder_role} count={len(dispatches)}")
         
         return [self._dispatch_to_response(d) for d in dispatches]
     
@@ -444,7 +444,7 @@ class IncidentManager:
         ).first()
 
         if not incident_db:
-            print(f"❌ Incident {request.incident_id} not found")
+            print(f"[ERROR] Incident not found: incident_id={request.incident_id}")
             return None
 
         if incident_db.status in self.TERMINAL_INCIDENT_STATUSES:
@@ -464,9 +464,9 @@ class IncidentManager:
                 if response.status_code == 200:
                     route_data = response.json()
                 else:
-                    print(f"⚠️  Route unavailable for {request.responder_id}, dispatching without route")
+                    print(f"[WARNING] Route unavailable; dispatching without route: responder_id={request.responder_id}")
         except httpx.RequestError as e:
-            print(f"⚠️  Routing Service unreachable for {request.responder_id}: {e}")
+            print(f"[WARNING] Routing Service unreachable: responder_id={request.responder_id} error={e}")
 
         dispatch = ResponderDispatch(
             id=f"dispatch-{uuid.uuid4().hex[:8]}",
@@ -499,7 +499,7 @@ class IncidentManager:
             f"Supervisor dispatched {request.responder_id} ({request.responder_role})"
         )
 
-        print(f"✅ Manually dispatched {request.responder_id} to incident {request.incident_id}")
+        print(f"[INFO] Responder manually dispatched: responder_id={request.responder_id} incident_id={request.incident_id}")
         return self._dispatch_to_response(dispatch)
     
     def get_active_dispatches(self, db: Session) -> List[DispatchResponse]:

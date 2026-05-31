@@ -2,7 +2,8 @@
 import axios from "axios";
 import type { PermissionSet } from "@/lib/auth/rbac";
 
-// Base paths (via Next rewrites)
+// Base paths are same-origin in the browser. In Docker, Next forwards them to
+// Traefik so the frontend no longer needs to know individual service ports.
 export const AUTH_BASE = process.env.NEXT_PUBLIC_API_AUTH || "/api/auth";
 export const CONGESTION_BASE = process.env.NEXT_PUBLIC_API_CONGESTION || "/api/congestion";
 export const EMERGENCY_BASE = process.env.NEXT_PUBLIC_API_EMERGENCY || "/api/emergency";
@@ -24,7 +25,7 @@ function resolveWsGateway() {
   const configured =
     process.env.NEXT_PUBLIC_WS_GATEWAY ||
     process.env.NEXT_PUBLIC_WS_URL ||
-    "ws://localhost:8089/ws";
+    "ws://localhost:8080/ws";
 
   if (typeof window === "undefined") return configured;
 
@@ -32,13 +33,15 @@ function resolveWsGateway() {
   // Keep local desktop behaviour, but rewrite localhost WS URLs to the current host.
   if (configured.includes("localhost") || configured.includes("127.0.0.1")) {
     const protocol = window.location.protocol === "https:" ? "wss" : "ws";
-    return `${protocol}://${window.location.hostname}:8089/ws`;
+    const configuredUrl = new URL(configured);
+    return `${protocol}://${window.location.hostname}:${configuredUrl.port}${configuredUrl.pathname}`;
   }
 
   return configured;
 }
 
-// WS does not use Next rewrites, so it must target the machine serving the app.
+// WebSocket traffic reaches Traefik directly because Next rewrites do not
+// proxy browser WebSocket connections.
 export const WS_GATEWAY = resolveWsGateway();
 
 // ✅ REMOVED: authToken variable (no longer needed - cookie is used)
@@ -153,10 +156,10 @@ interface HeatmapApiResponse {
 // --- Cliente API ---
 export const api = {
   // ---- AUTH ----
-  login: async (email: string, password: string, role: string): Promise<LoginResponse> => {
+  login: async (email: string, password: string): Promise<LoginResponse> => {
     const response = await authAxios.post<LoginResponse>(
       `${AUTH_SERVICE}/login`,
-      { username: email, password, role }
+      { username: email, password }
     );
     // ✅ REMOVED: setAuthToken(response.data.token) - Token is in cookie only
     return response.data;
@@ -178,16 +181,16 @@ export const api = {
 
   validateToken: async (token: string): Promise<boolean> => {
     try {
-      console.log(`🔐 Validando token em ${AUTH_SERVICE}/validate`);
+      console.debug(`[Auth API] Validating token at ${AUTH_SERVICE}/validate`);
       const response = await axios.post(
         `${AUTH_SERVICE}/validate`,
         {},
         { headers: { Authorization: `Bearer ${token}` }, timeout: 5000 }
       );
-      console.log(`✅ Token válido: ${response.status}`);
+      console.debug(`[Auth API] Token validation completed with status ${response.status}`);
       return response.status === 200;
     } catch (error: any) {
-      console.error("❌ Erro ao validar token:", error.message);
+      console.error("[Auth API] Token validation failed:", error.message);
       if (error.response?.status === 401) return false;
       return false;
     }
@@ -208,15 +211,15 @@ export const api = {
 
   getStaff: async (): Promise<StaffMember[]> => {
     try {
-      console.log(`👥 Buscando staff de ${AUTH_SERVICE}/staff`);
+      console.debug(`[Auth API] Fetching staff from ${AUTH_SERVICE}/staff`);
       // ✅ REMOVED: headers: { ...bearerHeader() } - cookie is sent automatically
       const response = await authAxios.get<StaffMember[]>(`${AUTH_SERVICE}/staff`, {
         timeout: 5000,
       });
-      console.log(`✅ Staff carregado: ${response.data.length} pessoas`);
+      console.debug(`[Auth API] Loaded ${response.data.length} staff members`);
       return response.data;
     } catch (error: any) {
-      console.warn("⚠️ Erro getStaff:", error.message);
+      console.warn("[Auth API] Staff request failed; using fallback data:", error.message);
       return [
         { id: 8, name: "João Silva", role: "Security", status: "active", location: "62" },
         { id: 9, name: "Maria Santos", role: "Cleaning", status: "active", location: "70" },
@@ -231,7 +234,7 @@ export const api = {
   getHeatmapPoints: async (params?: { floorId?: number }): Promise<HeatmapPointsResponse> => {
     try {
       const url = `${CONGESTION_SERVICE}/heatmap/points`;
-      console.log(`🔥 Buscando heatmap de: ${url} com params:`, params);
+      console.debug(`[Congestion API] Fetching heatmap points from ${url}`, { params });
 
       // ✅ CHANGED: Use authAxios instead of axios to send cookie
       const response = await authAxios.get<HeatmapPointsResponse>(url, {
@@ -244,12 +247,12 @@ export const api = {
       );
 
       if (validPoints.length !== (response.data.points?.length || 0)) {
-        console.warn(`⚠️ Filtrados ${(response.data.points?.length || 0) - validPoints.length} pontos inválidos`);
+        console.warn(`[Congestion API] Removed ${(response.data.points?.length || 0) - validPoints.length} invalid heatmap points`);
       }
 
       return { ...response.data, points: validPoints, count: validPoints.length };
     } catch (error: any) {
-      console.error("❌ Erro ao buscar heatmap points:", error.message);
+      console.error("[Congestion API] Heatmap points request failed:", error.message);
 
       return { timestamp: new Date().toISOString(), points: [], count: 0, error: error.message };
     }
@@ -257,34 +260,34 @@ export const api = {
 
   getHeatmap: async (): Promise<CrowdDensity[]> => {
     try {
-      console.log(`📊 Buscando heatmap de ${CONGESTION_SERVICE}/heatmap`);
+      console.debug(`[Congestion API] Fetching heatmap from ${CONGESTION_SERVICE}/heatmap`);
       // ✅ CHANGED: Use authAxios instead of axios
       const response = await authAxios.get<HeatmapApiResponse>(`${CONGESTION_SERVICE}/heatmap`, {
         timeout: 5000,
       });
-      console.log(`✅ Heatmap carregado: ${response.data.areas?.length || 0} áreas`);
+      console.debug(`[Congestion API] Loaded ${response.data.areas?.length || 0} heatmap areas`);
       return response.data.areas || [];
     } catch (error: any) {
-      console.warn("⚠️ Erro getHeatmap:", error.message);
+      console.warn("[Congestion API] Heatmap request failed:", error.message);
       return [];
     }
   },
 
   checkCongestionServiceHealth: async (): Promise<boolean> => {
     try {
-      console.log(`🏥 Health check Congestion Service: ${CONGESTION_SERVICE}/`);
+      console.debug(`[Congestion API] Checking service health at ${CONGESTION_SERVICE}/`);
       const response = await axios.get(`${CONGESTION_SERVICE}/`, { timeout: 3000 });
-      console.log(`✅ Congestion Service health: ${response.status}`);
+      console.debug(`[Congestion API] Health check completed with status ${response.status}`);
       return response.status === 200;
     } catch (error: any) {
-      console.warn(`⚠️ Congestion Service offline: ${error.message}`);
+      console.warn(`[Congestion API] Service health check failed: ${error.message}`);
       return false;
     }
   },
 
   // ---- EMERGENCY ----
   getIncidentDetails: async (incidentId: string) => {
-    console.log(`📋 Buscando detalhes do incidente ${incidentId} em ${EMERGENCY_SERVICE}/incidents/${incidentId}`);
+    console.debug(`[Emergency API] Fetching incident ${incidentId} from ${EMERGENCY_SERVICE}/incidents/${incidentId}`);
     // ✅ CHANGED: Use authAxios instead of axios
     const response = await authAxios.get(`${EMERGENCY_SERVICE}/incidents/${incidentId}`, {
       timeout: 5000,
@@ -334,7 +337,7 @@ export const api = {
 
   // ---- MAINTENANCE ----
   getBinAlerts: async (): Promise<any[]> => {
-    console.log(`📋 Buscando alertas de lixeiras em ${MAINTENANCE_SERVICE}/bins/alerts`);
+    console.debug(`[Maintenance API] Fetching bin alerts from ${MAINTENANCE_SERVICE}/bins/alerts`);
     const response = await authAxios.get(`${MAINTENANCE_SERVICE}/bins/alerts`, {
       timeout: 5000,
     });
@@ -342,7 +345,7 @@ export const api = {
   },
 
   getTaskDetails: async (taskId: string) => {
-    console.log(`📋 Buscando detalhes da tarefa ${taskId} em ${MAINTENANCE_SERVICE}/tasks/${taskId}`);
+    console.debug(`[Maintenance API] Fetching task ${taskId} from ${MAINTENANCE_SERVICE}/tasks/${taskId}`);
     // ✅ CHANGED: Use authAxios instead of axios
     const response = await authAxios.get(`${MAINTENANCE_SERVICE}/tasks/${taskId}`, {
       timeout: 5000,
@@ -355,7 +358,7 @@ export const api = {
     status: "pending" | "assigned" | "in_progress" | "in-progress" | "completed" | "cancelled"
   ) => {
     const backendStatus = status === "in-progress" ? "in_progress" : status;
-    console.log(`✅ Atualizando status da tarefa ${taskId} para ${backendStatus}`);
+    console.debug(`[Maintenance API] Updating task ${taskId} status to ${backendStatus}`);
     // ✅ CHANGED: Use authAxios instead of axios
     const response = await authAxios.patch(
       `${MAINTENANCE_SERVICE}/tasks/${taskId}`,
@@ -471,16 +474,16 @@ export const api = {
   },
 
   getStaffPositions: async (staffIds: string[]): Promise<StaffPosition[]> => {
-    const results = await Promise.allSettled(
-      staffIds.map((id) =>
-        // ✅ CHANGED: Use authAxios instead of axios
-        authAxios.get<StaffPosition>(`${POSITIONING_BASE}/position/${id}`, { timeout: 3000 })
-          .then((r) => r.data)
-      )
-    );
-    return results
-      .filter((r): r is PromiseFulfilledResult<StaffPosition> => r.status === "fulfilled")
-      .map((r) => r.value);
+    if (staffIds.length === 0) return [];
+
+    try {
+      const response = await authAxios.get<StaffPosition[]>(`${POSITIONING_BASE}/positions`, { timeout: 3000 });
+      const requestedIds = new Set(staffIds.map(String));
+      return response.data.filter((position) => requestedIds.has(String(position.staff_id)));
+    } catch {
+      // Missing positioning data is expected before Wi-Fi or simulated updates arrive.
+      return [];
+    }
   },
 
   getAllStaffPositions: async (): Promise<StaffPosition[]> => {

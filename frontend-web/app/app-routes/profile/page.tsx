@@ -4,7 +4,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import axios from 'axios';
 import { useRouter } from 'next/navigation';
 import { useAuthStore } from '@/lib/stores/useAuthStore';
-import { useTranslation } from 'react-i18next';
+import { useLangStore } from '@/lib/stores/useLangStore';
 import {
   User,
   Shield,
@@ -132,7 +132,7 @@ function roleBadgeVariant(role: Role): 'primary' | 'success' | 'warning' | 'defa
 export default function ProfilePage() {
   const router = useRouter();
   const { user, logout } = useAuthStore();
-  const { i18n } = useTranslation();
+  const { lang: language, setLang } = useLangStore();
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -141,7 +141,6 @@ export default function ProfilePage() {
   const [pushEnabled, setPushEnabled] = useState(true);
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [vibrationEnabled, setVibrationEnabled] = useState(false);
-  const [language, setLanguage] = useState<'pt' | 'en'>('pt');
   const [fontSize, setFontSize] = useState<'sm' | 'md' | 'lg'>(() =>
     (localStorage.getItem('font-size') as 'sm' | 'md' | 'lg') || 'md'
   );
@@ -164,11 +163,6 @@ export default function ProfilePage() {
   const [recentActivity, setRecentActivity] = useState<RecentActivity[]>([]);
   const [pendingDispatches, setPendingDispatches] = useState<PendingDispatch[]>([]);
   const [dispatchActionLoading, setDispatchActionLoading] = useState<string | null>(null);
-
-  useEffect(() => {
-    const storedLang = localStorage.getItem('user-language');
-    if (storedLang === 'pt' || storedLang === 'en') setLanguage(storedLang);
-  }, []);
 
   useEffect(() => {
     const sizeMap = { sm: '14px', md: '16px', lg: '19px' };
@@ -357,9 +351,9 @@ export default function ProfilePage() {
     const handleRealtimeUpdate = (event: MessageEvent) => {
       try {
         const parsed = JSON.parse(event.data) as { type?: string };
-        console.log('✅ Profile SSE update:', parsed.type || 'unknown');
+        console.debug('[Profile SSE] Received update:', parsed.type || 'unknown');
       } catch {
-        console.log('✅ Profile SSE update received');
+        console.debug('[Profile SSE] Received update');
       }
       void run();
     };
@@ -383,11 +377,11 @@ export default function ProfilePage() {
     });
 
     eventSource?.addEventListener('connected', () => {
-      console.log('✅ Profile SSE connected');
+      console.info('[Profile SSE] Connected');
     });
 
     eventSource?.addEventListener('error', () => {
-      console.warn('Profile SSE disconnected, browser will retry automatically');
+      console.warn('[Profile SSE] Disconnected; the browser will retry automatically');
     });
 
     return () => {
@@ -396,9 +390,7 @@ export default function ProfilePage() {
   }, [user]);
 
   const handleLanguageChange = (lang: 'pt' | 'en') => {
-    setLanguage(lang);
-    i18n.changeLanguage(lang);
-    localStorage.setItem('user-language', lang);
+    setLang(lang);
   };
 
   const { setNavigation } = useNavigationStore();
@@ -575,7 +567,7 @@ export default function ProfilePage() {
               <div className="p-2 bg-purple-100 rounded-lg">
                 <Star size={16} className="text-purple-600" />
               </div>
-              <span className="text-xs text-[#6B7280]">Rating</span>
+              <span className="text-xs text-[#6B7280]">Avaliação</span>
             </div>
             <span className="text-xl font-bold text-[#1F2937]">{profileStats.rating}</span>
           </div>
@@ -723,7 +715,7 @@ export default function ProfilePage() {
               />
               <div className="flex justify-between text-xs text-gray-400">
                 <span>Baixo</span>
-                <button onClick={() => setContrast(100)} className="text-[#4F46E5] hover:underline">Reset</button>
+                <button onClick={() => setContrast(100)} className="text-[#4F46E5] hover:underline">Repor</button>
                 <span>Alto</span>
               </div>
             </div>

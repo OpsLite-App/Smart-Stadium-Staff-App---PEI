@@ -259,7 +259,7 @@ async def startup():
     asyncio.create_task(sync_with_queueing_service())
     print("✓ Queueing Service sync started")
     
-    print("✅ Wait Times Service ready\n")
+    print("[INFO] Wait Times Service ready\n")
 
 
 # ========== ENDPOINTS ==========

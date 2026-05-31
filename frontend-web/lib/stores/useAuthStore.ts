@@ -20,7 +20,7 @@ interface AuthState {
   hydrated: boolean;
   error: string | null;
 
-  login: (email: string, password: string, role: Role) => Promise<boolean>;
+  login: (email: string, password: string) => Promise<boolean>;
   logout: () => Promise<void>;
   restoreUser: (user: User) => void;
   checkStorage: () => void;
@@ -55,15 +55,14 @@ export const useAuthStore = create<AuthState>()(
 
       setHydrated: () => {
         set({ hydrated: true });
-        const state = get();
-        console.log('Store hidratado:', state.user ? 'User existe' : 'Sem user');
+        console.debug('[Auth Store] Hydration completed');
       },
 
-      login: async (email, password, role) => {
+      login: async (email, password) => {
         set({ isLoading: true, error: null });
 
         try {
-          const data = await api.login(email, password, role);
+          const data = await api.login(email, password);
           const serverRole = normalizeRole(data.role);
 
           // ✅ REMOVED: token from userData (no longer stored)
@@ -114,11 +113,11 @@ export const useAuthStore = create<AuthState>()(
       },
 
       logout: async () => {
-        console.log('A fazer logout');
+        console.debug('[Auth Store] Signing out');
         try {
           await api.logout();
         } catch (error) {
-          console.warn('Falha ao limpar sessão no servidor', error);
+          console.warn('[Auth Store] Server-side session cleanup failed:', error);
         } finally {
           // ✅ REMOVED: setAuthToken(''); - No longer needed
           set({ user: null, error: null });
@@ -131,25 +130,19 @@ export const useAuthStore = create<AuthState>()(
       },
 
       checkStorage: () => {
-        const state = get();
         const storage = localStorage.getItem('auth-storage');
-        console.log('Estado atual da store:', state.user ? 'Logado' : 'Não logado');
-        console.log('LocalStorage tem dados:', storage ? 'Sim' : 'Não');
 
         if (storage) {
           try {
             const parsed = JSON.parse(storage);
-            console.log('Dados no localStorage:', parsed);
 
             // ✅ Check if user exists (token no longer stored)
-            if (parsed.state?.user?.email) {
-              console.log('Email no storage:', parsed.state.user.email);
-            } else {
-              console.log('Storage corrompido - a limpar...');
+            if (!parsed.state?.user?.email) {
+              console.warn('[Auth Store] Invalid persisted state detected; clearing local data');
               localStorage.removeItem('auth-storage');
             }
           } catch (e) {
-            console.error('Erro ao parsear storage:', e);
+            console.warn('[Auth Store] Persisted state could not be parsed; clearing local data:', e);
             localStorage.removeItem('auth-storage');
           }
         }
@@ -170,7 +163,7 @@ export const useAuthStore = create<AuthState>()(
           : null,
       }),
       onRehydrateStorage: () => (state) => {
-        console.log('A hidratar store...');
+        console.debug('[Auth Store] Restoring persisted state');
         if (state) setTimeout(() => state.setHydrated(), 0);
       },
     }

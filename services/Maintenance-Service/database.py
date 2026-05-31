@@ -25,7 +25,7 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 def init_db():
     """Initialize database tables"""
     Base.metadata.create_all(bind=engine)
-    print("✅ Database tables created")
+    print("[INFO] Database tables created")
 
 
 def get_db() -> Session:
@@ -46,13 +46,13 @@ def get_db() -> Session:
 
 def reset_db():
     """Drop and recreate all tables (CAUTION: deletes all data)"""
-    print("⚠️  Dropping all tables...")
+    print("[WARNING] Dropping all database tables")
     Base.metadata.drop_all(bind=engine)
-    print("✅ All tables dropped")
+    print("[INFO] All database tables dropped")
     
-    print("📦 Creating tables...")
+    print("[INFO] Creating database tables")
     Base.metadata.create_all(bind=engine)
-    print("✅ Database reset complete")
+    print("[INFO] Database reset completed")
 
 
 def seed_initial_alerts(db: Session):
@@ -104,9 +104,9 @@ def seed_initial_alerts(db: Session):
             db.add(bin_alert)
 
         db.commit()
-        print("✅ Seeded 4 initial bin alerts")
+        print("[INFO] Initial bin alerts seeded: count=4")
     except Exception as e:
-        print(f"⚠️ Error seeding initial alerts: {e}")
+        print(f"[WARNING] Failed to seed initial alerts: {e}")
         db.rollback()
 
 

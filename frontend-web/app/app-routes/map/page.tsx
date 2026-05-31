@@ -172,9 +172,9 @@ export default function MapPage() {
     const refreshMapFromRealtime = (event: MessageEvent) => {
       try {
         const parsed = JSON.parse(event.data) as { type?: string };
-        console.log('✅ Map SSE update:', parsed.type || 'unknown');
+        console.debug('[Map SSE] Received update:', parsed.type || 'unknown');
       } catch {
-        console.log('✅ Map SSE update received');
+        console.debug('[Map SSE] Received update');
       }
 
       void loadMonitoring();
@@ -201,11 +201,11 @@ export default function MapPage() {
     });
 
     eventSource?.addEventListener('connected', () => {
-      console.log('✅ Map SSE connected');
+      console.info('[Map SSE] Connected');
     });
 
     eventSource?.addEventListener('error', () => {
-      console.warn('Map SSE disconnected, browser will retry automatically');
+      console.warn('[Map SSE] Disconnected; the browser will retry automatically');
     });
 
     const timer = setInterval(() => {
@@ -490,7 +490,7 @@ export default function MapPage() {
               </div>
               <div>
                 <h2 className="text-xl font-semibold text-gray-900">Mapa indoor</h2>
-                <p className="text-sm text-gray-500">Dados reais de PostGIS + estado operacional do routing.</p>
+                <p className="text-sm text-gray-500">Dados reais de PostGIS e estado operacional do cálculo de rotas.</p>
               </div>
             </div>
 

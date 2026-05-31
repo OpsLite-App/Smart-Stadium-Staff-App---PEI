@@ -249,7 +249,7 @@ export default function TeamPage() {
   const fetchTeamMembers = async () => {
     try {
       setRefreshing(true);
-      console.log('👥 A buscar equipa...');
+      console.debug('[Team] Fetching staff members');
 
       // Tentar buscar da API real
       let teamMembers: TeamMember[] = [];
@@ -257,7 +257,7 @@ export default function TeamPage() {
       try {
         const staffList = await api.getStaff() as ApiStaffMember[];
         if (Array.isArray(staffList)) {
-          console.log(`✅ API respondeu com ${staffList.length} membros`);
+          console.debug(`[Team] Loaded ${staffList.length} staff members`);
           
           // Mapear resposta da API para o formato TeamMember
           teamMembers = staffList.map((staff, index) => ({
@@ -293,7 +293,7 @@ export default function TeamPage() {
           }));
         }
       } catch (apiError) {
-        console.warn('⚠️ API de staff indisponível, usando dados mock');
+        console.warn('[Team] Staff API unavailable; using fallback data');
       }
 
       // Se não conseguiu dados da API, usar dados mock
@@ -306,7 +306,7 @@ export default function TeamPage() {
       generateGroups(teamMembers);
       
     } catch (error) {
-      console.error('❌ Erro ao buscar equipa:', error);
+      console.error('[Team] Failed to fetch staff members:', error);
       const mockMembers = generateMockTeam();
       setMembers(mockMembers);
       calculateStats(mockMembers);
@@ -576,9 +576,9 @@ export default function TeamPage() {
     const handleRealtimeUpdate = (event: MessageEvent) => {
       try {
         const parsed = JSON.parse(event.data) as { type?: string };
-        console.log('✅ Team SSE update:', parsed.type || 'unknown');
+        console.debug('[Team SSE] Received update:', parsed.type || 'unknown');
       } catch {
-        console.log('✅ Team SSE update received');
+        console.debug('[Team SSE] Received update');
       }
       void fetchTeamMembers();
     };
@@ -602,11 +602,11 @@ export default function TeamPage() {
     });
 
     eventSource?.addEventListener('connected', () => {
-      console.log('✅ Team SSE connected');
+      console.info('[Team SSE] Connected');
     });
 
     eventSource?.addEventListener('error', () => {
-      console.warn('Team SSE disconnected, browser will retry automatically');
+      console.warn('[Team SSE] Disconnected; the browser will retry automatically');
     });
 
     // Refresh automático a cada 30 segundos
@@ -1248,7 +1248,7 @@ export default function TeamPage() {
 
                 {/* Métricas de Performance */}
                 <div className="mb-6">
-                  <h3 className="font-semibold text-gray-900 mb-3">Performance</h3>
+                  <h3 className="font-semibold text-gray-900 mb-3">Desempenho</h3>
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                     <div className="p-3 bg-blue-50 rounded-lg">
                       <p className="text-xs text-blue-600 mb-1">Tarefas</p>

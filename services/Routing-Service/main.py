@@ -27,7 +27,7 @@ try:
     CACHE_AVAILABLE = True
 except ImportError:
     CACHE_AVAILABLE = False
-    print("⚠️  Redis cache not available - proceeding without caching")
+    print("[WARNING] Redis cache unavailable; continuing without caching")
 
 try:
     from prometheus_client import CONTENT_TYPE_LATEST, Counter, Histogram, generate_latest
@@ -45,6 +45,7 @@ from pgrouting import (
     OperationalEventCreate,
 )
 from runtime_checks import RuntimeReadinessError
+from tracing_config import configure_tracing
 
 # ========== CACHE INITIALIZATION ==========
 
@@ -85,6 +86,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+configure_tracing(app)
 
 if METRICS_AVAILABLE:
     REQUEST_COUNT = Counter(
@@ -289,39 +291,39 @@ async def startup():
     global HAZARD_MAP, route_handler, hazard_handler
     
     print("\n" + "="*60)
-    print("🚀 ROUTING SERVICE v2.0 - STARTING")
+    print("[INFO] Routing Service v2.0 starting")
     print("="*60)
     
     # Initialize hazard map
     HAZARD_MAP = HazardMap()
-    print("✅ Hazard map initialized")
+    print("[INFO] Hazard map initialized")
     
     try:
         get_pgrouting_service()
-        print("✅ pgRouting runtime tables ready")
+        print("[INFO] pgRouting runtime tables ready")
     except RuntimeReadinessError as exc:
-        print(f"⚠️  pgRouting runtime tables unavailable: {exc.message}")
+        print(f"[WARNING] pgRouting runtime tables unavailable: {exc.message}")
 
     try:
         get_gis_layer_service()
-        print("✅ GIS indoor layers ready")
+        print("[INFO] Indoor GIS layers ready")
     except RuntimeReadinessError as exc:
-        print(f"⚠️  GIS indoor layers unavailable: {exc.message}")
+        print(f"[WARNING] Indoor GIS layers unavailable: {exc.message}")
     
     if GRAPH:
         # Initialize API handlers (ONLY route and hazard)
         route_handler = RouteAPIHandler(GRAPH, HAZARD_MAP)
         hazard_handler = HazardAPIHandler(HAZARD_MAP)
-        print("✅ API handlers initialized")
+        print("[INFO] API handlers initialized")
         
         print("\n" + "="*60)
-        print("✅ ROUTING SERVICE READY")
+        print("[INFO] Routing Service ready")
         print(f"   - Nodes: {len(GRAPH.nodes)}")
         print(f"   - Edges: {sum(len(v) for v in GRAPH.adjacency.values())}")
         print(f"   - Legacy Map Service: {MAP_SERVICE_URL or 'disabled'}")
         print("="*60 + "\n")
     else:
-        print("\n✅ ROUTING SERVICE READY")
+        print("\n[INFO] Routing Service ready")
         print("   - Active mode: PostGIS/pgRouting + GIS layers")
         print("   - Legacy Map Service graph disabled")
         print("="*60 + "\n")
@@ -332,11 +334,11 @@ async def load_graph_from_map_service():
     global GRAPH
 
     if not MAP_SERVICE_URL:
-        print("ℹ️ Legacy Map Service disabled; skipping graph load")
+        print("[INFO] Legacy Map Service disabled; skipping graph load")
         return False
     
     try:
-        print(f"📥 Fetching graph from {MAP_SERVICE_URL}/api/map ...")
+        print(f"[INFO] Fetching graph from {MAP_SERVICE_URL}/api/map")
         
         async with httpx.AsyncClient(timeout=10.0) as client:
             response = await client.get(f"{MAP_SERVICE_URL}/api/map")
@@ -348,7 +350,7 @@ async def load_graph_from_map_service():
             
             # Build graph
             GRAPH = Graph(nodes, edges)
-            print(f"✅ Graph loaded: {len(nodes)} nodes, {len(edges)} edges")
+            print(f"[INFO] Graph loaded: nodes={len(nodes)} edges={len(edges)}")
             
             # Load closures
             if closures:
@@ -357,12 +359,12 @@ async def load_graph_from_map_service():
                         edge = next((e for e in edges if e['id'] == closure['edge_id']), None)
                         if edge:
                             HAZARD_MAP.add_closure(edge['from'], edge['to'])
-                print(f"✅ Loaded {len(closures)} closures")
+                print(f"[INFO] Loaded closures: count={len(closures)}")
             
             return True
             
     except Exception as e:
-        print(f"❌ Error loading graph: {e}")
+        print(f"[ERROR] Failed to load graph: {e}")
         return False
 
 

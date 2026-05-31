@@ -34,8 +34,8 @@ export function AppHeader({
         iconColor: theme.colors.primary,
         bgColor: 'bg-blue-50',
         textColor: 'text-blue-700',
-        defaultTitle: 'Dashboard',
-        defaultSubtitle: 'Sistema Operacional • Live'
+        defaultTitle: 'Painel',
+        defaultSubtitle: 'Sistema operacional • Em tempo real'
       };
     }
 
@@ -46,7 +46,7 @@ export function AppHeader({
           iconColor: '#3B82F6',
           bgColor: 'bg-blue-50',
           textColor: 'text-blue-700',
-          defaultTitle: 'Security Dashboard',
+          defaultTitle: 'Painel de segurança',
           defaultSubtitle: 'Sistema de Segurança • Ao Vivo'
         };
       case 'Cleaning':
@@ -64,8 +64,8 @@ export function AppHeader({
           iconColor: '#F59E0B',
           bgColor: 'bg-yellow-50',
           textColor: 'text-yellow-700',
-          defaultTitle: 'Supervisor Dashboard',
-          defaultSubtitle: 'Gestão de Operações • Live'
+          defaultTitle: 'Painel de supervisão',
+          defaultSubtitle: 'Gestão de operações • Em tempo real'
         };
       default:
         return {
@@ -73,8 +73,8 @@ export function AppHeader({
           iconColor: theme.colors.primary,
           bgColor: 'bg-blue-50',
           textColor: 'text-blue-700',
-          defaultTitle: 'Dashboard',
-          defaultSubtitle: 'Sistema Operacional • Live'
+          defaultTitle: 'Painel',
+          defaultSubtitle: 'Sistema operacional • Em tempo real'
         };
     }
   };

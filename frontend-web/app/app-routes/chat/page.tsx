@@ -246,7 +246,7 @@ export default function ChatPage() {
       setError(null);
       return ordered;
     } catch {
-      setError('Não foi possível carregar mensagens do chat-service.');
+      setError('Não foi possível carregar mensagens do serviço de conversação.');
       setMessagesByRoom((previous) => ({ ...previous, [roomId]: previous[roomId] ?? [] }));
       return [];
     } finally {
@@ -335,7 +335,7 @@ export default function ChatPage() {
       });
       setError(null);
     } catch {
-      setError('Mensagem não enviada. Confirma se o chat-service está ativo.');
+      setError('Mensagem não enviada. Confirma se o serviço de conversação está ativo.');
       setMessageText(content);
     } finally {
       setSending(false);
@@ -354,8 +354,8 @@ export default function ChatPage() {
           <div className="flex items-start justify-between gap-3">
             <div>
               <p className="text-sm font-semibold uppercase tracking-[0.22em] text-slate-500">Comunicação</p>
-              <h1 className="mt-2 text-4xl font-black tracking-tight text-slate-950">Chat operacional</h1>
-              <p className="mt-2 text-base text-slate-500">Mensagens reais persistidas no chat-service.</p>
+              <h1 className="mt-2 text-4xl font-black tracking-tight text-slate-950">Conversa operacional</h1>
+              <p className="mt-2 text-base text-slate-500">Mensagens reais persistidas no serviço de conversação.</p>
             </div>
             <button
               type="button"
@@ -544,7 +544,7 @@ export default function ChatPage() {
               </div>
               <h2 className="mt-6 text-3xl font-black text-slate-950">Seleciona uma conversa</h2>
               <p className="mt-3 text-base text-slate-500">
-                Escolhe um canal operacional ou uma conversa direta com staff real.
+                Escolhe um canal operacional ou uma conversa direta com um elemento real da equipa.
               </p>
             </div>
           </div>

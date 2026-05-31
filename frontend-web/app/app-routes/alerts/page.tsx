@@ -542,7 +542,7 @@ export default function AlertsPage() {
       calculateStats(allAlerts);
       
     } catch (error) {
-      console.error('❌ Error while fetching alerts:', error);
+      console.error('[Alerts] Failed to fetch alerts:', error);
       setAlerts([]);
       calculateStats([]);
     } finally {
@@ -658,9 +658,9 @@ export default function AlertsPage() {
     const handleRealtimeUpdate = (event: MessageEvent) => {
       try {
         const parsed = JSON.parse(event.data) as { type?: string };
-        console.log('✅ Emergency SSE update:', parsed.type || 'unknown');
+        console.debug('[Alerts SSE] Received update:', parsed.type || 'unknown');
       } catch {
-        console.log('✅ Emergency SSE update received');
+        console.debug('[Alerts SSE] Received update');
       }
       void fetchAlerts();
     };
@@ -686,11 +686,11 @@ export default function AlertsPage() {
     });
 
     eventSource?.addEventListener('connected', () => {
-      console.log('✅ Emergency SSE connected');
+      console.info('[Alerts SSE] Connected');
     });
 
     eventSource?.addEventListener('error', () => {
-      console.warn('Emergency SSE disconnected, browser will retry automatically');
+      console.warn('[Alerts SSE] Disconnected; the browser will retry automatically');
     });
 
     // WebSocket for real-time alerts
@@ -700,31 +700,31 @@ export default function AlertsPage() {
       connectHeaders: {},
 
       debug: (str) => {
-        console.log('STOMP:', str);
+        console.debug('[Alerts WebSocket] STOMP:', str);
       },
 
       onConnect: () => {
-        console.log('✅ STOMP connected (alerts)');
+        console.info('[Alerts WebSocket] Connected');
 
         client.subscribe('/topic/emergency', () => {
           try {
             void fetchAlerts();
           } catch (e) {
-            console.error('Error processing emergency alert:', e);
+            console.error('[Alerts WebSocket] Failed to process emergency alert:', e);
           }
         });
       },
 
       onStompError: (frame) => {
-        console.error('STOMP error:', frame.headers['message']);
+        console.error('[Alerts WebSocket] STOMP error:', frame.headers['message']);
       },
 
       onWebSocketError: (e) => {
-        console.warn('WebSocket error:', e);
+        console.warn('[Alerts WebSocket] Connection error:', e);
       },
 
       onWebSocketClose: () => {
-        console.warn('WebSocket closed');
+        console.warn('[Alerts WebSocket] Connection closed');
       }
     });
 
@@ -793,7 +793,7 @@ export default function AlertsPage() {
         return updated;
       });
     } catch (error) {
-      console.error('Error acknowledging alert:', error);
+      console.error('[Alerts] Failed to acknowledge alert:', error);
     }
   };
 
@@ -821,7 +821,7 @@ export default function AlertsPage() {
         return updated;
       });
     } catch (error) {
-      console.error('Error resolving alert:', error);
+      console.error('[Alerts] Failed to resolve alert:', error);
     }
   };
 
@@ -840,7 +840,7 @@ export default function AlertsPage() {
       });
       setIncidentNodeError('');
     } catch {
-      setIncidentNodeError(`A localização "${getIncidentLocationLabel(incidentForm.location_node)}" não está disponível para routing.`);
+      setIncidentNodeError(`A localização "${getIncidentLocationLabel(incidentForm.location_node)}" não está disponível para cálculo de rotas.`);
       return;
     }
 
@@ -874,7 +874,7 @@ export default function AlertsPage() {
 
       await fetchAlerts();
     } catch (error) {
-      console.error('Error creating incident:', error);
+      console.error('[Alerts] Failed to create incident:', error);
     } finally {
       setIncidentActionLoading(null);
     }
@@ -954,7 +954,7 @@ export default function AlertsPage() {
 
       setStaffCandidates(candidatesWithEta);
     } catch (error) {
-      console.error('Error loading staff candidates:', error);
+      console.error('[Alerts] Failed to load staff candidates:', error);
       setCandidateError('Não foi possível carregar candidatos para atribuição.');
       setStaffCandidates([]);
     } finally {
@@ -1018,7 +1018,7 @@ export default function AlertsPage() {
       await fetchAlerts();
       router.push('/app-routes/map');
     } catch (error) {
-      console.error('Error dispatching specific candidate:', error);
+      console.error('[Alerts] Failed to dispatch staff candidate:', error);
       setShowSuccessToast(getIncidentActionError(error, 'Não foi possível atribuir este elemento.'));
       setTimeout(() => setShowSuccessToast(null), 4000);
     } finally {
@@ -1038,7 +1038,7 @@ export default function AlertsPage() {
       await fetchAlerts();
       return true;
     } catch (error) {
-      console.error('Error updating incident:', error);
+      console.error('[Alerts] Failed to update incident:', error);
       setShowSuccessToast(getIncidentActionError(error, 'Não foi possível atualizar o incidente.'));
       setTimeout(() => setShowSuccessToast(null), 5000);
       return false;
@@ -1346,9 +1346,9 @@ export default function AlertsPage() {
                   onChange={(e) => setIncidentForm((prev) => ({ ...prev, incident_type: e.target.value }))}
                   className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900"
                 >
-                  <option value="security">security</option>
-                  <option value="medic">medic</option>
-                  <option value="cleaning">cleaning</option>
+                  <option value="security">segurança</option>
+                  <option value="medic">médica</option>
+                  <option value="cleaning">limpeza</option>
                 </select>
 
                 <div>
@@ -1398,10 +1398,10 @@ export default function AlertsPage() {
                   onChange={(e) => setIncidentForm((prev) => ({ ...prev, severity: e.target.value }))}
                   className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900"
                 >
-                  <option value="low">low</option>
-                  <option value="medium">medium</option>
-                  <option value="high">high</option>
-                  <option value="critical">critical</option>
+                  <option value="low">baixa</option>
+                  <option value="medium">média</option>
+                  <option value="high">alta</option>
+                  <option value="critical">crítica</option>
                 </select>
 
                 <textarea

@@ -169,9 +169,9 @@ export default function EmergencyPage() {
     const handleRealtimeUpdate = (event: MessageEvent) => {
       try {
         const parsed = JSON.parse(event.data) as { type?: string };
-        console.log('✅ Emergency SSE update:', parsed.type || 'unknown');
+        console.debug('[Emergency SSE] Received update:', parsed.type || 'unknown');
       } catch {
-        console.log('✅ Emergency SSE update received');
+        console.debug('[Emergency SSE] Received update');
       }
       void loadState();
     };
@@ -195,11 +195,11 @@ export default function EmergencyPage() {
     });
 
     eventSource?.addEventListener('connected', () => {
-      console.log('✅ Emergency SSE connected');
+      console.info('[Emergency SSE] Connected');
     });
 
     eventSource?.addEventListener('error', () => {
-      console.warn('Emergency SSE disconnected, browser will retry automatically');
+      console.warn('[Emergency SSE] Disconnected; the browser will retry automatically');
     });
 
     const interval = window.setInterval(() => void loadState(), 15000);
@@ -524,7 +524,7 @@ export default function EmergencyPage() {
                   <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
                     <div className="mb-3 flex items-center justify-between gap-3">
                       <div>
-                        <p className="text-xs font-black uppercase tracking-[0.14em] text-slate-600">Selecionar na layer GIS</p>
+                        <p className="text-xs font-black uppercase tracking-[0.14em] text-slate-600">Selecionar na camada GIS</p>
                         <p className="mt-1 text-xs text-slate-500">
                           Usa o mapa grande à direita para clicar nos nós reais do piso selecionado.
                         </p>

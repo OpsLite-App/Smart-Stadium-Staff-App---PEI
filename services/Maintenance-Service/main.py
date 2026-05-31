@@ -60,12 +60,12 @@ async def startup():
     global task_manager
     
     print("\n" + "="*60)
-    print("🧹 MAINTENANCE SERVICE - STARTING")
+    print("[INFO] Maintenance Service starting")
     print("="*60)
     
     # Initialize database
     init_db()
-    print("✅ Database initialized")
+    print("[INFO] Database initialized")
 
     # Seed initial alerts
     from database import SessionLocal, seed_initial_alerts
@@ -77,11 +77,11 @@ async def startup():
     
     # CORRIGIDO: Inicializar staff coordinator ANTES do task manager
     staff_coordinator = get_staff_coordinator()
-    print("✅ Staff coordinator initialized")
+    print("[INFO] Staff coordinator initialized")
     
     # Initialize task manager
     task_manager = TaskManager(ROUTING_SERVICE_URL)
-    print("✅ Task manager initialized")
+    print("[INFO] Task manager initialized")
 
     # Load cleaning staff from auth service
     try:
@@ -112,21 +112,21 @@ async def startup():
                                 staff_coordinator.set_availability(sid, False)
                 finally:
                     db_check.close()
-                print(f"✅ Pre-loaded cleaning staff from auth service")
+                print("[INFO] Cleaning staff loaded from Auth Service")
     except Exception as e:
-        print(f"⚠️  Could not pre-load staff: {e}")
+        print(f"[WARNING] Failed to load staff: {e}")
     
     # Start MQTT listener
     start_mqtt_listener(task_manager)
-    print("✅ MQTT listener started")
+    print("[INFO] MQTT listener started")
     
     # Start background tasks
     asyncio.create_task(cleanup_old_tasks())
     asyncio.create_task(check_unassigned_tasks())
-    print("✅ Background tasks started")
+    print("[INFO] Background tasks started")
     
     print("\n" + "="*60)
-    print("✅ MAINTENANCE SERVICE READY")
+    print("[INFO] Maintenance Service ready")
     print(f"   - Routing Service: {ROUTING_SERVICE_URL}")
     print(f"   - Staff Coordinator: Active")
     print("="*60 + "\n")
@@ -142,7 +142,7 @@ async def cleanup_old_tasks():
             task_manager.cleanup_old_tasks(db, hours=24)
             db.close()
         except Exception as e:
-            print(f"❌ Cleanup error: {e}")
+            print(f"[ERROR] Cleanup failed: {e}")
         
         await asyncio.sleep(3600)  # Run every hour
 
@@ -157,13 +157,13 @@ async def check_unassigned_tasks():
             unassigned = task_manager.get_unassigned_tasks(db, minutes=5)
             
             if unassigned:
-                print(f"⚠️  {len(unassigned)} tasks pending assignment >5min")
+                print(f"[WARNING] Tasks pending assignment for more than five minutes: count={len(unassigned)}")
                 for task in unassigned[:3]:  # Show first 3
                     print(f"   - {task.id}: {task.task_type} at {task.location_node}")
             
             db.close()
         except Exception as e:
-            print(f"❌ Unassigned check error: {e}")
+            print(f"[ERROR] Unassigned task check failed: {e}")
 
 
 # ========== HEALTH & STATUS ==========
@@ -219,7 +219,7 @@ async def create_bin_alert(
     if auto_assign:
         assignment = await task_manager.auto_assign_task(db, task.id)
         if assignment:
-            print(f"✅ Task {task.id} auto-assigned to {assignment.staff_id}")
+            print(f"[INFO] Task auto-assigned: task_id={task.id} staff_id={assignment.staff_id}")
     
     return task
 

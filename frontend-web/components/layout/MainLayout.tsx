@@ -92,13 +92,14 @@ export function MainLayout({ children }: MainLayoutProps) {
             <div className="w-12 h-12 rounded-2xl bg-amber-100 text-amber-700 flex items-center justify-center mb-4">
               <Monitor size={24} />
             </div>
-            <h1 className="text-2xl font-bold text-gray-900">Workspace de Supervisão</h1>
+            <h1 className="text-2xl font-bold text-gray-900">Área web de supervisão</h1>
             <p className="mt-3 text-sm leading-6 text-gray-600">
-              A experiência de `Supervisor` foi pensada para desktop, com dashboards, analytics e gestão de equipa.
+              A experiência de `Supervisor` foi pensada para computador, com painéis analíticos e gestão de equipa.
             </p>
             <div className="mt-6 rounded-2xl bg-gray-50 px-4 py-3 text-sm text-gray-700">
               Abre esta conta num ecrã maior para usar a versão web completa.
             </div>
+            <LangToggle className="mt-5 w-full justify-center" />
             <button
               onClick={() => router.push('/app-routes/profile')}
               className="mt-6 w-full inline-flex items-center justify-center gap-2 rounded-xl bg-gray-900 px-4 py-3 text-sm font-medium text-white hover:bg-gray-800"
@@ -186,8 +187,11 @@ export function MainLayout({ children }: MainLayoutProps) {
                   <p className="text-xs uppercase tracking-[0.18em] text-gray-500">Supervisão</p>
                   <h1 className="mt-1 text-xl font-semibold text-gray-900">Centro de operações</h1>
                 </div>
-                <div className="rounded-full border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm font-medium text-emerald-700">
-                  Web workspace ativo
+                <div className="flex items-center gap-3">
+                  <LangToggle />
+                  <div className="rounded-full border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm font-medium text-emerald-700">
+                    Área web ativa
+                  </div>
                 </div>
               </div>
             </div>

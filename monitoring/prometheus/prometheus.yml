@@ -51,6 +51,7 @@ scrape_configs:
           - http://maintenance-service:8007/health
           - http://chat-service:8000/health
           - http://ws-gateway:8089/health
+          - http://keycloak:9000/health/ready
     relabel_configs:
       - source_labels: [__address__]
         target_label: __param_target

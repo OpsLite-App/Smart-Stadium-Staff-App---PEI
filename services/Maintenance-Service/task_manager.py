@@ -247,9 +247,9 @@ class TaskManager:
             res.wait_for_publish()
             client.loop_stop()
             client.disconnect()
-            print(f"✅ Published bin empty event to MQTT for bin {bin_id}", flush=True)
+            print(f"[INFO] Published bin-empty MQTT event: bin_id={bin_id}", flush=True)
         except Exception as e:
-            print(f"⚠️ Failed to publish bin empty event to MQTT: {e}", flush=True)
+            print(f"[WARNING] Failed to publish bin-empty MQTT event: {e}", flush=True)
     
     def delete_task(self, db: Session, task_id: str) -> bool:
         """Delete task (use with caution)"""
@@ -281,25 +281,25 @@ class TaskManager:
         task = db.query(MaintenanceTask).filter(MaintenanceTask.id == task_id).first()
         
         if not task:
-            print(f"❌ Task {task_id} not found")
+            print(f"[ERROR] Task not found: task_id={task_id}")
             return None
         
         # Get staff location from staff coordinator
         from staff_coordinator import staff_coordinator_instance
         
         if not staff_coordinator_instance:
-            print(f"❌ Staff coordinator not initialized")
+            print("[ERROR] Staff coordinator not initialized")
             return None
         
         staff_info = staff_coordinator_instance.get_staff(staff_id)
         
         if not staff_info:
-            print(f"❌ Staff {staff_id} not found in coordinator")
+            print(f"[ERROR] Staff member not found in coordinator: staff_id={staff_id}")
             return None
         
         # CORRIGIDO: Usar a localização atual do staff
         staff_location = staff_info["current_location"]
-        print(f"📍 Staff {staff_id} is at {staff_location}, task at {task.location_node}")
+        print(f"[INFO] Calculating assignment route: staff_id={staff_id} staff_location={staff_location} task_location={task.location_node}")
         
         # Calculate route if requested
         route_nodes = []
@@ -312,9 +312,9 @@ class TaskManager:
                 route_nodes = route_info.get("path", [])
                 route_distance = route_info.get("distance", 0.0)
                 eta_seconds = route_info.get("eta_seconds", 0)
-                print(f"✅ Route calculated: {route_distance}m, ETA {eta_seconds}s")
+                print(f"[INFO] Assignment route calculated: distance_meters={route_distance} eta_seconds={eta_seconds}")
             else:
-                print(f"⚠️  Could not calculate route from {staff_location} to {task.location_node}")
+                print(f"[WARNING] Assignment route unavailable: from_node={staff_location} to_node={task.location_node}")
                 # Não assumir rota default - deixar vazio se falhar
         
         # Create assignment record
@@ -359,20 +359,20 @@ class TaskManager:
         task = db.query(MaintenanceTask).filter(MaintenanceTask.id == task_id).first()
         
         if not task:
-            print(f"❌ Task {task_id} not found")
+            print(f"[ERROR] Task not found: task_id={task_id}")
             return None
         
         # Get available staff from coordinator
         from staff_coordinator import staff_coordinator_instance
         
         if not staff_coordinator_instance:
-            print(f"❌ Staff coordinator not initialized")
+            print("[ERROR] Staff coordinator not initialized")
             return None
         
         available_staff = staff_coordinator_instance.get_available_staff()
         
         if not available_staff:
-            print(f"⚠️  No available staff for auto-assignment")
+            print("[WARNING] No staff available for automatic assignment")
             return None
         
         print(f"🔍 Finding nearest staff from {len(available_staff)} available")
@@ -402,9 +402,9 @@ class TaskManager:
         if not nearest_staff:
             # Fallback: assign to first available staff if routing failed
             nearest_staff = available_staff[0]["id"]
-            print(f"⚠️  Routing failed, assigning to first available: {nearest_staff}")
+            print(f"[WARNING] Routing failed; assigning first available staff member: staff_id={nearest_staff}")
         
-        print(f"✅ Nearest staff: {nearest_staff} ({min_distance}m away)")
+        print(f"[INFO] Nearest staff selected: staff_id={nearest_staff} distance_meters={min_distance}")
         
         # Assign to nearest staff
         assignment = await self.assign_task_to_staff(db, task_id, nearest_staff, calculate_route=False)
@@ -432,7 +432,7 @@ class TaskManager:
     async def _calculate_route(self, from_node: str, to_node: str) -> Optional[Dict[str, Any]]:
         """Call routing service to calculate path"""
         try:
-            print(f"🗺️  Calculating route: {from_node} → {to_node}")
+            print(f"[INFO] Calculating route: from_node={from_node} to_node={to_node}")
             async with httpx.AsyncClient(timeout=5.0) as client:
                 response = await client.get(
                     f"{self.routing_service_url}/api/route",
@@ -446,7 +446,7 @@ class TaskManager:
                     distance = data.get("distance", 0)
                     eta_seconds = int(distance / 1.5) if distance > 0 else 0
                     
-                    print(f"   ✅ Route found: {len(data.get('path', []))} nodes, {distance}m")
+                    print(f"[INFO] Route found: nodes={len(data.get('path', []))} distance_meters={distance}")
                     
                     return {
                         "path": data.get("path", []),
@@ -454,11 +454,11 @@ class TaskManager:
                         "eta_seconds": eta_seconds
                     }
                 else:
-                    print(f"   ❌ Routing service returned {response.status_code}")
+                    print(f"[ERROR] Routing Service returned status={response.status_code}")
         except httpx.TimeoutException:
-            print(f"   ❌ Routing service timeout")
+            print("[ERROR] Routing Service timed out")
         except Exception as e:
-            print(f"   ❌ Route calculation error: {e}")
+            print(f"[ERROR] Route calculation failed: {e}")
         
         return None
     
@@ -553,7 +553,7 @@ class TaskManager:
         
         if old_tasks:
             db.commit()
-            print(f"🗑️  Cleaned up {len(old_tasks)} old tasks")
+            print(f"[INFO] Old tasks cleaned up: count={len(old_tasks)}")
     
     # ========== HELPERS ==========
     

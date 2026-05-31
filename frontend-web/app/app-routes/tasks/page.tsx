@@ -234,9 +234,9 @@ export default function TasksPage() {
     const handleOperationalUpdate = (event: MessageEvent) => {
       try {
         const parsed = JSON.parse(event.data) as { type?: string };
-        console.log('✅ Tasks SSE update:', parsed.type || 'unknown');
+        console.debug('[Tasks SSE] Received update:', parsed.type || 'unknown');
       } catch {
-        console.log('✅ Tasks SSE update received');
+        console.debug('[Tasks SSE] Received update');
       }
 
       setRefreshing(true);
@@ -262,11 +262,11 @@ export default function TasksPage() {
     });
 
     eventSource?.addEventListener('connected', () => {
-      console.log('✅ Tasks SSE connected');
+      console.info('[Tasks SSE] Connected');
     });
 
     eventSource?.addEventListener('error', () => {
-      console.warn('Tasks SSE disconnected, browser will retry automatically');
+      console.warn('[Tasks SSE] Disconnected; the browser will retry automatically');
     });
 
     const interval = setInterval(() => { setRefreshing(true); void fetchTasks(); }, 15000);
@@ -290,7 +290,7 @@ export default function TasksPage() {
             fromNode = String(positions[0].location_id);
           }
         } catch (err) {
-          console.warn("Could not fetch real staff position for nearest calculation:", err);
+          console.warn("[Tasks Routing] Could not fetch staff position for nearest-task calculation:", err);
         }
 
         const candidates: { id: string; type: 'bin' | 'dispatch'; node: string; title: string; original: any }[] = [];
@@ -307,7 +307,7 @@ export default function TasksPage() {
               id: b.id,
               type: 'bin',
               node: String(b.location_node),
-              title: `Lixeira Cheia (${b.bin_id ?? 'Ecoponto'})`,
+              title: `Caixote do lixo cheio (${b.bin_id ?? 'Ecoponto'})`,
               original: b
             });
           });
@@ -351,7 +351,7 @@ export default function TasksPage() {
                 originalItem: c.original
               });
             } catch (err) {
-              console.error(`Failed to calculate distance to node ${c.node}`, err);
+              console.error(`[Tasks Routing] Failed to calculate distance to node ${c.node}:`, err);
             }
           })
         );
@@ -359,7 +359,7 @@ export default function TasksPage() {
         results.sort((a, b) => a.distance - b.distance);
         if (active) setNearestTasks(results);
       } catch (err) {
-        console.error("Error updating nearest tasks:", err);
+        console.error("[Tasks Routing] Failed to update nearest tasks:", err);
       } finally {
         if (active) setNearestLoading(false);
       }
@@ -421,7 +421,7 @@ export default function TasksPage() {
       ]);
       return { route, geoJsonRoute };
     } catch (err) {
-      console.warn(`Routing from ${cleanFrom} to ${cleanTo} failed, trying routing allowing blocked edges...`, err);
+      console.warn(`[Tasks Routing] Route ${cleanFrom} to ${cleanTo} failed; retrying with blocked edges allowed:`, err);
       try {
         // 2. Try routing allowing blocked edges
         const [route, geoJsonRoute] = await Promise.all([
@@ -430,7 +430,7 @@ export default function TasksPage() {
         ]);
         return { route, geoJsonRoute };
       } catch (err2) {
-        console.warn(`Routing allowing blocked edges failed, trying fallback from 62 to ${cleanTo}...`, err2);
+        console.warn(`[Tasks Routing] Blocked-edge route failed; retrying fallback route 62 to ${cleanTo}:`, err2);
         try {
           // 3. Try fallback start node (allowing blocked edges)
           const [route, geoJsonRoute] = await Promise.all([
@@ -439,7 +439,7 @@ export default function TasksPage() {
           ]);
           return { route, geoJsonRoute };
         } catch (err3) {
-          console.warn(`Fallback routing from 62 to ${cleanTo} failed, trying 62->65...`, err3);
+          console.warn(`[Tasks Routing] Fallback route 62 to ${cleanTo} failed; retrying route 62 to 65:`, err3);
           try {
             // 4. Try fallback start to fallback destination
             const [route, geoJsonRoute] = await Promise.all([
@@ -448,7 +448,7 @@ export default function TasksPage() {
             ]);
             return { route, geoJsonRoute };
           } catch (err4) {
-            console.warn(`Fallback routing 62->65 failed, using synthetic straight line route`, err4);
+            console.warn('[Tasks Routing] Fallback route 62 to 65 failed; using synthetic straight-line route:', err4);
             const syntheticGeoJson: IndoorRouteGeoJsonResponse = {
               route: {
                 type: 'FeatureCollection',
@@ -510,11 +510,11 @@ export default function TasksPage() {
         const positions = await api.getStaffPositions([String(user.id)]);
         if (positions && positions.length > 0 && positions[0].location_id) {
           fromNode = String(positions[0].location_id);
-          console.log(`🧭 Usando localização real do staff para rota: Nó ${fromNode}`);
+          console.debug(`[Tasks Routing] Using staff location node ${fromNode}`);
         }
       }
     } catch (err) {
-      console.warn("Could not fetch real staff position, using default:", err);
+      console.warn("[Tasks Routing] Could not fetch staff position; using default node:", err);
     }
 
     const targetNode = task.location_node;
@@ -540,7 +540,7 @@ export default function TasksPage() {
       setNavigation({
         taskId: task.id,
         binId: task.main_metadata?.bin_id ?? task.id,
-        binName: task.description ?? `Lixeira ${actualToNode}`,
+        binName: task.description ?? `Caixote do lixo ${actualToNode}`,
         targetNode: actualToNode,
         fromNode: actualFromNode,
         waypoints: (route.waypoints || []) as any,
@@ -610,11 +610,11 @@ export default function TasksPage() {
         const positions = await api.getStaffPositions([String(user.id)]);
         if (positions && positions.length > 0 && positions[0].location_id) {
           fromNode = String(positions[0].location_id);
-          console.log(`🧭 Usando localização real do staff para rota: Nó ${fromNode}`);
+          console.debug(`[Tasks Routing] Using staff location node ${fromNode}`);
         }
       }
     } catch (err) {
-      console.warn("Could not fetch real staff position, using default:", err);
+      console.warn("[Tasks Routing] Could not fetch staff position; using default node:", err);
     }
 
     setRouteModal({
@@ -692,11 +692,11 @@ export default function TasksPage() {
         const positions = await api.getStaffPositions([String(user.id)]);
         if (positions && positions.length > 0 && positions[0].location_id) {
           fromNode = String(positions[0].location_id);
-          console.log(`🧭 Usando localização real do staff para rota: Nó ${fromNode}`);
+          console.debug(`[Tasks Routing] Using staff location node ${fromNode}`);
         }
       }
     } catch (err) {
-      console.warn("Could not fetch real staff position, using default:", err);
+      console.warn("[Tasks Routing] Could not fetch staff position; using default node:", err);
     }
 
     const targetNode = getDispatchTarget(d);
@@ -921,7 +921,7 @@ export default function TasksPage() {
                   className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-5 py-2.5 text-sm font-bold text-slate-700 shadow-sm transition-all duration-200 hover:bg-slate-50 hover:text-slate-900"
                 >
                   <Trash2 size={16} className="text-red-500" />
-                  Esvaziar Lixeira
+                  Esvaziar caixote do lixo
                 </button>
               ) : (
                 highlightedDispatchStatus === 'accepted' ? (
@@ -1020,7 +1020,7 @@ export default function TasksPage() {
             }`}
           >
             <Trash2 size={18} />
-            Estado das Lixeiras ({bins.length})
+            Estado dos caixotes do lixo ({bins.length})
           </button>
         </div>
       )}
@@ -1149,7 +1149,7 @@ export default function TasksPage() {
                       <div className="flex items-start justify-between gap-3 mb-4">
                         <div>
                           <p className="font-semibold text-gray-900">
-                            {task.description ?? `Lixeira ${task.main_metadata?.bin_id ?? task.location_node}`}
+                            {task.description ?? `Caixote do lixo ${task.main_metadata?.bin_id ?? task.location_node}`}
                           </p>
                           <p className="mt-1 text-sm leading-relaxed text-gray-700">
                             {task.description || 'Sem descrição adicional da tarefa.'}
@@ -1176,7 +1176,7 @@ export default function TasksPage() {
                               disabled={!!actionLoading}
                               className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm font-medium hover:bg-emerald-700 disabled:opacity-50"
                             >
-                              <Trash2 size={16} /> Esvaziar Lixeira
+                              <Trash2 size={16} /> Esvaziar caixote do lixo
                             </button>
                           ) : (
                             <button
@@ -1217,9 +1217,9 @@ export default function TasksPage() {
         <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
           <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
             <div>
-              <h2 className="text-xl font-black text-slate-950">Estado das Lixeiras</h2>
+              <h2 className="text-xl font-black text-slate-950">Estado dos caixotes do lixo</h2>
               <p className="text-sm text-slate-500 mt-1">
-                Visualização em tempo real de todas as lixeiras do estádio.
+                Visualização em tempo real de todos os caixotes do lixo do estádio.
               </p>
             </div>
             
@@ -1231,7 +1231,7 @@ export default function TasksPage() {
                   type="text"
                   value={binsSearch}
                   onChange={(e) => setBinsSearch(e.target.value)}
-                  placeholder="Procurar lixeira..."
+                  placeholder="Procurar caixote do lixo..."
                   className="rounded-xl border border-slate-200 bg-slate-50 py-2 pl-10 pr-4 text-sm text-slate-950 outline-none focus:border-blue-500 focus:bg-white"
                 />
               </div>
@@ -1297,7 +1297,7 @@ export default function TasksPage() {
             if (filteredBins.length === 0) {
               return (
                 <div className="rounded-2xl border border-dashed border-slate-200 p-12 text-center text-slate-400 font-medium">
-                  Nenhuma lixeira corresponde aos filtros selecionados.
+                  Nenhum caixote do lixo corresponde aos filtros selecionados.
                 </div>
               );
             }
@@ -1334,7 +1334,7 @@ export default function TasksPage() {
                             </div>
                             <div>
                               <h3 className="font-bold text-slate-900 text-sm">
-                                {bin.properties.name || `Lixeira Nó ${bin.properties.node_id}`}
+                                {bin.properties.name || `Caixote do lixo · nó ${bin.properties.node_id}`}
                               </h3>
                               <p className="text-xs text-slate-500 mt-0.5">
                                 Piso {bin.properties.floor_id} · Nó {bin.properties.node_id}
@@ -1362,7 +1362,7 @@ export default function TasksPage() {
                           </button>
                         )}
                         <button
-                          onClick={() => void handleNavigateToBin(bin.properties.name || `Lixeira ${bin.properties.node_id}`, String(bin.properties.node_id))}
+                          onClick={() => void handleNavigateToBin(bin.properties.name || `Caixote do lixo ${bin.properties.node_id}`, String(bin.properties.node_id))}
                           disabled={!!actionLoading}
                           className="flex-1 flex items-center justify-center gap-1.5 rounded-xl bg-blue-600 px-3 py-2 text-xs font-bold text-white shadow-sm hover:bg-blue-700 transition disabled:opacity-50"
                         >

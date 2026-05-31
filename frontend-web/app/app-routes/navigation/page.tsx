@@ -211,8 +211,8 @@ export default function NavigationPage() {
       <div className="rounded-3xl bg-[linear-gradient(135deg,#0f172a,#1d4ed8)] p-6 text-white shadow-lg">
         <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
           <div>
-            <p className="text-xs uppercase tracking-[0.2em] text-blue-100">Indoor Routing</p>
-            <h1 className="mt-2 text-3xl font-semibold">POI Navigation</h1>
+            <p className="text-xs uppercase tracking-[0.2em] text-blue-100">Rotas indoor</p>
+            <h1 className="mt-2 text-3xl font-semibold">Navegação para POI</h1>
             <p className="mt-3 max-w-2xl text-sm leading-6 text-blue-100">
               Select a starting point and a destination to request an indoor route from the backend.
             </p>
@@ -235,8 +235,8 @@ export default function NavigationPage() {
       <Surface className="border border-gray-200 p-5" elevation="sm">
         <div className="mb-5 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <div>
-            <h2 className="text-lg font-semibold text-gray-900">Route Request</h2>
-            <p className="text-sm text-gray-500">This first version focuses on POI selection and route instructions only.</p>
+            <h2 className="text-lg font-semibold text-gray-900">Pedido de rota</h2>
+            <p className="text-sm text-gray-500">Esta primeira versão foca-se apenas na seleção de POI e nas instruções da rota.</p>
           </div>
 
           <button
@@ -290,7 +290,7 @@ export default function NavigationPage() {
 
         <div className="mt-6">
           <AppButton
-            title="Calculate Route"
+            title="Calcular rota"
             onClick={() => void handleCalculateRoute()}
             loading={loadingRoute}
             disabled={loadingPois || !startPoiId || !destinationPoiId}
@@ -311,7 +311,7 @@ export default function NavigationPage() {
       <Surface className="border border-gray-200 p-5" elevation="sm">
         <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <div>
-            <h3 className="text-lg font-semibold text-gray-900">Route Map</h3>
+            <h3 className="text-lg font-semibold text-gray-900">Mapa da rota</h3>
             <p className="text-sm text-gray-500">
               {routeGeoJson
                 ? `${routeGeoJson.summary.distance}m · ${routeGeoJson.summary.floors.length} floor segment(s) · ${routeGeoJson.summary.impacted_edge_count} impacted edge(s)`
@@ -347,8 +347,8 @@ export default function NavigationPage() {
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-[1.3fr_0.9fr]">
         <Surface className="border border-gray-200 p-5" elevation="sm">
           <div className="mb-4">
-            <h3 className="text-lg font-semibold text-gray-900">Live Graph Conditions</h3>
-            <p className="text-sm text-gray-500">Current path availability and route-impacting overrides.</p>
+            <h3 className="text-lg font-semibold text-gray-900">Condições do grafo em tempo real</h3>
+            <p className="text-sm text-gray-500">Disponibilidade atual dos caminhos e alterações com impacto na rota.</p>
           </div>
 
           {blockedOverrides.length > 0 ? (
@@ -359,15 +359,15 @@ export default function NavigationPage() {
 
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
                 <div className="rounded-2xl bg-gray-50 p-4">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Blocked edges</p>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Arestas bloqueadas</p>
                   <p className="mt-2 text-2xl font-semibold text-gray-900">{blockedOverrides.length}</p>
                 </div>
                 <div className="rounded-2xl bg-gray-50 p-4">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Active alerts</p>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Alertas ativos</p>
                   <p className="mt-2 text-2xl font-semibold text-gray-900">{activeEvents.length}</p>
                 </div>
                 <div className="rounded-2xl bg-gray-50 p-4">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Status</p>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Estado</p>
                   <p className="mt-2 text-2xl font-semibold capitalize text-gray-900">{graphStatus?.status ?? 'unknown'}</p>
                 </div>
               </div>
@@ -399,9 +399,9 @@ export default function NavigationPage() {
             <Navigation size={18} />
           </div>
           <div>
-            <h3 className="text-lg font-semibold text-gray-900">Available POIs</h3>
+            <h3 className="text-lg font-semibold text-gray-900">POIs disponíveis</h3>
             <p className="text-sm text-gray-500">
-              {loadingPois ? 'Loading POIs...' : `${pois.length} POIs loaded from the routing backend.`}
+              {loadingPois ? 'A carregar POIs...' : `${pois.length} POIs carregados pelo backend de cálculo de rotas.`}
             </p>
           </div>
         </div>

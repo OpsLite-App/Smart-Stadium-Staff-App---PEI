@@ -164,7 +164,7 @@ export default function MedicalIncidentsPage() {
         return staffMember.current_location;
       }
     } catch (error) {
-      console.log('Maintenance Service não disponível, tentando Auth Service...');
+      console.warn('[Medical Incidents] Maintenance service unavailable; trying Auth service');
     }
     
     try {
@@ -181,7 +181,7 @@ export default function MedicalIncidentsPage() {
         return location;
       }
     } catch (error) {
-      console.log('Auth Service não disponível, usando localização padrão');
+      console.warn('[Medical Incidents] Auth service unavailable; using default location');
     }
     
     return '1';
@@ -230,7 +230,7 @@ export default function MedicalIncidentsPage() {
       setMyDispatches(myActiveDispatches);
       
     } catch (error) {
-      console.error('Erro ao carregar dados:', error);
+      console.error('[Medical Incidents] Failed to load data:', error);
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -247,9 +247,9 @@ export default function MedicalIncidentsPage() {
     const handleRealtimeUpdate = (event: MessageEvent) => {
       try {
         const parsed = JSON.parse(event.data) as { type?: string };
-        console.log('✅ Medical SSE update:', parsed.type || 'unknown');
+        console.debug('[Medical Incidents SSE] Received update:', parsed.type || 'unknown');
       } catch {
-        console.log('✅ Medical SSE update received');
+        console.debug('[Medical Incidents SSE] Received update');
       }
       void fetchData();
     };
@@ -273,11 +273,11 @@ export default function MedicalIncidentsPage() {
     });
 
     eventSource?.addEventListener('connected', () => {
-      console.log('✅ Medical SSE connected');
+      console.info('[Medical Incidents SSE] Connected');
     });
 
     eventSource?.addEventListener('error', () => {
-      console.warn('Medical SSE disconnected, browser will retry automatically');
+      console.warn('[Medical Incidents SSE] Disconnected; the browser will retry automatically');
     });
 
     const interval = setInterval(fetchData, 15000);
@@ -308,7 +308,7 @@ const handleAcceptIncident = async (incident: MedicalIncident) => {
 
     await fetchData();
   } catch (error) {
-    console.error('Erro ao aceitar incidente:', error);
+    console.error('[Medical Incidents] Failed to accept incident:', error);
     alert('Erro ao aceitar incidente. Tente novamente.');
   } finally {
     setActionLoading(null);
@@ -326,7 +326,7 @@ const handleAcceptAssignedDispatch = async (dispatch: MyDispatch) => {
     await api.acceptDispatch(dispatch.id);
     await fetchData();
   } catch (error) {
-    console.error('Erro ao aceitar pedido médico:', error);
+    console.error('[Medical Incidents] Failed to accept medical request:', error);
     alert('❌ Não foi possível aceitar este pedido.');
   } finally {
     setActionLoading(null);
@@ -378,7 +378,7 @@ const handleNavigate = async (incident: MedicalIncident) => {
       etaSeconds: route.eta_seconds,
     });
   } catch (error) {
-    console.error('Erro ao calcular rota:', error);
+    console.error('[Medical Incidents] Failed to calculate route:', error);
     setRouteModalError('Não foi possível calcular a rota.');
   } finally {
     setActionLoading(null);
@@ -403,7 +403,7 @@ const handleArrive = async (dispatch: MyDispatch) => {
         });
         setCurrentLocation(incident.location_node);
       } catch (e) {
-        console.log('Maintenance Service não disponível');
+        console.warn('[Medical Incidents] Maintenance service unavailable');
       }
     }
     
@@ -411,7 +411,7 @@ const handleArrive = async (dispatch: MyDispatch) => {
     alert(`✅ Chegou ao local do incidente!`);
     
   } catch (error) {
-    console.error('Erro ao marcar chegada:', error);
+    console.error('[Medical Incidents] Failed to mark arrival:', error);
     alert('❌ Erro ao marcar chegada.');
   } finally {
     setActionLoading(null);
@@ -427,7 +427,7 @@ const handleArrive = async (dispatch: MyDispatch) => {
       await fetchData();
       alert('Incidente recusado.');
     } catch (error) {
-      console.error('Erro ao recusar incidente:', error);
+      console.error('[Medical Incidents] Failed to decline incident:', error);
       alert('❌ Não foi possível recusar este incidente.');
     } finally {
       setActionLoading(null);
@@ -449,7 +449,7 @@ const handleArrive = async (dispatch: MyDispatch) => {
       alert(`✅ Atendimento do incidente ${incident.id} concluído. O supervisor já pode fechar o incidente.`);
       setSelectedIncident(null);
     } catch (error) {
-      console.error('Erro ao concluir atendimento:', error);
+      console.error('[Medical Incidents] Failed to complete incident response:', error);
       alert('❌ Não foi possível concluir o atendimento.');
     } finally {
       setActionLoading(null);
@@ -597,7 +597,7 @@ const handleArrive = async (dispatch: MyDispatch) => {
                         className="flex items-center justify-center gap-2 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200"
                       >
                         <MessageCircle size={18} />
-                        Chat
+                        Conversa
                       </button>
                     </div>
                   </div>
@@ -715,7 +715,7 @@ const handleArrive = async (dispatch: MyDispatch) => {
                         className="flex items-center justify-center gap-2 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200"
                       >
                         <MessageCircle size={18} />
-                        Chat
+                        Conversa
                       </button>
                     </div>
                   </div>

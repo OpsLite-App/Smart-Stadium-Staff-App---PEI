@@ -79,15 +79,15 @@ export function mergePermissions(
 }
 
 export const NAV_ITEMS: NavItemConfig[] = [
-  { name: 'Dashboard', href: '/app-routes/dashboard', permission: 'canViewDashboard' },
-  { name: 'Analytics', href: '/app-routes/analytics', permission: 'canViewAnalytics' },
+  { name: 'Painel', href: '/app-routes/dashboard', permission: 'canViewDashboard' },
+  { name: 'Análise', href: '/app-routes/analytics', permission: 'canViewAnalytics' },
   { name: 'Equipa', href: '/app-routes/team', permission: 'canViewTeam' },
   { name: 'Mapa', href: '/app-routes/map', permission: 'canViewMap' },
   { name: 'Navegação', href: '/app-routes/navigation', permission: 'canUseNavigation' },
   { name: 'Tarefas', href: '/app-routes/tasks', permission: 'canViewTasks', roles: ['Security', 'Cleaning'] },
   { name: 'Incidentes Médicos', href: '/app-routes/medical/incidents', permission: 'canViewMedicalIncidents', roles: ['Medical'] },
   { name: 'Alertas', href: '/app-routes/alerts', permission: 'canViewAlerts' },
-  { name: 'Chat', href: '/app-routes/chat', permission: 'canUseChat' },
+  { name: 'Conversa', href: '/app-routes/chat', permission: 'canUseChat' },
   { name: 'Emergência', href: '/app-routes/emergency', permission: 'canUseEmergencyButton' },
   { name: 'Perfil', href: '/app-routes/profile', permission: 'canViewDashboard' },
 ];

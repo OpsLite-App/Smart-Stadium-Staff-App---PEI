@@ -45,7 +45,7 @@ class EvacuationCoordinator:
         db.commit()
         db.refresh(evacuation)
         
-        print(f"🚨 EVACUATION INITIATED: {evacuation.id} ({request.evacuation_type})")
+        print(f"[WARNING] Evacuation initiated: evacuation_id={evacuation.id} type={request.evacuation_type}")
         print(f"   Affected zones: {', '.join(request.affected_zones)}")
         
         return self._evacuation_to_response(evacuation)
@@ -62,7 +62,7 @@ class EvacuationCoordinator:
                 if response.status_code == 200:
                     return response.json()
         except Exception as e:
-            print(f"❌ Route calculation error: {e}")
+            print(f"[ERROR] Route calculation failed: {e}")
         
         return None
     
@@ -124,7 +124,7 @@ class EvacuationCoordinator:
             closure.reopened_at = datetime.now()
             db.commit()
             
-            print(f"✅ Corridor reopened: {from_node} → {to_node}")
+            print(f"[INFO] Corridor reopened: from_node={from_node} to_node={to_node}")
             
             return {"status": "reopened", "from_node": from_node, "to_node": to_node}
         
@@ -167,7 +167,7 @@ class EvacuationCoordinator:
             db.commit()
             db.refresh(evac)
             
-            print(f"✅ Evacuation completed: {evacuation_id}")
+            print(f"[INFO] Evacuation completed: evacuation_id={evacuation_id}")
             
             return self._evacuation_to_response(evac)
         

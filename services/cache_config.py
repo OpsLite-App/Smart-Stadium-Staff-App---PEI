@@ -57,9 +57,9 @@ class RedisCache:
                 
                 # Test connection
                 self._redis_client.ping()
-                logger.info(f"✅ Redis connected: {redis_host}:{redis_port}/{redis_db}")
+                logger.info("Redis connection established: %s:%s/%s", redis_host, redis_port, redis_db)
             except Exception as e:
-                logger.warning(f"⚠️  Redis connection failed: {e}. Cache will be disabled.")
+                logger.warning("Redis connection failed; cache will be disabled: %s", e)
                 self._redis_client = None
     
     def get_client(self):
@@ -85,10 +85,10 @@ class RedisCache:
         try:
             json_value = json.dumps(value, default=_json_default)
             self._redis_client.setex(key, ttl, json_value)
-            logger.debug(f"💾 Cached: {key} (TTL: {ttl}s)")
+            logger.debug("Cache entry stored: key=%s ttl_seconds=%s", key, ttl)
             return True
         except Exception as e:
-            logger.warning(f"❌ Cache set failed for {key}: {e}")
+            logger.warning("Cache write failed: key=%s error=%s", key, e)
             return False
     
     def get(self, key: str) -> Optional[Any]:
@@ -112,7 +112,7 @@ class RedisCache:
             logger.debug(f"⭕ Cache miss: {key}")
             return None
         except Exception as e:
-            logger.warning(f"❌ Cache get failed for {key}: {e}")
+            logger.warning("Cache read failed: key=%s error=%s", key, e)
             return None
     
     def delete(self, key: str):
@@ -122,10 +122,10 @@ class RedisCache:
         
         try:
             self._redis_client.delete(key)
-            logger.debug(f"🗑️  Deleted: {key}")
+            logger.debug("Cache entry deleted: key=%s", key)
             return True
         except Exception as e:
-            logger.warning(f"❌ Cache delete failed for {key}: {e}")
+            logger.warning("Cache delete failed: key=%s error=%s", key, e)
             return False
     
     def clear_pattern(self, pattern: str):
@@ -137,11 +137,11 @@ class RedisCache:
             keys = self._redis_client.keys(pattern)
             if keys:
                 count = self._redis_client.delete(*keys)
-                logger.debug(f"🗑️  Cleared {count} keys matching pattern: {pattern}")
+                logger.debug("Cache entries cleared: count=%s pattern=%s", count, pattern)
                 return count
             return 0
         except Exception as e:
-            logger.warning(f"❌ Cache clear pattern failed for {pattern}: {e}")
+            logger.warning("Cache pattern clear failed: pattern=%s error=%s", pattern, e)
             return 0
     
     def flush(self):
@@ -151,10 +151,10 @@ class RedisCache:
         
         try:
             self._redis_client.flushdb()
-            logger.info("🗑️  Cache flushed")
+            logger.info("Cache flushed")
             return True
         except Exception as e:
-            logger.warning(f"❌ Cache flush failed: {e}")
+            logger.warning("Cache flush failed: %s", e)
             return False
 
 
@@ -228,4 +228,4 @@ def cache_result(ttl: int = 300, key_prefix: str = ""):
 # Initialize Redis cache on import
 redis_cache = RedisCache()
 
-logger.info("🚀 Cache module initialized")
+logger.info("Cache module initialized")

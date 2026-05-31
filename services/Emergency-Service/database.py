@@ -25,9 +25,10 @@ def init_db():
         with engine.begin() as connection:
             # Existing dev volumes may already have the enum created without the
             # new canonical categories. Keep this idempotent for shared Docker DBs.
-            for value in ("medic", "cleaning"):
+            # SQLAlchemy persists Python Enum member names by default.
+            for value in ("MEDIC", "CLEANING"):
                 connection.execute(text(f"ALTER TYPE incidenttype ADD VALUE IF NOT EXISTS '{value}'"))
-    print("✅ Database tables created")
+    print("[INFO] Database tables created")
 
 
 def get_db() -> Session:
@@ -41,10 +42,10 @@ def get_db() -> Session:
 
 def reset_db():
     """Reset database (CAUTION)"""
-    print("⚠️  Dropping all tables...")
+    print("[WARNING] Dropping all database tables")
     Base.metadata.drop_all(bind=engine)
     Base.metadata.create_all(bind=engine)
-    print("✅ Database reset complete")
+    print("[INFO] Database reset completed")
 
 
 if __name__ == "__main__":

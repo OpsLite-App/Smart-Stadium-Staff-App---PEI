@@ -387,7 +387,7 @@ export function IndoorGisMap({
               mapRef.current?.closePopup();
             }
           } catch (err) {
-            console.error('Failed to empty bin:', err);
+            console.error('[Indoor GIS Map] Failed to empty bin:', err);
             btn.removeAttribute('disabled');
             btn.style.background = '#ef4444';
             btn.textContent = 'Erro! Tentar de novo';
@@ -463,7 +463,7 @@ export function IndoorGisMap({
           },
           onEachFeature: (feature, layer) => {
             const properties = feature.properties as RoomProperties;
-            layer.bindTooltip(properties.room_name ?? properties.room_code ?? `Room ${properties.id}`, {
+            layer.bindTooltip(properties.room_name ?? properties.room_code ?? `Sala ${properties.id}`, {
               sticky: true,
             });
           },
@@ -578,7 +578,7 @@ export function IndoorGisMap({
                 ? ` · impacted x${properties.cost_multiplier}`
                 : '';
 
-            layer.bindTooltip(`Route edge ${properties.edge_id} · ${Math.round(properties.length)}m${impactText}`, {
+            layer.bindTooltip(`Aresta da rota ${properties.edge_id} · ${Math.round(properties.length)}m${impactText}`, {
               sticky: true,
             });
           },
@@ -718,7 +718,7 @@ export function IndoorGisMap({
               let popupContent = `
                 <div style="font-family: inherit; padding: 6px; min-width: 150px; text-align: center;">
                   <strong style="font-size: 13px; color: #1f2937; display: block; margin-bottom: 4px;">
-                    ${properties.name ?? 'Lixeira'}
+                    ${properties.name ?? 'Caixote do lixo'}
                   </strong>
                   <span style="font-size: 11px; display: block; margin-bottom: 6px; color: #4b5563;">
                     Nó: ${properties.node_id ?? 'N/A'}
@@ -753,7 +753,7 @@ export function IndoorGisMap({
                     onmouseover="this.style.background='#4338ca'"
                     onmouseout="this.style.background='#4f46e5'"
                   >
-                    Esvaziar Lixeira
+                    Esvaziar caixote do lixo
                   </button>
                 `;
               }
@@ -761,7 +761,7 @@ export function IndoorGisMap({
               popupContent += `</div>`;
 
               marker.bindPopup(popupContent);
-              marker.bindTooltip(`<strong>${properties.name ?? 'Lixeira'}</strong><br/><span style="color:${statusColor};font-weight:bold;">${statusText}</span>`, { sticky: true });
+              marker.bindTooltip(`<strong>${properties.name ?? 'Caixote do lixo'}</strong><br/><span style="color:${statusColor};font-weight:bold;">${statusText}</span>`, { sticky: true });
 
               return marker;
             },
@@ -787,7 +787,7 @@ export function IndoorGisMap({
               }
             }).addTo(layerGroupRef.current);
           } catch (e) {
-            console.error('Failed to load heatmap layer:', e);
+            console.error('[Indoor GIS Map] Failed to load heatmap layer:', e);
           }
         }
 
@@ -842,7 +842,7 @@ export function IndoorGisMap({
                 <div style="font-family:inherit;padding:2px;">
                   <strong style="font-size:12px;color:#1e293b;">${member.name}</strong><br/>
                   <span style="font-size:10.5px;color:#64748b;font-weight:600;">${member.role}</span><br/>
-                  <span style="font-size:10px;margin-top:2px;display:inline-block;">Status: ${statusEmoji}</span>
+                  <span style="font-size:10px;margin-top:2px;display:inline-block;">Estado: ${statusEmoji}</span>
                 </div>
               `;
 
@@ -882,7 +882,7 @@ export function IndoorGisMap({
         }
 
       } catch {
-        setError('GIS layers unavailable. Showing operational fallback below.');
+        setError('As camadas GIS não estão disponíveis. A apresentar a alternativa operacional abaixo.');
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -914,7 +914,7 @@ export function IndoorGisMap({
         <div ref={containerRef} className="h-full w-full" />
         {loading && (
           <div className="absolute inset-0 z-[500] flex items-center justify-center bg-white/65 text-sm font-medium text-slate-600 backdrop-blur-sm">
-            Loading GIS layers...
+            A carregar camadas GIS...
           </div>
         )}
         {error && (

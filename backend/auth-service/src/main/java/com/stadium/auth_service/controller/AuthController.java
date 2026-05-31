@@ -10,6 +10,7 @@ import org.springframework.web.bind.annotation.*;
 import com.stadium.auth_service.dto.LoginRequest;
 import com.stadium.auth_service.dto.LoginResponse;
 import com.stadium.auth_service.security.RoleAccess;
+import com.stadium.auth_service.service.KeycloakAuthClient;
 import com.stadium.auth_service.service.UserService;
 import com.stadium.auth_service.util.JwtUtil;
 
@@ -22,21 +23,29 @@ public class AuthController {
 
   private final UserService userService;
   private final JwtUtil jwtUtil;
+  private final KeycloakAuthClient keycloakAuthClient;
 
-  public AuthController(UserService userService, JwtUtil jwtUtil) {
+  public AuthController(UserService userService, JwtUtil jwtUtil, KeycloakAuthClient keycloakAuthClient) {
     this.userService = userService;
     this.jwtUtil = jwtUtil;
+    this.keycloakAuthClient = keycloakAuthClient;
   }
 
   @PostMapping("/login")
   public ResponseEntity<?> login(@Valid @RequestBody LoginRequest request, HttpServletRequest servletRequest) {
     return userService.findByUsername(request.getUsername())
-        .filter(user -> userService.checkPassword(user, request.getPassword()))
         .map(user -> {
+          String normalizedRole;
+          try {
+            normalizedRole = keycloakAuthClient.isEnabled()
+                ? keycloakAuthClient.authenticate(request.getUsername(), request.getPassword()).role()
+                : authenticateLocally(user, request.getPassword());
+          } catch (KeycloakAuthClient.KeycloakAuthenticationException exception) {
+            return ResponseEntity.status(401).body(Map.of("error", "invalid_credentials"));
+          }
           if (!"active".equalsIgnoreCase(user.getStatus())) {
             return ResponseEntity.status(403).body(Map.of("error", "user_not_active"));
           }
-          String normalizedRole = RoleAccess.normalizeRole(user.getRole());
           String token = jwtUtil.generateToken(user.getId(), user.getUsername(), normalizedRole);
           ResponseCookie cookie = createAuthCookie(servletRequest, token);
           return ResponseEntity.ok()
@@ -51,6 +60,13 @@ public class AuthController {
               ));
         })
         .orElseGet(() -> ResponseEntity.status(401).body(Map.of("error", "invalid_credentials")));
+  }
+
+  private String authenticateLocally(com.stadium.auth_service.entity.User user, String password) {
+    if (!userService.checkPassword(user, password)) {
+      throw new KeycloakAuthClient.KeycloakAuthenticationException("invalid_credentials");
+    }
+    return RoleAccess.normalizeRole(user.getRole());
   }
 
   @PostMapping("/validate")

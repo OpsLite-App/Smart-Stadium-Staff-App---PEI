@@ -3,7 +3,6 @@
     "title": "Login to System",
     "email_label": "Username",
     "pass_label": "Password",
-    "role_select": "SELECT YOUR ROLE",
     "button": "LOGIN"
   },
   "tab": {
