@@ -11,3 +11,4 @@ sqlalchemy
 httpx
 psycopg2
 ultralytics
+pyserial
