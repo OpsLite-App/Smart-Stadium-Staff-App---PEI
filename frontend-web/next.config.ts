@@ -10,12 +10,16 @@ const ROUTING_SERVICE_URL = process.env.ROUTING_SERVICE_URL || "http://127.0.0.1
 const CHAT_SERVICE_URL = process.env.CHAT_SERVICE_URL || "http://127.0.0.1:8008";
 const POSITIONING_SERVICE_URL = process.env.POSITIONING_SERVICE_URL || "http://127.0.0.1:8004";
 const API_GATEWAY_URL = process.env.API_GATEWAY_URL;
+const ALLOWED_DEV_ORIGINS = (process.env.NEXT_ALLOWED_DEV_ORIGINS || "")
+  .split(",")
+  .map((origin) => origin.trim())
+  .filter(Boolean);
 
 const destination = (gatewayPath: string, directUrl: string, directPath: string) =>
   API_GATEWAY_URL ? `${API_GATEWAY_URL}${gatewayPath}` : `${directUrl}${directPath}`;
 
 const nextConfig: NextConfig = {
-  allowedDevOrigins: ["http://192.168.1.138:3000"],
+  allowedDevOrigins: ALLOWED_DEV_ORIGINS,
   devIndicators: false,
   turbopack: {
     // The repo root also has a lockfile. Keep Turbopack scoped to this Next app

@@ -7,12 +7,18 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "android:add": "cap add android",
+    "android:sync": "cap sync android",
+    "android:open": "cap open android",
+    "android:run": "cap run android",
     "test:e2e": "playwright test",
     "test:e2e:gateway": "playwright test tests/e2e/gateway.spec.ts",
     "test:e2e:demo": "OPSLITE_RUN_MUTATING_E2E=true playwright test tests/e2e/supervisor.spec.ts --headed",
     "test:e2e:report": "playwright show-report"
   },
   "dependencies": {
+    "@capacitor/android": "^7.6.5",
+    "@capacitor/core": "^7.6.5",
     "@emotion/react": "^11.14.0",
     "@emotion/styled": "^11.14.1",
     "@mui/icons-material": "^7.3.8",
@@ -33,6 +39,8 @@
     "zustand": "^5.0.11"
   },
   "devDependencies": {
+    "@capacitor/cli": "^7.6.5",
+    "@playwright/test": "^1.55.0",
     "@tailwindcss/postcss": "^4",
     "@types/i18next": "^12.1.0",
     "@types/leaflet": "^1.9.21",
@@ -41,7 +49,6 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "@types/react-i18next": "^7.8.3",
-    "@playwright/test": "^1.55.0",
     "eslint": "^9",
     "eslint-config-next": "16.2.6",
     "tailwindcss": "^4",

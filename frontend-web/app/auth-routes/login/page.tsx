@@ -31,6 +31,7 @@ export default function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [hydrationTimedOut, setHydrationTimedOut] = useState(false);
   const [errors, setErrors] = useState<{ email?: string; password?: string }>({});
   const { login, isLoading, user, hydrated, error, clearError } = useAuthStore();
   const router = useRouter();
@@ -53,7 +54,14 @@ export default function LoginPage() {
     };
   }, [user, hydrated, router]);
 
-  if (!hydrated) {
+  useEffect(() => {
+    if (hydrated) return;
+
+    const timeoutId = window.setTimeout(() => setHydrationTimedOut(true), 1000);
+    return () => window.clearTimeout(timeoutId);
+  }, [hydrated]);
+
+  if (!hydrated && !hydrationTimedOut) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-[#F5F7F4]">
         <div className="text-center text-[#17313A]">
