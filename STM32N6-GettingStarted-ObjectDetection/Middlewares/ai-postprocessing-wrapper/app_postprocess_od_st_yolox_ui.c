@@ -19,6 +19,7 @@
 
 #include "app_postprocess.h"
 #include "app_config.h"
+#include <stdio.h>
 
 #if POSTPROCESS_TYPE == POSTPROCESS_OD_ST_YOLOX_UI
 #include <assert.h>
@@ -53,6 +54,22 @@ int32_t app_postprocess_init(void *params_postprocess, stai_network_info *NN_Inf
   params->raw_m_zero_point = NN_Info->outputs[output_order_index[1]].zeropoint.data[0];
   params->raw_l_scale = NN_Info->outputs[output_order_index[2]].scale.data[0];
   params->raw_l_zero_point = NN_Info->outputs[output_order_index[2]].zeropoint.data[0];
+
+  printf("ST_YOLOX pp output order: S=%u(size=%u)->M=%u(size=%u)->L=%u(size=%u)\n",
+         (unsigned)output_order_index[0],
+         (unsigned)NN_Info->outputs[output_order_index[0]].size_bytes,
+         (unsigned)output_order_index[1],
+         (unsigned)NN_Info->outputs[output_order_index[1]].size_bytes,
+         (unsigned)output_order_index[2],
+         (unsigned)NN_Info->outputs[output_order_index[2]].size_bytes);
+  printf("ST_YOLOX pp quant: S(scale=%f,zp=%d) M(scale=%f,zp=%d) L(scale=%f,zp=%d)\n",
+         params->raw_s_scale,
+         params->raw_s_zero_point,
+         params->raw_m_scale,
+         params->raw_m_zero_point,
+         params->raw_l_scale,
+         params->raw_l_zero_point);
+
   params->nb_classes = AI_OD_ST_YOLOX_PP_NB_CLASSES;
   params->nb_anchors = AI_OD_ST_YOLOX_PP_NB_ANCHORS;
   params->grid_width_S = AI_OD_ST_YOLOX_PP_S_GRID_WIDTH;
@@ -76,6 +93,9 @@ int32_t app_postprocess_run(void *pInput[], int nb_input, void *pOutput, void *p
 {
   assert(nb_input == MODEL_OUTPUT_NB);
   int32_t error = AI_OD_POSTPROCESS_ERROR_NO;
+  static uint32_t frame_count = 0;
+  frame_count++;
+  printf(">> Frame %u: app_postprocess_run START, S=%p M=%p L=%p\n", frame_count, pInput[output_order_index[0]], pInput[output_order_index[1]], pInput[output_order_index[2]]);
   ((od_st_yolox_pp_static_param_t *) pInput_param)->nb_detect = 0;
   od_pp_out_t *pObjDetOutput = (od_pp_out_t *) pOutput;
   pObjDetOutput->pOutBuff = out_detections;
@@ -86,6 +106,7 @@ int32_t app_postprocess_run(void *pInput[], int nb_input, void *pOutput, void *p
   };
   error = od_st_yolox_pp_process_int8(&pp_input, pObjDetOutput,
                                  (od_st_yolox_pp_static_param_t *) pInput_param);
+  printf(">> Frame %u: app_postprocess_run END, nb_detect=%u\n", frame_count, pObjDetOutput->nb_detect);
   return error;
 }
 #endif

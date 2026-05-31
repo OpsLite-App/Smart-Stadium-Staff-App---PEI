@@ -10,6 +10,7 @@
 #include "od_pp_loc.h"
 #include "od_st_yolox_pp_if.h"
 #include "vision_models_pp.h"
+#include <stdio.h>
 
 
 /* Can't be removed if qsort is not re-written... */
@@ -487,10 +488,32 @@ int32_t od_st_yolox_pp_process(od_st_yolox_pp_in_t *pInput,
                                             pInput_static_param);
     if (error != AI_OD_POSTPROCESS_ERROR_NO) return (error);
 
+  /* Debug: print decoded count and sample boxes before NMS */
+  printf("YOLOX: decoded count=%d\n", pInput_static_param->nb_detect);
+  for (int32_t i = 0; i < pInput_static_param->nb_detect && i < 5; ++i) {
+    od_pp_outBuffer_t *b = &pOutput->pOutBuff[i];
+    printf("preNMS box %d: x=%.3f y=%.3f w=%.3f h=%.3f conf=%.3f cls=%d\n",
+         i, b->x_center, b->y_center, b->width, b->height, b->conf, b->class_index);
+  }
+
     /* Then NMS */
     error = st_yolox_pp_nmsFiltering_centroid(pOutput,
                                               pInput_static_param);
     if (error != AI_OD_POSTPROCESS_ERROR_NO) return (error);
+
+    /* Debug: count remaining after NMS and print samples */
+    int32_t remaining = 0;
+    for (int32_t i = 0; i < pInput_static_param->nb_detect; ++i) {
+      if (pOutput->pOutBuff[i].conf > 0) remaining++;
+    }
+    printf("YOLOX: after NMS=%d\n", remaining);
+    for (int32_t i = 0, printed = 0; i < pInput_static_param->nb_detect && printed < 5; ++i) {
+      if (pOutput->pOutBuff[i].conf <= 0) continue;
+      od_pp_outBuffer_t *b = &pOutput->pOutBuff[i];
+      printf("postNMS box %d: x=%.3f y=%.3f w=%.3f h=%.3f conf=%.3f cls=%d\n",
+           i, b->x_center, b->y_center, b->width, b->height, b->conf, b->class_index);
+      printed++;
+    }
 
     /* And score re-filtering */
     error = st_yolox_pp_scoreFiltering_centroid(pOutput,
@@ -511,10 +534,32 @@ int32_t od_st_yolox_pp_process_int8(od_st_yolox_pp_in_t *pInput,
                                             pInput_static_param);
     if (error != AI_OD_POSTPROCESS_ERROR_NO) return (error);
 
+  /* Debug: print decoded count and sample boxes before NMS (int8 flow) */
+  printf("YOLOX(int8): decoded count=%d\n", pInput_static_param->nb_detect);
+  for (int32_t i = 0; i < pInput_static_param->nb_detect && i < 5; ++i) {
+    od_pp_outBuffer_t *b = &pOutput->pOutBuff[i];
+    printf("preNMS(int8) box %d: x=%.3f y=%.3f w=%.3f h=%.3f conf=%.3f cls=%d\n",
+         i, b->x_center, b->y_center, b->width, b->height, b->conf, b->class_index);
+  }
+
     /* Then NMS */
     error = st_yolox_pp_nmsFiltering_centroid(pOutput,
                                               pInput_static_param);
     if (error != AI_OD_POSTPROCESS_ERROR_NO) return (error);
+
+    /* Debug: count remaining after NMS and print samples (int8 flow) */
+    int32_t remaining_int8 = 0;
+    for (int32_t i = 0; i < pInput_static_param->nb_detect; ++i) {
+      if (pOutput->pOutBuff[i].conf > 0) remaining_int8++;
+    }
+    printf("YOLOX(int8): after NMS=%d\n", remaining_int8);
+    for (int32_t i = 0, printed = 0; i < pInput_static_param->nb_detect && printed < 5; ++i) {
+      if (pOutput->pOutBuff[i].conf <= 0) continue;
+      od_pp_outBuffer_t *b = &pOutput->pOutBuff[i];
+      printf("postNMS(int8) box %d: x=%.3f y=%.3f w=%.3f h=%.3f conf=%.3f cls=%d\n",
+           i, b->x_center, b->y_center, b->width, b->height, b->conf, b->class_index);
+      printed++;
+    }
 
     /* And score re-filtering */
     error = st_yolox_pp_scoreFiltering_centroid(pOutput,

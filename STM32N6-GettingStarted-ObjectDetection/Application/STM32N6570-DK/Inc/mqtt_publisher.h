@@ -13,7 +13,7 @@
 #include <stdint.h>
 
 /* ── Configuração — ajustar antes de flashar ── */
-#define MQTT_BROKER_IP    "192.168.1.100"   /* IP do servidor onde corre o Mosquitto */
+#define MQTT_BROKER_IP    "172.30.15.168"   /* IP do servidor onde corre o Mosquitto */
 #define MQTT_BROKER_PORT  1883
 #define MQTT_ZONE_ID      "gate_1"          /* ID único desta board/zona no estádio */
 #define MQTT_TOPIC        "stadium/crowd/density-updates"

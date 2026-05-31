@@ -51,6 +51,10 @@ BUILD_DIR = $(BUILD_TOP)/Application/STM32N6570-DK
 C_SOURCES += Src/main.c
 C_SOURCES += Src/syscalls.c
 C_SOURCES += Src/app_fuseprogramming.c
+C_SOURCES += Src/app_camerapipeline.c
+C_SOURCES += Src/crop_img.c
+C_SOURCES += Src/zip_postprocess.c
+C_SOURCES += Src/mqtt_publisher.c
 C_SOURCES += $(wildcard ../../Middlewares/ai-postprocessing-wrapper/*.c)
 C_SOURCES += $(wildcard ../../Middlewares/stm32-vision-models-postprocessing/lib_vision_models_pp/Src/*.c)
 C_SOURCES += Src/stm32_lcd_ex.c
@@ -101,6 +105,8 @@ C_SOURCES += ../../Middlewares/stm32-mw-camera/sensors/cmw_vd1943.c
 C_SOURCES += ../../Middlewares/stm32-mw-camera/sensors/cmw_ov5640.c
 C_SOURCES += Src/crop_img.c
 C_SOURCES += Src/app_camerapipeline.c
+C_SOURCES += Src/mqtt_publisher.c
+C_SOURCES += Src/zip_postprocess.c
 C_SOURCES += ../../Middlewares/stm32-mw-camera/ISP_Library/isp/Src/isp_algo.c
 C_SOURCES += ../../Middlewares/stm32-mw-camera/ISP_Library/isp/Src/isp_awb_algo.c
 C_SOURCES += ../../Middlewares/stm32-mw-camera/ISP_Library/isp/Src/isp_ae_algo.c
@@ -119,7 +125,6 @@ C_SOURCES += ../../Middlewares/stedgeai-lib/Npu/ll_aton/ll_sw_float.c
 C_SOURCES += ../../Middlewares/stedgeai-lib/Npu/ll_aton/ll_sw_integer.c
 C_SOURCES += ../../Middlewares/stedgeai-lib/Npu/ll_aton/ll_aton_lib.c
 C_SOURCES += ../../Middlewares/stedgeai-lib/Npu/ll_aton/ll_aton_lib_sw_operators.c
-
 
 # ASM sources
 ASM_SOURCES += ../../STM32Cube_FW_N6/Drivers/CMSIS/Device/ST/STM32N6xx/Source/Templates/gcc/startup_stm32n657xx_fsbl.s

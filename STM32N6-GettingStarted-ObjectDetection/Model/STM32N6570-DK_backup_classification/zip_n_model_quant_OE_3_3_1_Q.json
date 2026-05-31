@@ -1,0 +1,6099 @@
+{
+    "version": "4.0",
+    "environment": {
+        "generated_model": {
+            "model_files": [
+                {
+                    "name": "zip_n_model_quant_OE_3_3_1.onnx",
+                    "signature": "0xac729ff4477df78fbc51f015920fe529"
+                }
+            ],
+            "name": "network",
+            "generated_time": "2026-05-26T14:52:11+0000"
+        },
+        "tools": [
+            {
+                "name": "ST.EdgeAI.Core",
+                "version": "4.0.0-20500 359356bb0",
+                "arguments": "generate --model /tmp/stm32ai_service/63c97f50-0081-4dc9-8153-ded08f335ecc/zip_n_model_quant.onnx --st-neural-art custom@/tmp/stm32ai_service/63c97f50-0081-4dc9-8153-ded08f335ecc/profile-1aeff41c-5454-4765-8d38-285e2e4da652.json --target stm32n6 --name network --workspace /tmp/stm32ai_service/63c97f50-0081-4dc9-8153-ded08f335ecc/workspace --output /tmp/stm32ai_service/63c97f50-0081-4dc9-8153-ded08f335ecc/output",
+                "environment": [
+                    "STATS_TYPE=stmai_webservice"
+                ],
+                "input_model": {
+                    "model_files": [
+                        {
+                            "name": "zip_n_model_quant.onnx",
+                            "signature": "0xca2f8037f204cbaa2e6d353c9a3e3d94"
+                        }
+                    ],
+                    "name": "zip_n_model_quant",
+                    "type": "onnx",
+                    "size": 13416112,
+                    "n_params": 3354028
+                }
+            }
+        ],
+        "test_name": "",
+        "network_signature": "0xbb6093798993af73"
+    },
+    "model_info": {
+        "original_inputs": [
+            {
+                "name": "input",
+                "data_format": {
+                    "type": "FLOAT",
+                    "size": 32,
+                    "scale": [],
+                    "zero": [],
+                    "quantizer": "NONE"
+                },
+                "shape": [
+                    1,
+                    3,
+                    256,
+                    256
+                ],
+                "shape_map": [
+                    "BATCH",
+                    "CH",
+                    "H",
+                    "W"
+                ],
+                "c_shape_map": [
+                    "BATCH",
+                    "CH",
+                    "H",
+                    "W"
+                ]
+            }
+        ],
+        "original_outputs": [
+            {
+                "name": "output_QuantizeLinear_Input",
+                "data_format": {
+                    "type": "SIGNED",
+                    "size": 8,
+                    "scale": [
+                        0.03995990380644798
+                    ],
+                    "zero": [
+                        -128
+                    ],
+                    "quantizer": "UNIFORM"
+                },
+                "shape": [
+                    1,
+                    1,
+                    16,
+                    16
+                ],
+                "shape_map": [
+                    "BATCH",
+                    "CH",
+                    "H",
+                    "W"
+                ],
+                "c_shape_map": [
+                    "BATCH",
+                    "CH",
+                    "H",
+                    "W"
+                ]
+            }
+        ]
+    },
+    "tensors": {
+        "Constant_0_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.06359850615262985
+                    ],
+                    [
+                        -128
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Input_1_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.003921568859368563
+                    ],
+                    [
+                        -128
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            },
+            "data_channel_position": "CHFIRST",
+            "data_channel_batch": 1,
+            "user_allocated": false
+        },
+        "Dequantize_2_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.003921568859368563
+                    ],
+                    [
+                        -128
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Quantize_3_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.003921568859368563
+                    ],
+                    [
+                        -128
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Dequantize_4_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.003921568859368563
+                    ],
+                    [
+                        -128
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Conv2D_5_weights": {
+            "format": {
+                "params": [
+                    [
+                        0.02115808054804802
+                    ],
+                    [
+                        0
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Conv2D_5_bias": {
+            "format": {
+                "params": [
+                    [
+                        8.297286694869399e-05
+                    ],
+                    [
+                        0
+                    ]
+                ],
+                "class": "integer",
+                "type": "S32"
+            }
+        },
+        "Conv2D_5_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.02001342549920082
+                    ],
+                    [
+                        -128
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Quantize_6_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.02001342549920082
+                    ],
+                    [
+                        -128
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Dequantize_7_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.02001342549920082
+                    ],
+                    [
+                        -128
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Conv2D_8_weights": {
+            "format": {
+                "params": [
+                    [
+                        0.02289801463484764
+                    ],
+                    [
+                        0
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Conv2D_8_bias": {
+            "format": {
+                "params": [
+                    [
+                        0.00045826772111468017
+                    ],
+                    [
+                        0
+                    ]
+                ],
+                "class": "integer",
+                "type": "S32"
+            }
+        },
+        "Conv2D_8_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.023183921352028847
+                    ],
+                    [
+                        -128
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Quantize_9_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.023183921352028847
+                    ],
+                    [
+                        -128
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Dequantize_10_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.023183921352028847
+                    ],
+                    [
+                        -128
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Conv2D_11_weights": {
+            "format": {
+                "params": [
+                    [
+                        0.018097935244441032
+                    ],
+                    [
+                        0
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Conv2D_11_bias": {
+            "format": {
+                "params": [
+                    [
+                        0.0004195811052341014
+                    ],
+                    [
+                        0
+                    ]
+                ],
+                "class": "integer",
+                "type": "S32"
+            }
+        },
+        "Conv2D_11_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.03289808705449104
+                    ],
+                    [
+                        -128
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Quantize_12_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.03289808705449104
+                    ],
+                    [
+                        -128
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Dequantize_13_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.03289808705449104
+                    ],
+                    [
+                        -128
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Conv2D_14_weights": {
+            "format": {
+                "params": [
+                    [
+                        0.02694898471236229
+                    ],
+                    [
+                        0
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Conv2D_14_bias": {
+            "format": {
+                "params": [
+                    [
+                        0.0008865700219757855
+                    ],
+                    [
+                        0
+                    ]
+                ],
+                "class": "integer",
+                "type": "S32"
+            }
+        },
+        "Conv2D_14_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.04288598522543907
+                    ],
+                    [
+                        -128
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Quantize_15_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.04288598522543907
+                    ],
+                    [
+                        -128
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Dequantize_16_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.04288598522543907
+                    ],
+                    [
+                        -128
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Conv2D_17_weights": {
+            "format": {
+                "params": [
+                    [
+                        0.027250148355960846
+                    ],
+                    [
+                        0
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Conv2D_17_bias": {
+            "format": {
+                "params": [
+                    [
+                        0.001168649410828948
+                    ],
+                    [
+                        0
+                    ]
+                ],
+                "class": "integer",
+                "type": "S32"
+            }
+        },
+        "Conv2D_17_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.06497076898813248
+                    ],
+                    [
+                        -128
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Quantize_18_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.06497076898813248
+                    ],
+                    [
+                        -128
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Dequantize_19_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.06497076898813248
+                    ],
+                    [
+                        -128
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Conv2D_20_weights": {
+            "format": {
+                "params": [
+                    [
+                        0.17603692412376404
+                    ],
+                    [
+                        0
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Conv2D_20_bias": {
+            "format": {
+                "params": [
+                    [
+                        0.011437254026532173
+                    ],
+                    [
+                        0
+                    ]
+                ],
+                "class": "integer",
+                "type": "S32"
+            }
+        },
+        "Conv2D_20_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.16460712254047394
+                    ],
+                    [
+                        50
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Quantize_21_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.16460712254047394
+                    ],
+                    [
+                        50
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Dequantize_22_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.16460712254047394
+                    ],
+                    [
+                        50
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Conv2D_23_weights": {
+            "format": {
+                "params": [
+                    [
+                        0.023625744506716728
+                    ],
+                    [
+                        0
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Conv2D_23_bias": {
+            "format": {
+                "params": [
+                    [
+                        0.003888965817168355
+                    ],
+                    [
+                        0
+                    ]
+                ],
+                "class": "integer",
+                "type": "S32"
+            }
+        },
+        "Conv2D_23_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.05092165991663933
+                    ],
+                    [
+                        -128
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Quantize_24_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.05092165991663933
+                    ],
+                    [
+                        -128
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Dequantize_25_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.05092165991663933
+                    ],
+                    [
+                        -128
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Conv2D_26_weights": {
+            "format": {
+                "params": [
+                    [
+                        0.018655821681022644
+                    ],
+                    [
+                        0
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Conv2D_26_bias": {
+            "format": {
+                "params": [
+                    [
+                        0.000949985405895859
+                    ],
+                    [
+                        0
+                    ]
+                ],
+                "class": "integer",
+                "type": "S32"
+            }
+        },
+        "Conv2D_26_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.05041302368044853
+                    ],
+                    [
+                        -128
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Quantize_27_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.05041302368044853
+                    ],
+                    [
+                        -128
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Dequantize_28_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.05041302368044853
+                    ],
+                    [
+                        -128
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Conv2D_29_weights": {
+            "format": {
+                "params": [
+                    [
+                        0.008438186720013618
+                    ],
+                    [
+                        0
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Conv2D_29_bias": {
+            "format": {
+                "params": [
+                    [
+                        0.0004253945080563426
+                    ],
+                    [
+                        0
+                    ]
+                ],
+                "class": "integer",
+                "type": "S32"
+            }
+        },
+        "Conv2D_29_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.0826229453086853
+                    ],
+                    [
+                        4
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Quantize_30_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.0826229453086853
+                    ],
+                    [
+                        4
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Dequantize_31_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.0826229453086853
+                    ],
+                    [
+                        4
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Conv2D_32_weights": {
+            "format": {
+                "params": [
+                    [
+                        0.01610010676085949
+                    ],
+                    [
+                        0
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Conv2D_32_bias": {
+            "format": {
+                "params": [
+                    [
+                        0.0013302381848916411
+                    ],
+                    [
+                        0
+                    ]
+                ],
+                "class": "integer",
+                "type": "S32"
+            }
+        },
+        "Conv2D_32_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.08100741356611252
+                    ],
+                    [
+                        -128
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Quantize_33_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.08100741356611252
+                    ],
+                    [
+                        -128
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Dequantize_34_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.08100741356611252
+                    ],
+                    [
+                        -128
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Conv2D_35_weights": {
+            "format": {
+                "params": [
+                    [
+                        0.039623599499464035
+                    ],
+                    [
+                        0
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Conv2D_35_bias": {
+            "format": {
+                "params": [
+                    [
+                        0.0032098053488880396
+                    ],
+                    [
+                        0
+                    ]
+                ],
+                "class": "integer",
+                "type": "S32"
+            }
+        },
+        "Conv2D_35_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.08813207596540451
+                    ],
+                    [
+                        -128
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Quantize_36_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.08813207596540451
+                    ],
+                    [
+                        -128
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Dequantize_37_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.08813207596540451
+                    ],
+                    [
+                        -128
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Conv2D_38_weights": {
+            "format": {
+                "params": [
+                    [
+                        0.012918541207909584
+                    ],
+                    [
+                        0
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Conv2D_38_bias": {
+            "format": {
+                "params": [
+                    [
+                        0.0011385378893464804
+                    ],
+                    [
+                        0
+                    ]
+                ],
+                "class": "integer",
+                "type": "S32"
+            }
+        },
+        "Conv2D_38_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.05760610103607178
+                    ],
+                    [
+                        -23
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Quantize_39_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.05760610103607178
+                    ],
+                    [
+                        -23
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Dequantize_40_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.05760610103607178
+                    ],
+                    [
+                        -23
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Add_41_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.08927561342716217
+                    ],
+                    [
+                        13
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Quantize_42_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.08927561342716217
+                    ],
+                    [
+                        13
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Dequantize_43_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.08927561342716217
+                    ],
+                    [
+                        13
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Conv2D_44_weights": {
+            "format": {
+                "params": [
+                    [
+                        0.024214908480644226
+                    ],
+                    [
+                        0
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Conv2D_44_bias": {
+            "format": {
+                "params": [
+                    [
+                        0.0021618008613586426
+                    ],
+                    [
+                        0
+                    ]
+                ],
+                "class": "integer",
+                "type": "S32"
+            }
+        },
+        "Conv2D_44_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.0761433094739914
+                    ],
+                    [
+                        -128
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Quantize_45_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.0761433094739914
+                    ],
+                    [
+                        -128
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Dequantize_46_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.0761433094739914
+                    ],
+                    [
+                        -128
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Conv2D_47_weights": {
+            "format": {
+                "params": [
+                    [
+                        0.0600329153239727
+                    ],
+                    [
+                        0
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Conv2D_47_bias": {
+            "format": {
+                "params": [
+                    [
+                        0.004571104887872934
+                    ],
+                    [
+                        0
+                    ]
+                ],
+                "class": "integer",
+                "type": "S32"
+            }
+        },
+        "Conv2D_47_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.0971120223402977
+                    ],
+                    [
+                        -128
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Quantize_48_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.0971120223402977
+                    ],
+                    [
+                        -128
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Dequantize_49_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.0971120223402977
+                    ],
+                    [
+                        -128
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Conv2D_50_weights": {
+            "format": {
+                "params": [
+                    [
+                        0.005552083719521761
+                    ],
+                    [
+                        0
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Conv2D_50_bias": {
+            "format": {
+                "params": [
+                    [
+                        0.0005391740705817938
+                    ],
+                    [
+                        0
+                    ]
+                ],
+                "class": "integer",
+                "type": "S32"
+            }
+        },
+        "Conv2D_50_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.053329065442085266
+                    ],
+                    [
+                        13
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Quantize_51_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.053329065442085266
+                    ],
+                    [
+                        13
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Dequantize_52_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.053329065442085266
+                    ],
+                    [
+                        13
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Add_53_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.09932909160852432
+                    ],
+                    [
+                        6
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Quantize_54_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.09932909160852432
+                    ],
+                    [
+                        6
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Dequantize_55_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.09932909160852432
+                    ],
+                    [
+                        6
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Conv2D_56_weights": {
+            "format": {
+                "params": [
+                    [
+                        0.036071982234716415
+                    ],
+                    [
+                        0
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Conv2D_56_bias": {
+            "format": {
+                "params": [
+                    [
+                        0.0035829972475767136
+                    ],
+                    [
+                        0
+                    ]
+                ],
+                "class": "integer",
+                "type": "S32"
+            }
+        },
+        "Conv2D_56_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.10068204998970032
+                    ],
+                    [
+                        -128
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Quantize_57_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.10068204998970032
+                    ],
+                    [
+                        -128
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Dequantize_58_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.10068204998970032
+                    ],
+                    [
+                        -128
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Conv2D_59_weights": {
+            "format": {
+                "params": [
+                    [
+                        0.1091146171092987
+                    ],
+                    [
+                        0
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Conv2D_59_bias": {
+            "format": {
+                "params": [
+                    [
+                        0.010985882952809334
+                    ],
+                    [
+                        0
+                    ]
+                ],
+                "class": "integer",
+                "type": "S32"
+            }
+        },
+        "Conv2D_59_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.2592708170413971
+                    ],
+                    [
+                        -128
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Quantize_60_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.2592708170413971
+                    ],
+                    [
+                        -128
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Dequantize_61_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.2592708170413971
+                    ],
+                    [
+                        -128
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Conv2D_62_weights": {
+            "format": {
+                "params": [
+                    [
+                        0.008675351738929749
+                    ],
+                    [
+                        0
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Conv2D_62_bias": {
+            "format": {
+                "params": [
+                    [
+                        0.002249265555292368
+                    ],
+                    [
+                        0
+                    ]
+                ],
+                "class": "integer",
+                "type": "S32"
+            }
+        },
+        "Conv2D_62_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.28269636631011963
+                    ],
+                    [
+                        71
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Quantize_63_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.28269636631011963
+                    ],
+                    [
+                        71
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Dequantize_64_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.28269636631011963
+                    ],
+                    [
+                        71
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Add_65_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.2541320323944092
+                    ],
+                    [
+                        61
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Quantize_66_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.2541320323944092
+                    ],
+                    [
+                        61
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Dequantize_67_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.2541320323944092
+                    ],
+                    [
+                        61
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Conv2D_68_weights": {
+            "format": {
+                "params": [
+                    [
+                        0.010864507406949997
+                    ],
+                    [
+                        0
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Conv2D_68_bias": {
+            "format": {
+                "params": [
+                    [
+                        0.002761019393801689
+                    ],
+                    [
+                        0
+                    ]
+                ],
+                "class": "integer",
+                "type": "S32"
+            }
+        },
+        "Conv2D_68_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.250623881816864
+                    ],
+                    [
+                        -128
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Quantize_69_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.250623881816864
+                    ],
+                    [
+                        -128
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Dequantize_70_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.250623881816864
+                    ],
+                    [
+                        -128
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Conv2D_71_weights": {
+            "format": {
+                "params": [
+                    [
+                        0.0635928362607956
+                    ],
+                    [
+                        0
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Conv2D_71_bias": {
+            "format": {
+                "params": [
+                    [
+                        0.015937883406877518
+                    ],
+                    [
+                        0
+                    ]
+                ],
+                "class": "integer",
+                "type": "S32"
+            }
+        },
+        "Conv2D_71_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.2666403353214264
+                    ],
+                    [
+                        -128
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Quantize_72_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.2666403353214264
+                    ],
+                    [
+                        -128
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Dequantize_73_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.2666403353214264
+                    ],
+                    [
+                        -128
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Conv2D_74_weights": {
+            "format": {
+                "params": [
+                    [
+                        0.03098980523645878
+                    ],
+                    [
+                        0
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Conv2D_74_bias": {
+            "format": {
+                "params": [
+                    [
+                        0.008263131603598595
+                    ],
+                    [
+                        0
+                    ]
+                ],
+                "class": "integer",
+                "type": "S32"
+            }
+        },
+        "Conv2D_74_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.3355450928211212
+                    ],
+                    [
+                        5
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Quantize_75_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.3355450928211212
+                    ],
+                    [
+                        5
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Dequantize_76_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.3355450928211212
+                    ],
+                    [
+                        5
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Add_77_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.4182535409927368
+                    ],
+                    [
+                        4
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Quantize_78_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.4182535409927368
+                    ],
+                    [
+                        4
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Dequantize_79_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.4182535409927368
+                    ],
+                    [
+                        4
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Conv2D_80_weights": {
+            "format": {
+                "params": [
+                    [
+                        0.007034683600068092
+                    ],
+                    [
+                        0
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Conv2D_80_bias": {
+            "format": {
+                "params": [
+                    [
+                        0.002942281309515238
+                    ],
+                    [
+                        0
+                    ]
+                ],
+                "class": "integer",
+                "type": "S32"
+            }
+        },
+        "Conv2D_80_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.15996982157230377
+                    ],
+                    [
+                        -24
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Quantize_81_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.15996982157230377
+                    ],
+                    [
+                        -24
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Dequantize_82_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.15996982157230377
+                    ],
+                    [
+                        -24
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Conv2D_83_weights": {
+            "format": {
+                "params": [
+                    [
+                        0.00919688306748867
+                    ],
+                    [
+                        0
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Conv2D_83_bias": {
+            "format": {
+                "params": [
+                    [
+                        0.0014712237752974033
+                    ],
+                    [
+                        0
+                    ]
+                ],
+                "class": "integer",
+                "type": "S32"
+            }
+        },
+        "Conv2D_83_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.036908503621816635
+                    ],
+                    [
+                        -128
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Quantize_84_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.036908503621816635
+                    ],
+                    [
+                        -128
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Dequantize_85_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.036908503621816635
+                    ],
+                    [
+                        -128
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Conv2D_86_weights": {
+            "format": {
+                "params": [
+                    [
+                        0.22667166590690613
+                    ],
+                    [
+                        0
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Conv2D_86_bias": {
+            "format": {
+                "params": [
+                    [
+                        0.008366111665964127
+                    ],
+                    [
+                        0
+                    ]
+                ],
+                "class": "integer",
+                "type": "S32"
+            }
+        },
+        "Conv2D_86_out_0": {
+            "format": {
+                "params": [
+                    [
+                        1.2921133041381836
+                    ],
+                    [
+                        -9
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Quantize_87_out_0": {
+            "format": {
+                "params": [
+                    [
+                        1.2921133041381836
+                    ],
+                    [
+                        -9
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Dequantize_88_out_0": {
+            "format": {
+                "params": [
+                    [
+                        1.2921133041381836
+                    ],
+                    [
+                        -9
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Add_89_out_0": {
+            "format": {
+                "params": [
+                    [
+                        1.3167510032653809
+                    ],
+                    [
+                        -7
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Quantize_90_out_0": {
+            "format": {
+                "params": [
+                    [
+                        1.3167510032653809
+                    ],
+                    [
+                        -7
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Dequantize_91_out_0": {
+            "format": {
+                "params": [
+                    [
+                        1.3167510032653809
+                    ],
+                    [
+                        -7
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Conv2D_92_weights": {
+            "format": {
+                "params": [
+                    [
+                        0.010515561327338219
+                    ],
+                    [
+                        0
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Conv2D_92_bias": {
+            "format": {
+                "params": [
+                    [
+                        0.013846375979483128
+                    ],
+                    [
+                        0
+                    ]
+                ],
+                "class": "integer",
+                "type": "S32"
+            }
+        },
+        "Conv2D_92_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.1503029316663742
+                    ],
+                    [
+                        67
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Quantize_93_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.1503029316663742
+                    ],
+                    [
+                        67
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Dequantize_94_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.1503029316663742
+                    ],
+                    [
+                        67
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Conv2D_95_weights": {
+            "format": {
+                "params": [
+                    [
+                        0.030740942806005478
+                    ],
+                    [
+                        0
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Conv2D_95_bias": {
+            "format": {
+                "params": [
+                    [
+                        0.004620453808456659
+                    ],
+                    [
+                        0
+                    ]
+                ],
+                "class": "integer",
+                "type": "S32"
+            }
+        },
+        "Conv2D_95_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.05914703384041786
+                    ],
+                    [
+                        -128
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Quantize_96_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.05914703384041786
+                    ],
+                    [
+                        -128
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Dequantize_97_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.05914703384041786
+                    ],
+                    [
+                        -128
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Conv2D_98_weights": {
+            "format": {
+                "params": [
+                    [
+                        0.11091233044862747
+                    ],
+                    [
+                        0
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Conv2D_98_bias": {
+            "format": {
+                "params": [
+                    [
+                        0.006560135167092085
+                    ],
+                    [
+                        0
+                    ]
+                ],
+                "class": "integer",
+                "type": "S32"
+            }
+        },
+        "Conv2D_98_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.4813295006752014
+                    ],
+                    [
+                        -128
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Quantize_99_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.4813295006752014
+                    ],
+                    [
+                        -128
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Dequantize_100_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.4813295006752014
+                    ],
+                    [
+                        -128
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Conv2D_101_weights": {
+            "format": {
+                "params": [
+                    [
+                        0.00510551780462265
+                    ],
+                    [
+                        0
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Conv2D_101_bias": {
+            "format": {
+                "params": [
+                    [
+                        0.0024574364069849253
+                    ],
+                    [
+                        0
+                    ]
+                ],
+                "class": "integer",
+                "type": "S32"
+            }
+        },
+        "Conv2D_101_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.21033801138401031
+                    ],
+                    [
+                        34
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Quantize_102_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.21033801138401031
+                    ],
+                    [
+                        34
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Dequantize_103_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.21033801138401031
+                    ],
+                    [
+                        34
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Conv2D_104_weights": {
+            "format": {
+                "params": [
+                    [
+                        0.2919142544269562
+                    ],
+                    [
+                        0
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Conv2D_104_bias": {
+            "format": {
+                "params": [
+                    [
+                        0.06140066310763359
+                    ],
+                    [
+                        0
+                    ]
+                ],
+                "class": "integer",
+                "type": "S32"
+            }
+        },
+        "Conv2D_104_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.1784054934978485
+                    ],
+                    [
+                        14
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Quantize_105_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.1784054934978485
+                    ],
+                    [
+                        14
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Dequantize_106_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.1784054934978485
+                    ],
+                    [
+                        14
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Conv2D_107_weights": {
+            "format": {
+                "params": [
+                    [
+                        0.023467591032385826
+                    ],
+                    [
+                        0
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Conv2D_107_bias": {
+            "format": {
+                "params": [
+                    [
+                        0.004186747130006552
+                    ],
+                    [
+                        0
+                    ]
+                ],
+                "class": "integer",
+                "type": "S32"
+            }
+        },
+        "Conv2D_107_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.12117389589548111
+                    ],
+                    [
+                        -128
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Quantize_108_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.12117389589548111
+                    ],
+                    [
+                        -128
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Dequantize_109_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.12117389589548111
+                    ],
+                    [
+                        -128
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Conv2D_110_weights": {
+            "format": {
+                "params": [
+                    [
+                        0.6324981451034546
+                    ],
+                    [
+                        0
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Conv2D_110_bias": {
+            "format": {
+                "params": [
+                    [
+                        0.07664226740598679
+                    ],
+                    [
+                        0
+                    ]
+                ],
+                "class": "integer",
+                "type": "S32"
+            }
+        },
+        "Conv2D_110_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.3363875448703766
+                    ],
+                    [
+                        -128
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Quantize_111_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.3363875448703766
+                    ],
+                    [
+                        -128
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Dequantize_112_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.3363875448703766
+                    ],
+                    [
+                        -128
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Conv2D_113_weights": {
+            "format": {
+                "params": [
+                    [
+                        0.008154723793268204
+                    ],
+                    [
+                        0
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Conv2D_113_bias": {
+            "format": {
+                "params": [
+                    [
+                        0.0027431475464254618
+                    ],
+                    [
+                        0
+                    ]
+                ],
+                "class": "integer",
+                "type": "S32"
+            }
+        },
+        "Conv2D_113_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.3159644603729248
+                    ],
+                    [
+                        21
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Quantize_114_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.3159644603729248
+                    ],
+                    [
+                        21
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Dequantize_115_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.3159644603729248
+                    ],
+                    [
+                        21
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Add_116_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.3064635097980499
+                    ],
+                    [
+                        11
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Quantize_117_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.3064635097980499
+                    ],
+                    [
+                        11
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Dequantize_118_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.3064635097980499
+                    ],
+                    [
+                        11
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Conv2D_119_weights": {
+            "format": {
+                "params": [
+                    [
+                        0.013028045184910297
+                    ],
+                    [
+                        0
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Conv2D_119_bias": {
+            "format": {
+                "params": [
+                    [
+                        0.003992620389908552
+                    ],
+                    [
+                        0
+                    ]
+                ],
+                "class": "integer",
+                "type": "S32"
+            }
+        },
+        "Conv2D_119_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.10922421514987946
+                    ],
+                    [
+                        -128
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Quantize_120_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.10922421514987946
+                    ],
+                    [
+                        -128
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Dequantize_121_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.10922421514987946
+                    ],
+                    [
+                        -128
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Conv2D_122_weights": {
+            "format": {
+                "params": [
+                    [
+                        0.1733074188232422
+                    ],
+                    [
+                        0
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Conv2D_122_bias": {
+            "format": {
+                "params": [
+                    [
+                        0.018929366022348404
+                    ],
+                    [
+                        0
+                    ]
+                ],
+                "class": "integer",
+                "type": "S32"
+            }
+        },
+        "Conv2D_122_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.37791210412979126
+                    ],
+                    [
+                        -128
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Quantize_123_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.37791210412979126
+                    ],
+                    [
+                        -128
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Dequantize_124_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.37791210412979126
+                    ],
+                    [
+                        -128
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Conv2D_125_weights": {
+            "format": {
+                "params": [
+                    [
+                        0.008761676959693432
+                    ],
+                    [
+                        0
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Conv2D_125_bias": {
+            "format": {
+                "params": [
+                    [
+                        0.003311143722385168
+                    ],
+                    [
+                        0
+                    ]
+                ],
+                "class": "integer",
+                "type": "S32"
+            }
+        },
+        "Conv2D_125_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.26687318086624146
+                    ],
+                    [
+                        -8
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Quantize_126_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.26687318086624146
+                    ],
+                    [
+                        -8
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Dequantize_127_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.26687318086624146
+                    ],
+                    [
+                        -8
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Add_128_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.33244219422340393
+                    ],
+                    [
+                        -1
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Quantize_129_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.33244219422340393
+                    ],
+                    [
+                        -1
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Dequantize_130_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.33244219422340393
+                    ],
+                    [
+                        -1
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Conv2D_131_weights": {
+            "format": {
+                "params": [
+                    [
+                        0.006407914217561483
+                    ],
+                    [
+                        0
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Conv2D_131_bias": {
+            "format": {
+                "params": [
+                    [
+                        0.002130261156708002
+                    ],
+                    [
+                        0
+                    ]
+                ],
+                "class": "integer",
+                "type": "S32"
+            }
+        },
+        "Conv2D_131_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.07631833851337433
+                    ],
+                    [
+                        -128
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Quantize_132_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.07631833851337433
+                    ],
+                    [
+                        -128
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Dequantize_133_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.07631833851337433
+                    ],
+                    [
+                        -128
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Conv2D_134_weights": {
+            "format": {
+                "params": [
+                    [
+                        0.4090643525123596
+                    ],
+                    [
+                        0
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Conv2D_134_bias": {
+            "format": {
+                "params": [
+                    [
+                        0.031219111755490303
+                    ],
+                    [
+                        0
+                    ]
+                ],
+                "class": "integer",
+                "type": "S32"
+            }
+        },
+        "Conv2D_134_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.11894475668668747
+                    ],
+                    [
+                        -128
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Quantize_135_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.11894475668668747
+                    ],
+                    [
+                        -128
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Dequantize_136_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.11894475668668747
+                    ],
+                    [
+                        -128
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Conv2D_137_weights": {
+            "format": {
+                "params": [
+                    [
+                        0.0036107709165662527
+                    ],
+                    [
+                        0
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Conv2D_137_bias": {
+            "format": {
+                "params": [
+                    [
+                        0.0004294822574593127
+                    ],
+                    [
+                        0
+                    ]
+                ],
+                "class": "integer",
+                "type": "S32"
+            }
+        },
+        "Conv2D_137_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.1312561333179474
+                    ],
+                    [
+                        4
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Quantize_138_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.1312561333179474
+                    ],
+                    [
+                        4
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Dequantize_139_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.1312561333179474
+                    ],
+                    [
+                        4
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Add_140_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.3724893033504486
+                    ],
+                    [
+                        -7
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Quantize_141_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.3724893033504486
+                    ],
+                    [
+                        -7
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Dequantize_142_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.3724893033504486
+                    ],
+                    [
+                        -7
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Conv2D_143_weights": {
+            "format": {
+                "params": [
+                    [
+                        0.005309958942234516
+                    ],
+                    [
+                        0
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Conv2D_143_bias": {
+            "format": {
+                "params": [
+                    [
+                        0.001977902837097645
+                    ],
+                    [
+                        0
+                    ]
+                ],
+                "class": "integer",
+                "type": "S32"
+            }
+        },
+        "Conv2D_143_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.091949462890625
+                    ],
+                    [
+                        -128
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Quantize_144_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.091949462890625
+                    ],
+                    [
+                        -128
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Dequantize_145_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.091949462890625
+                    ],
+                    [
+                        -128
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Conv2D_146_weights": {
+            "format": {
+                "params": [
+                    [
+                        0.3887096047401428
+                    ],
+                    [
+                        0
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Conv2D_146_bias": {
+            "format": {
+                "params": [
+                    [
+                        0.03574163839221001
+                    ],
+                    [
+                        0
+                    ]
+                ],
+                "class": "integer",
+                "type": "S32"
+            }
+        },
+        "Conv2D_146_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.44800809025764465
+                    ],
+                    [
+                        -128
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Quantize_147_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.44800809025764465
+                    ],
+                    [
+                        -128
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Dequantize_148_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.44800809025764465
+                    ],
+                    [
+                        -128
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Conv2D_149_weights": {
+            "format": {
+                "params": [
+                    [
+                        0.006348349619656801
+                    ],
+                    [
+                        0
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Conv2D_149_bias": {
+            "format": {
+                "params": [
+                    [
+                        0.002844111993908882
+                    ],
+                    [
+                        0
+                    ]
+                ],
+                "class": "integer",
+                "type": "S32"
+            }
+        },
+        "Conv2D_149_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.2638530135154724
+                    ],
+                    [
+                        -15
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Quantize_150_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.2638530135154724
+                    ],
+                    [
+                        -15
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Dequantize_151_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.2638530135154724
+                    ],
+                    [
+                        -15
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Add_152_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.49338051676750183
+                    ],
+                    [
+                        -15
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Quantize_153_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.49338051676750183
+                    ],
+                    [
+                        -15
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Dequantize_154_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.49338051676750183
+                    ],
+                    [
+                        -15
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Conv2D_155_weights": {
+            "format": {
+                "params": [
+                    [
+                        0.00596230523660779
+                    ],
+                    [
+                        0
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Conv2D_155_bias": {
+            "format": {
+                "params": [
+                    [
+                        0.002941685263067484
+                    ],
+                    [
+                        0
+                    ]
+                ],
+                "class": "integer",
+                "type": "S32"
+            }
+        },
+        "Conv2D_155_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.1203179731965065
+                    ],
+                    [
+                        -128
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Quantize_156_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.1203179731965065
+                    ],
+                    [
+                        -128
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Dequantize_157_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.1203179731965065
+                    ],
+                    [
+                        -128
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Conv2D_158_weights": {
+            "format": {
+                "params": [
+                    [
+                        0.2724340558052063
+                    ],
+                    [
+                        0
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Conv2D_158_bias": {
+            "format": {
+                "params": [
+                    [
+                        0.03277871385216713
+                    ],
+                    [
+                        0
+                    ]
+                ],
+                "class": "integer",
+                "type": "S32"
+            }
+        },
+        "Conv2D_158_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.19012196362018585
+                    ],
+                    [
+                        -128
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Quantize_159_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.19012196362018585
+                    ],
+                    [
+                        -128
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Dequantize_160_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.19012196362018585
+                    ],
+                    [
+                        -128
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Conv2D_161_weights": {
+            "format": {
+                "params": [
+                    [
+                        0.006765136029571295
+                    ],
+                    [
+                        0
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Conv2D_161_bias": {
+            "format": {
+                "params": [
+                    [
+                        0.0012862009461969137
+                    ],
+                    [
+                        0
+                    ]
+                ],
+                "class": "integer",
+                "type": "S32"
+            }
+        },
+        "Conv2D_161_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.27105802297592163
+                    ],
+                    [
+                        6
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Quantize_162_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.27105802297592163
+                    ],
+                    [
+                        6
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Dequantize_163_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.27105802297592163
+                    ],
+                    [
+                        6
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Add_164_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.5417913794517517
+                    ],
+                    [
+                        -8
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Quantize_165_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.5417913794517517
+                    ],
+                    [
+                        -8
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Dequantize_166_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.5417913794517517
+                    ],
+                    [
+                        -8
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Conv2D_167_weights": {
+            "format": {
+                "params": [
+                    [
+                        0.0010571795282885432
+                    ],
+                    [
+                        0
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Conv2D_167_bias": {
+            "format": {
+                "params": [
+                    [
+                        0.0005727707757614553
+                    ],
+                    [
+                        0
+                    ]
+                ],
+                "class": "integer",
+                "type": "S32"
+            }
+        },
+        "Conv2D_167_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.045090701431035995
+                    ],
+                    [
+                        -128
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Quantize_168_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.045090701431035995
+                    ],
+                    [
+                        -128
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Dequantize_169_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.045090701431035995
+                    ],
+                    [
+                        -128
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Resize_170_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.045090701431035995
+                    ],
+                    [
+                        -128
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Conv2D_171_weights": {
+            "format": {
+                "params": [
+                    [
+                        0.106390580534935
+                    ],
+                    [
+                        0
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Conv2D_171_bias": {
+            "format": {
+                "params": [
+                    [
+                        0.004797225818037987
+                    ],
+                    [
+                        0
+                    ]
+                ],
+                "class": "integer",
+                "type": "S32"
+            }
+        },
+        "Conv2D_171_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.11301194876432419
+                    ],
+                    [
+                        -128
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Quantize_172_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.11301194876432419
+                    ],
+                    [
+                        -128
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Dequantize_173_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.11301194876432419
+                    ],
+                    [
+                        -128
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Conv2D_174_weights": {
+            "format": {
+                "params": [
+                    [
+                        0.002058349782600999
+                    ],
+                    [
+                        0
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Conv2D_174_bias": {
+            "format": {
+                "params": [
+                    [
+                        0.00023261811293195933
+                    ],
+                    [
+                        0
+                    ]
+                ],
+                "class": "integer",
+                "type": "S32"
+            }
+        },
+        "Conv2D_174_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.1711563766002655
+                    ],
+                    [
+                        -9
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Quantize_175_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.1711563766002655
+                    ],
+                    [
+                        -9
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Dequantize_176_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.1711563766002655
+                    ],
+                    [
+                        -9
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Add_177_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.09892880916595459
+                    ],
+                    [
+                        -128
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Quantize_178_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.09892880916595459
+                    ],
+                    [
+                        -128
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Dequantize_179_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.09892880916595459
+                    ],
+                    [
+                        -128
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Conv2D_180_weights": {
+            "format": {
+                "params": [
+                    [
+                        0.0031037975568324327
+                    ],
+                    [
+                        0
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Conv2D_180_bias": {
+            "format": {
+                "params": [
+                    [
+                        0.00030705498647876084
+                    ],
+                    [
+                        0
+                    ]
+                ],
+                "class": "integer",
+                "type": "S32"
+            }
+        },
+        "Conv2D_180_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.17188361287117004
+                    ],
+                    [
+                        -6
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Quantize_181_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.17188361287117004
+                    ],
+                    [
+                        -6
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Dequantize_182_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.17188361287117004
+                    ],
+                    [
+                        -6
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Conv2D_183_weights": {
+            "format": {
+                "params": [
+                    [
+                        0.07421007007360458
+                    ],
+                    [
+                        0
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Conv2D_183_bias": {
+            "format": {
+                "params": [
+                    [
+                        0.007341513875871897
+                    ],
+                    [
+                        0
+                    ]
+                ],
+                "class": "integer",
+                "type": "S32"
+            }
+        },
+        "Conv2D_183_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.1303747147321701
+                    ],
+                    [
+                        -128
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Quantize_184_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.1303747147321701
+                    ],
+                    [
+                        -128
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Dequantize_185_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.1303747147321701
+                    ],
+                    [
+                        -128
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Conv2D_186_weights": {
+            "format": {
+                "params": [
+                    [
+                        0.0016293572261929512
+                    ],
+                    [
+                        0
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Conv2D_186_bias": {
+            "format": {
+                "params": [
+                    [
+                        0.00021242698130663484
+                    ],
+                    [
+                        0
+                    ]
+                ],
+                "class": "integer",
+                "type": "S32"
+            }
+        },
+        "Conv2D_186_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.15445569157600403
+                    ],
+                    [
+                        -3
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Quantize_187_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.15445569157600403
+                    ],
+                    [
+                        -3
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Dequantize_188_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.15445569157600403
+                    ],
+                    [
+                        -3
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Add_189_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.14574210345745087
+                    ],
+                    [
+                        -128
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Quantize_190_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.14574210345745087
+                    ],
+                    [
+                        -128
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Dequantize_191_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.14574210345745087
+                    ],
+                    [
+                        -128
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Conv2D_192_weights": {
+            "format": {
+                "params": [
+                    [
+                        0.003416971070691943
+                    ],
+                    [
+                        0
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Conv2D_192_bias": {
+            "format": {
+                "params": [
+                    [
+                        0.000497996574267745
+                    ],
+                    [
+                        0
+                    ]
+                ],
+                "class": "integer",
+                "type": "S32"
+            }
+        },
+        "Conv2D_192_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.1571730077266693
+                    ],
+                    [
+                        -6
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Quantize_193_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.1571730077266693
+                    ],
+                    [
+                        -6
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Dequantize_194_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.1571730077266693
+                    ],
+                    [
+                        -6
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Conv2D_195_weights": {
+            "format": {
+                "params": [
+                    [
+                        0.03779231384396553
+                    ],
+                    [
+                        0
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Conv2D_195_bias": {
+            "format": {
+                "params": [
+                    [
+                        0.005507931113243103
+                    ],
+                    [
+                        0
+                    ]
+                ],
+                "class": "integer",
+                "type": "S32"
+            }
+        },
+        "Conv2D_195_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.13001033663749695
+                    ],
+                    [
+                        -128
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Quantize_196_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.13001033663749695
+                    ],
+                    [
+                        -128
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Dequantize_197_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.13001033663749695
+                    ],
+                    [
+                        -128
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Conv2D_198_weights": {
+            "format": {
+                "params": [
+                    [
+                        0.002387163694947958
+                    ],
+                    [
+                        0
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Conv2D_198_bias": {
+            "format": {
+                "params": [
+                    [
+                        0.0003103559429291636
+                    ],
+                    [
+                        0
+                    ]
+                ],
+                "class": "integer",
+                "type": "S32"
+            }
+        },
+        "Conv2D_198_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.16061194241046906
+                    ],
+                    [
+                        -4
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Quantize_199_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.16061194241046906
+                    ],
+                    [
+                        -4
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Dequantize_200_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.16061194241046906
+                    ],
+                    [
+                        -4
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Add_201_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.13960008323192596
+                    ],
+                    [
+                        -128
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Quantize_202_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.13960008323192596
+                    ],
+                    [
+                        -128
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Dequantize_203_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.13960008323192596
+                    ],
+                    [
+                        -128
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Conv2D_204_weights": {
+            "format": {
+                "params": [
+                    [
+                        0.010865438729524612
+                    ],
+                    [
+                        0
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Conv2D_204_bias": {
+            "format": {
+                "params": [
+                    [
+                        0.0015168162062764168
+                    ],
+                    [
+                        0
+                    ]
+                ],
+                "class": "integer",
+                "type": "S32"
+            }
+        },
+        "Conv2D_204_out_0": {
+            "format": {
+                "params": [
+                    [
+                        1.6244475841522217
+                    ],
+                    [
+                        -9
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Quantize_205_out_0": {
+            "format": {
+                "params": [
+                    [
+                        1.6244475841522217
+                    ],
+                    [
+                        -9
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Dequantize_206_out_0": {
+            "format": {
+                "params": [
+                    [
+                        1.6244475841522217
+                    ],
+                    [
+                        -9
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Softmax_207_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.003921568859368563
+                    ],
+                    [
+                        -128
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Mul_208_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.028187576681375504
+                    ],
+                    [
+                        -128
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Mul_208_param1": {
+            "format": {
+                "params": [
+                    [
+                        0.06359850615262985
+                    ],
+                    [
+                        -128
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Quantize_209_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.028187576681375504
+                    ],
+                    [
+                        -128
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Dequantize_210_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.028187576681375504
+                    ],
+                    [
+                        -128
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "ReduceSum_211_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.04000560939311981
+                    ],
+                    [
+                        -128
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Conv2D_212_weights": {
+            "format": {
+                "params": [
+                    [
+                        0.02826429344713688
+                    ],
+                    [
+                        0
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Conv2D_212_bias": {
+            "format": {
+                "params": [
+                    [
+                        0.0039456975646317005
+                    ],
+                    [
+                        0
+                    ]
+                ],
+                "class": "integer",
+                "type": "S32"
+            }
+        },
+        "Conv2D_212_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.9979676008224487
+                    ],
+                    [
+                        -123
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Quantize_213_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.9979676008224487
+                    ],
+                    [
+                        -123
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Dequantize_214_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.9979676008224487
+                    ],
+                    [
+                        -123
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Softmax_215_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.003921568859368563
+                    ],
+                    [
+                        -128
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Slice_216_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.003921568859368563
+                    ],
+                    [
+                        -128
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Mul_217_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.03995990380644798
+                    ],
+                    [
+                        -128
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            }
+        },
+        "Quantize_218_out_0": {
+            "format": {
+                "params": [
+                    [
+                        0.03995990380644798
+                    ],
+                    [
+                        -128
+                    ]
+                ],
+                "class": "integer",
+                "type": "S8"
+            },
+            "data_channel_position": "CHFIRST",
+            "data_channel_batch": 1,
+            "user_allocated": false
+        }
+    },
+    "nodes": {
+        "Constant_0": {
+            "names": [
+                "__FE_GENERATED__"
+            ]
+        },
+        "Dequantize_2": {
+            "names": [
+                "__FE_GENERATED__"
+            ]
+        },
+        "Dequantize_4": {
+            "names": [
+                "__FE_GENERATED__"
+            ]
+        },
+        "Conv2D_5": {
+            "names": [
+                "relu",
+                "backbone_encoder_conv_stem_weight_DequantizeLinear_Output",
+                "backbone_encoder_conv_stem_weight_bias",
+                "input_DequantizeLinear_Output",
+                "input_QuantizeLinear_Output"
+            ]
+        },
+        "Quantize_6": {
+            "names": [
+                "__FE_GENERATED__"
+            ]
+        },
+        "Dequantize_7": {
+            "names": [
+                "__FE_GENERATED__"
+            ]
+        },
+        "Conv2D_8": {
+            "names": [
+                "relu_1",
+                "backbone_encoder_blocks_0_0_conv_weight_DequantizeLinear_Output",
+                "backbone_encoder_blocks_0_0_conv_weight_bias",
+                "relu_DequantizeLinear_Output",
+                "relu_QuantizeLinear_Output"
+            ]
+        },
+        "Quantize_9": {
+            "names": [
+                "__FE_GENERATED__"
+            ]
+        },
+        "Dequantize_10": {
+            "names": [
+                "__FE_GENERATED__"
+            ]
+        },
+        "Conv2D_11": {
+            "names": [
+                "relu_2",
+                "backbone_encoder_blocks_0_1_conv_weight_DequantizeLinear_Output",
+                "backbone_encoder_blocks_0_1_conv_weight_bias",
+                "relu_1_DequantizeLinear_Output",
+                "relu_1_QuantizeLinear_Output"
+            ]
+        },
+        "Quantize_12": {
+            "names": [
+                "__FE_GENERATED__"
+            ]
+        },
+        "Dequantize_13": {
+            "names": [
+                "__FE_GENERATED__"
+            ]
+        },
+        "Conv2D_14": {
+            "names": [
+                "relu_3",
+                "backbone_encoder_blocks_1_0_conv_weight_DequantizeLinear_Output",
+                "backbone_encoder_blocks_1_0_conv_weight_bias",
+                "relu_2_DequantizeLinear_Output",
+                "relu_2_QuantizeLinear_Output"
+            ]
+        },
+        "Quantize_15": {
+            "names": [
+                "__FE_GENERATED__"
+            ]
+        },
+        "Dequantize_16": {
+            "names": [
+                "__FE_GENERATED__"
+            ]
+        },
+        "Conv2D_17": {
+            "names": [
+                "relu_4",
+                "backbone_encoder_blocks_1_1_conv_weight_DequantizeLinear_Output",
+                "backbone_encoder_blocks_1_1_conv_weight_bias",
+                "relu_3_DequantizeLinear_Output",
+                "relu_3_QuantizeLinear_Output"
+            ]
+        },
+        "Quantize_18": {
+            "names": [
+                "__FE_GENERATED__"
+            ]
+        },
+        "Dequantize_19": {
+            "names": [
+                "__FE_GENERATED__"
+            ]
+        },
+        "Conv2D_20": {
+            "names": [
+                "getitem_15",
+                "backbone_encoder_blocks_2_0_dw_start_conv_weight_DequantizeLinear_Output",
+                "backbone_encoder_blocks_2_0_dw_start_conv_weight_bias",
+                "relu_4_DequantizeLinear_Output",
+                "relu_4_QuantizeLinear_Output"
+            ]
+        },
+        "Quantize_21": {
+            "names": [
+                "__FE_GENERATED__"
+            ]
+        },
+        "Dequantize_22": {
+            "names": [
+                "__FE_GENERATED__"
+            ]
+        },
+        "Conv2D_23": {
+            "names": [
+                "relu_5",
+                "backbone_encoder_blocks_2_0_pw_exp_conv_weight_DequantizeLinear_Output",
+                "backbone_encoder_blocks_2_0_pw_exp_conv_weight_bias",
+                "getitem_15_DequantizeLinear_Output",
+                "getitem_15_QuantizeLinear_Output"
+            ]
+        },
+        "Quantize_24": {
+            "names": [
+                "__FE_GENERATED__"
+            ]
+        },
+        "Dequantize_25": {
+            "names": [
+                "__FE_GENERATED__"
+            ]
+        },
+        "Conv2D_26": {
+            "names": [
+                "relu_6",
+                "backbone_encoder_blocks_2_0_dw_mid_conv_weight_DequantizeLinear_Output",
+                "backbone_encoder_blocks_2_0_dw_mid_conv_weight_bias",
+                "relu_5_DequantizeLinear_Output",
+                "relu_5_QuantizeLinear_Output"
+            ]
+        },
+        "Quantize_27": {
+            "names": [
+                "__FE_GENERATED__"
+            ]
+        },
+        "Dequantize_28": {
+            "names": [
+                "__FE_GENERATED__"
+            ]
+        },
+        "Conv2D_29": {
+            "names": [
+                "getitem_24",
+                "backbone_encoder_blocks_2_0_pw_proj_conv_weight_DequantizeLinear_Output",
+                "backbone_encoder_blocks_2_0_pw_proj_conv_weight_bias",
+                "relu_6_DequantizeLinear_Output",
+                "relu_6_QuantizeLinear_Output"
+            ]
+        },
+        "Quantize_30": {
+            "names": [
+                "__FE_GENERATED__"
+            ]
+        },
+        "Dequantize_31": {
+            "names": [
+                "__FE_GENERATED__"
+            ]
+        },
+        "Conv2D_32": {
+            "names": [
+                "relu_7",
+                "backbone_encoder_blocks_2_1_pw_exp_conv_weight_DequantizeLinear_Output",
+                "backbone_encoder_blocks_2_1_pw_exp_conv_weight_bias",
+                "getitem_24_DequantizeLinear_Output",
+                "getitem_24_QuantizeLinear_Output"
+            ]
+        },
+        "Quantize_33": {
+            "names": [
+                "__FE_GENERATED__"
+            ]
+        },
+        "Dequantize_34": {
+            "names": [
+                "__FE_GENERATED__"
+            ]
+        },
+        "Conv2D_35": {
+            "names": [
+                "relu_8",
+                "backbone_encoder_blocks_2_1_dw_mid_conv_weight_DequantizeLinear_Output",
+                "backbone_encoder_blocks_2_1_dw_mid_conv_weight_bias",
+                "relu_7_DequantizeLinear_Output",
+                "relu_7_QuantizeLinear_Output"
+            ]
+        },
+        "Quantize_36": {
+            "names": [
+                "__FE_GENERATED__"
+            ]
+        },
+        "Dequantize_37": {
+            "names": [
+                "__FE_GENERATED__"
+            ]
+        },
+        "Conv2D_38": {
+            "names": [
+                "getitem_33",
+                "backbone_encoder_blocks_2_1_pw_proj_conv_weight_DequantizeLinear_Output",
+                "backbone_encoder_blocks_2_1_pw_proj_conv_weight_bias",
+                "relu_8_DequantizeLinear_Output",
+                "relu_8_QuantizeLinear_Output"
+            ]
+        },
+        "Quantize_39": {
+            "names": [
+                "__FE_GENERATED__"
+            ]
+        },
+        "Dequantize_40": {
+            "names": [
+                "__FE_GENERATED__"
+            ]
+        },
+        "Add_41": {
+            "names": [
+                "add",
+                "getitem_24_DequantizeLinear_Output",
+                "getitem_24_QuantizeLinear_Output",
+                "getitem_33_DequantizeLinear_Output",
+                "getitem_33_QuantizeLinear_Output"
+            ]
+        },
+        "Quantize_42": {
+            "names": [
+                "__FE_GENERATED__"
+            ]
+        },
+        "Dequantize_43": {
+            "names": [
+                "__FE_GENERATED__"
+            ]
+        },
+        "Conv2D_44": {
+            "names": [
+                "relu_9",
+                "backbone_encoder_blocks_2_2_pw_exp_conv_weight_DequantizeLinear_Output",
+                "backbone_encoder_blocks_2_2_pw_exp_conv_weight_bias",
+                "add_DequantizeLinear_Output",
+                "add_QuantizeLinear_Output"
+            ]
+        },
+        "Quantize_45": {
+            "names": [
+                "__FE_GENERATED__"
+            ]
+        },
+        "Dequantize_46": {
+            "names": [
+                "__FE_GENERATED__"
+            ]
+        },
+        "Conv2D_47": {
+            "names": [
+                "relu_10",
+                "backbone_encoder_blocks_2_2_dw_mid_conv_weight_DequantizeLinear_Output",
+                "backbone_encoder_blocks_2_2_dw_mid_conv_weight_bias",
+                "relu_9_DequantizeLinear_Output",
+                "relu_9_QuantizeLinear_Output"
+            ]
+        },
+        "Quantize_48": {
+            "names": [
+                "__FE_GENERATED__"
+            ]
+        },
+        "Dequantize_49": {
+            "names": [
+                "__FE_GENERATED__"
+            ]
+        },
+        "Conv2D_50": {
+            "names": [
+                "getitem_42",
+                "backbone_encoder_blocks_2_2_pw_proj_conv_weight_DequantizeLinear_Output",
+                "backbone_encoder_blocks_2_2_pw_proj_conv_weight_bias",
+                "relu_10_DequantizeLinear_Output",
+                "relu_10_QuantizeLinear_Output"
+            ]
+        },
+        "Quantize_51": {
+            "names": [
+                "__FE_GENERATED__"
+            ]
+        },
+        "Dequantize_52": {
+            "names": [
+                "__FE_GENERATED__"
+            ]
+        },
+        "Add_53": {
+            "names": [
+                "add_1",
+                "add_DequantizeLinear_Output",
+                "add_QuantizeLinear_Output",
+                "getitem_42_DequantizeLinear_Output",
+                "getitem_42_QuantizeLinear_Output"
+            ]
+        },
+        "Quantize_54": {
+            "names": [
+                "__FE_GENERATED__"
+            ]
+        },
+        "Dequantize_55": {
+            "names": [
+                "__FE_GENERATED__"
+            ]
+        },
+        "Conv2D_56": {
+            "names": [
+                "relu_11",
+                "backbone_encoder_blocks_2_3_pw_exp_conv_weight_DequantizeLinear_Output",
+                "backbone_encoder_blocks_2_3_pw_exp_conv_weight_bias",
+                "add_1_DequantizeLinear_Output",
+                "add_1_QuantizeLinear_Output"
+            ]
+        },
+        "Quantize_57": {
+            "names": [
+                "__FE_GENERATED__"
+            ]
+        },
+        "Dequantize_58": {
+            "names": [
+                "__FE_GENERATED__"
+            ]
+        },
+        "Conv2D_59": {
+            "names": [
+                "relu_12",
+                "backbone_encoder_blocks_2_3_dw_mid_conv_weight_DequantizeLinear_Output",
+                "backbone_encoder_blocks_2_3_dw_mid_conv_weight_bias",
+                "relu_11_DequantizeLinear_Output",
+                "relu_11_QuantizeLinear_Output"
+            ]
+        },
+        "Quantize_60": {
+            "names": [
+                "__FE_GENERATED__"
+            ]
+        },
+        "Dequantize_61": {
+            "names": [
+                "__FE_GENERATED__"
+            ]
+        },
+        "Conv2D_62": {
+            "names": [
+                "getitem_51",
+                "backbone_encoder_blocks_2_3_pw_proj_conv_weight_DequantizeLinear_Output",
+                "backbone_encoder_blocks_2_3_pw_proj_conv_weight_bias",
+                "relu_12_DequantizeLinear_Output",
+                "relu_12_QuantizeLinear_Output"
+            ]
+        },
+        "Quantize_63": {
+            "names": [
+                "__FE_GENERATED__"
+            ]
+        },
+        "Dequantize_64": {
+            "names": [
+                "__FE_GENERATED__"
+            ]
+        },
+        "Add_65": {
+            "names": [
+                "add_2",
+                "add_1_DequantizeLinear_Output",
+                "add_1_QuantizeLinear_Output",
+                "getitem_51_DequantizeLinear_Output",
+                "getitem_51_QuantizeLinear_Output"
+            ]
+        },
+        "Quantize_66": {
+            "names": [
+                "__FE_GENERATED__"
+            ]
+        },
+        "Dequantize_67": {
+            "names": [
+                "__FE_GENERATED__"
+            ]
+        },
+        "Conv2D_68": {
+            "names": [
+                "relu_13",
+                "backbone_encoder_blocks_2_4_pw_exp_conv_weight_DequantizeLinear_Output",
+                "backbone_encoder_blocks_2_4_pw_exp_conv_weight_bias",
+                "add_2_DequantizeLinear_Output",
+                "add_2_QuantizeLinear_Output"
+            ]
+        },
+        "Quantize_69": {
+            "names": [
+                "__FE_GENERATED__"
+            ]
+        },
+        "Dequantize_70": {
+            "names": [
+                "__FE_GENERATED__"
+            ]
+        },
+        "Conv2D_71": {
+            "names": [
+                "relu_14",
+                "backbone_encoder_blocks_2_4_dw_mid_conv_weight_DequantizeLinear_Output",
+                "backbone_encoder_blocks_2_4_dw_mid_conv_weight_bias",
+                "relu_13_DequantizeLinear_Output",
+                "relu_13_QuantizeLinear_Output"
+            ]
+        },
+        "Quantize_72": {
+            "names": [
+                "__FE_GENERATED__"
+            ]
+        },
+        "Dequantize_73": {
+            "names": [
+                "__FE_GENERATED__"
+            ]
+        },
+        "Conv2D_74": {
+            "names": [
+                "getitem_60",
+                "backbone_encoder_blocks_2_4_pw_proj_conv_weight_DequantizeLinear_Output",
+                "backbone_encoder_blocks_2_4_pw_proj_conv_weight_bias",
+                "relu_14_DequantizeLinear_Output",
+                "relu_14_QuantizeLinear_Output"
+            ]
+        },
+        "Quantize_75": {
+            "names": [
+                "__FE_GENERATED__"
+            ]
+        },
+        "Dequantize_76": {
+            "names": [
+                "__FE_GENERATED__"
+            ]
+        },
+        "Add_77": {
+            "names": [
+                "add_3",
+                "add_2_DequantizeLinear_Output",
+                "add_2_QuantizeLinear_Output",
+                "getitem_60_DequantizeLinear_Output",
+                "getitem_60_QuantizeLinear_Output"
+            ]
+        },
+        "Quantize_78": {
+            "names": [
+                "__FE_GENERATED__"
+            ]
+        },
+        "Dequantize_79": {
+            "names": [
+                "__FE_GENERATED__"
+            ]
+        },
+        "Conv2D_80": {
+            "names": [
+                "getitem_63",
+                "backbone_encoder_blocks_2_5_dw_start_conv_weight_DequantizeLinear_Output",
+                "backbone_encoder_blocks_2_5_dw_start_conv_weight_bias",
+                "add_3_DequantizeLinear_Output",
+                "add_3_QuantizeLinear_Output"
+            ]
+        },
+        "Quantize_81": {
+            "names": [
+                "__FE_GENERATED__"
+            ]
+        },
+        "Dequantize_82": {
+            "names": [
+                "__FE_GENERATED__"
+            ]
+        },
+        "Conv2D_83": {
+            "names": [
+                "relu_15",
+                "backbone_encoder_blocks_2_5_pw_exp_conv_weight_DequantizeLinear_Output",
+                "backbone_encoder_blocks_2_5_pw_exp_conv_weight_bias",
+                "getitem_63_DequantizeLinear_Output",
+                "getitem_63_QuantizeLinear_Output"
+            ]
+        },
+        "Quantize_84": {
+            "names": [
+                "__FE_GENERATED__"
+            ]
+        },
+        "Dequantize_85": {
+            "names": [
+                "__FE_GENERATED__"
+            ]
+        },
+        "Conv2D_86": {
+            "names": [
+                "getitem_69",
+                "backbone_encoder_blocks_2_5_pw_proj_conv_weight_DequantizeLinear_Output",
+                "backbone_encoder_blocks_2_5_pw_proj_conv_weight_bias",
+                "relu_15_DequantizeLinear_Output",
+                "relu_15_QuantizeLinear_Output"
+            ]
+        },
+        "Quantize_87": {
+            "names": [
+                "__FE_GENERATED__"
+            ]
+        },
+        "Dequantize_88": {
+            "names": [
+                "__FE_GENERATED__"
+            ]
+        },
+        "Add_89": {
+            "names": [
+                "add_4",
+                "add_3_DequantizeLinear_Output",
+                "add_3_QuantizeLinear_Output",
+                "getitem_69_DequantizeLinear_Output",
+                "getitem_69_QuantizeLinear_Output"
+            ]
+        },
+        "Quantize_90": {
+            "names": [
+                "__FE_GENERATED__"
+            ]
+        },
+        "Dequantize_91": {
+            "names": [
+                "__FE_GENERATED__"
+            ]
+        },
+        "Conv2D_92": {
+            "names": [
+                "getitem_72",
+                "backbone_encoder_blocks_3_0_dw_start_conv_weight_DequantizeLinear_Output",
+                "backbone_encoder_blocks_3_0_dw_start_conv_weight_bias",
+                "add_4_DequantizeLinear_Output",
+                "add_4_QuantizeLinear_Output"
+            ]
+        },
+        "Quantize_93": {
+            "names": [
+                "__FE_GENERATED__"
+            ]
+        },
+        "Dequantize_94": {
+            "names": [
+                "__FE_GENERATED__"
+            ]
+        },
+        "Conv2D_95": {
+            "names": [
+                "relu_16",
+                "backbone_encoder_blocks_3_0_pw_exp_conv_weight_DequantizeLinear_Output",
+                "backbone_encoder_blocks_3_0_pw_exp_conv_weight_bias",
+                "getitem_72_DequantizeLinear_Output",
+                "getitem_72_QuantizeLinear_Output"
+            ]
+        },
+        "Quantize_96": {
+            "names": [
+                "__FE_GENERATED__"
+            ]
+        },
+        "Dequantize_97": {
+            "names": [
+                "__FE_GENERATED__"
+            ]
+        },
+        "Conv2D_98": {
+            "names": [
+                "relu_17",
+                "backbone_encoder_blocks_3_0_dw_mid_conv_weight_DequantizeLinear_Output",
+                "backbone_encoder_blocks_3_0_dw_mid_conv_weight_bias",
+                "relu_16_DequantizeLinear_Output",
+                "relu_16_QuantizeLinear_Output"
+            ]
+        },
+        "Quantize_99": {
+            "names": [
+                "__FE_GENERATED__"
+            ]
+        },
+        "Dequantize_100": {
+            "names": [
+                "__FE_GENERATED__"
+            ]
+        },
+        "Conv2D_101": {
+            "names": [
+                "getitem_81",
+                "backbone_encoder_blocks_3_0_pw_proj_conv_weight_DequantizeLinear_Output",
+                "backbone_encoder_blocks_3_0_pw_proj_conv_weight_bias",
+                "relu_17_DequantizeLinear_Output",
+                "relu_17_QuantizeLinear_Output"
+            ]
+        },
+        "Quantize_102": {
+            "names": [
+                "__FE_GENERATED__"
+            ]
+        },
+        "Dequantize_103": {
+            "names": [
+                "__FE_GENERATED__"
+            ]
+        },
+        "Conv2D_104": {
+            "names": [
+                "getitem_84",
+                "backbone_encoder_blocks_3_1_dw_start_conv_weight_DequantizeLinear_Output",
+                "backbone_encoder_blocks_3_1_dw_start_conv_weight_bias",
+                "getitem_81_DequantizeLinear_Output",
+                "getitem_81_QuantizeLinear_Output"
+            ]
+        },
+        "Quantize_105": {
+            "names": [
+                "__FE_GENERATED__"
+            ]
+        },
+        "Dequantize_106": {
+            "names": [
+                "__FE_GENERATED__"
+            ]
+        },
+        "Conv2D_107": {
+            "names": [
+                "relu_18",
+                "backbone_encoder_blocks_3_1_pw_exp_conv_weight_DequantizeLinear_Output",
+                "backbone_encoder_blocks_3_1_pw_exp_conv_weight_bias",
+                "getitem_84_DequantizeLinear_Output",
+                "getitem_84_QuantizeLinear_Output"
+            ]
+        },
+        "Quantize_108": {
+            "names": [
+                "__FE_GENERATED__"
+            ]
+        },
+        "Dequantize_109": {
+            "names": [
+                "__FE_GENERATED__"
+            ]
+        },
+        "Conv2D_110": {
+            "names": [
+                "relu_19",
+                "backbone_encoder_blocks_3_1_dw_mid_conv_weight_DequantizeLinear_Output",
+                "backbone_encoder_blocks_3_1_dw_mid_conv_weight_bias",
+                "relu_18_DequantizeLinear_Output",
+                "relu_18_QuantizeLinear_Output"
+            ]
+        },
+        "Quantize_111": {
+            "names": [
+                "__FE_GENERATED__"
+            ]
+        },
+        "Dequantize_112": {
+            "names": [
+                "__FE_GENERATED__"
+            ]
+        },
+        "Conv2D_113": {
+            "names": [
+                "getitem_93",
+                "backbone_encoder_blocks_3_1_pw_proj_conv_weight_DequantizeLinear_Output",
+                "backbone_encoder_blocks_3_1_pw_proj_conv_weight_bias",
+                "relu_19_DequantizeLinear_Output",
+                "relu_19_QuantizeLinear_Output"
+            ]
+        },
+        "Quantize_114": {
+            "names": [
+                "__FE_GENERATED__"
+            ]
+        },
+        "Dequantize_115": {
+            "names": [
+                "__FE_GENERATED__"
+            ]
+        },
+        "Add_116": {
+            "names": [
+                "add_5",
+                "getitem_81_DequantizeLinear_Output",
+                "getitem_81_QuantizeLinear_Output",
+                "getitem_93_DequantizeLinear_Output",
+                "getitem_93_QuantizeLinear_Output"
+            ]
+        },
+        "Quantize_117": {
+            "names": [
+                "__FE_GENERATED__"
+            ]
+        },
+        "Dequantize_118": {
+            "names": [
+                "__FE_GENERATED__"
+            ]
+        },
+        "Conv2D_119": {
+            "names": [
+                "relu_20",
+                "backbone_encoder_blocks_3_2_pw_exp_conv_weight_DequantizeLinear_Output",
+                "backbone_encoder_blocks_3_2_pw_exp_conv_weight_bias",
+                "add_5_DequantizeLinear_Output",
+                "add_5_QuantizeLinear_Output"
+            ]
+        },
+        "Quantize_120": {
+            "names": [
+                "__FE_GENERATED__"
+            ]
+        },
+        "Dequantize_121": {
+            "names": [
+                "__FE_GENERATED__"
+            ]
+        },
+        "Conv2D_122": {
+            "names": [
+                "relu_21",
+                "backbone_encoder_blocks_3_2_dw_mid_conv_weight_DequantizeLinear_Output",
+                "backbone_encoder_blocks_3_2_dw_mid_conv_weight_bias",
+                "relu_20_DequantizeLinear_Output",
+                "relu_20_QuantizeLinear_Output"
+            ]
+        },
+        "Quantize_123": {
+            "names": [
+                "__FE_GENERATED__"
+            ]
+        },
+        "Dequantize_124": {
+            "names": [
+                "__FE_GENERATED__"
+            ]
+        },
+        "Conv2D_125": {
+            "names": [
+                "getitem_102",
+                "backbone_encoder_blocks_3_2_pw_proj_conv_weight_DequantizeLinear_Output",
+                "backbone_encoder_blocks_3_2_pw_proj_conv_weight_bias",
+                "relu_21_DequantizeLinear_Output",
+                "relu_21_QuantizeLinear_Output"
+            ]
+        },
+        "Quantize_126": {
+            "names": [
+                "__FE_GENERATED__"
+            ]
+        },
+        "Dequantize_127": {
+            "names": [
+                "__FE_GENERATED__"
+            ]
+        },
+        "Add_128": {
+            "names": [
+                "add_6",
+                "add_5_DequantizeLinear_Output",
+                "add_5_QuantizeLinear_Output",
+                "getitem_102_DequantizeLinear_Output",
+                "getitem_102_QuantizeLinear_Output"
+            ]
+        },
+        "Quantize_129": {
+            "names": [
+                "__FE_GENERATED__"
+            ]
+        },
+        "Dequantize_130": {
+            "names": [
+                "__FE_GENERATED__"
+            ]
+        },
+        "Conv2D_131": {
+            "names": [
+                "relu_22",
+                "backbone_encoder_blocks_3_3_pw_exp_conv_weight_DequantizeLinear_Output",
+                "backbone_encoder_blocks_3_3_pw_exp_conv_weight_bias",
+                "add_6_DequantizeLinear_Output",
+                "add_6_QuantizeLinear_Output"
+            ]
+        },
+        "Quantize_132": {
+            "names": [
+                "__FE_GENERATED__"
+            ]
+        },
+        "Dequantize_133": {
+            "names": [
+                "__FE_GENERATED__"
+            ]
+        },
+        "Conv2D_134": {
+            "names": [
+                "relu_23",
+                "backbone_encoder_blocks_3_3_dw_mid_conv_weight_DequantizeLinear_Output",
+                "backbone_encoder_blocks_3_3_dw_mid_conv_weight_bias",
+                "relu_22_DequantizeLinear_Output",
+                "relu_22_QuantizeLinear_Output"
+            ]
+        },
+        "Quantize_135": {
+            "names": [
+                "__FE_GENERATED__"
+            ]
+        },
+        "Dequantize_136": {
+            "names": [
+                "__FE_GENERATED__"
+            ]
+        },
+        "Conv2D_137": {
+            "names": [
+                "getitem_111",
+                "backbone_encoder_blocks_3_3_pw_proj_conv_weight_DequantizeLinear_Output",
+                "backbone_encoder_blocks_3_3_pw_proj_conv_weight_bias",
+                "relu_23_DequantizeLinear_Output",
+                "relu_23_QuantizeLinear_Output"
+            ]
+        },
+        "Quantize_138": {
+            "names": [
+                "__FE_GENERATED__"
+            ]
+        },
+        "Dequantize_139": {
+            "names": [
+                "__FE_GENERATED__"
+            ]
+        },
+        "Add_140": {
+            "names": [
+                "add_7",
+                "add_6_DequantizeLinear_Output",
+                "add_6_QuantizeLinear_Output",
+                "getitem_111_DequantizeLinear_Output",
+                "getitem_111_QuantizeLinear_Output"
+            ]
+        },
+        "Quantize_141": {
+            "names": [
+                "__FE_GENERATED__"
+            ]
+        },
+        "Dequantize_142": {
+            "names": [
+                "__FE_GENERATED__"
+            ]
+        },
+        "Conv2D_143": {
+            "names": [
+                "relu_24",
+                "backbone_encoder_blocks_3_4_pw_exp_conv_weight_DequantizeLinear_Output",
+                "backbone_encoder_blocks_3_4_pw_exp_conv_weight_bias",
+                "add_7_DequantizeLinear_Output",
+                "add_7_QuantizeLinear_Output"
+            ]
+        },
+        "Quantize_144": {
+            "names": [
+                "__FE_GENERATED__"
+            ]
+        },
+        "Dequantize_145": {
+            "names": [
+                "__FE_GENERATED__"
+            ]
+        },
+        "Conv2D_146": {
+            "names": [
+                "relu_25",
+                "backbone_encoder_blocks_3_4_dw_mid_conv_weight_DequantizeLinear_Output",
+                "backbone_encoder_blocks_3_4_dw_mid_conv_weight_bias",
+                "relu_24_DequantizeLinear_Output",
+                "relu_24_QuantizeLinear_Output"
+            ]
+        },
+        "Quantize_147": {
+            "names": [
+                "__FE_GENERATED__"
+            ]
+        },
+        "Dequantize_148": {
+            "names": [
+                "__FE_GENERATED__"
+            ]
+        },
+        "Conv2D_149": {
+            "names": [
+                "getitem_120",
+                "backbone_encoder_blocks_3_4_pw_proj_conv_weight_DequantizeLinear_Output",
+                "backbone_encoder_blocks_3_4_pw_proj_conv_weight_bias",
+                "relu_25_DequantizeLinear_Output",
+                "relu_25_QuantizeLinear_Output"
+            ]
+        },
+        "Quantize_150": {
+            "names": [
+                "__FE_GENERATED__"
+            ]
+        },
+        "Dequantize_151": {
+            "names": [
+                "__FE_GENERATED__"
+            ]
+        },
+        "Add_152": {
+            "names": [
+                "add_8",
+                "add_7_DequantizeLinear_Output",
+                "add_7_QuantizeLinear_Output",
+                "getitem_120_DequantizeLinear_Output",
+                "getitem_120_QuantizeLinear_Output"
+            ]
+        },
+        "Quantize_153": {
+            "names": [
+                "__FE_GENERATED__"
+            ]
+        },
+        "Dequantize_154": {
+            "names": [
+                "__FE_GENERATED__"
+            ]
+        },
+        "Conv2D_155": {
+            "names": [
+                "relu_26",
+                "backbone_encoder_blocks_3_5_pw_exp_conv_weight_DequantizeLinear_Output",
+                "backbone_encoder_blocks_3_5_pw_exp_conv_weight_bias",
+                "add_8_DequantizeLinear_Output",
+                "add_8_QuantizeLinear_Output"
+            ]
+        },
+        "Quantize_156": {
+            "names": [
+                "__FE_GENERATED__"
+            ]
+        },
+        "Dequantize_157": {
+            "names": [
+                "__FE_GENERATED__"
+            ]
+        },
+        "Conv2D_158": {
+            "names": [
+                "relu_27",
+                "backbone_encoder_blocks_3_5_dw_mid_conv_weight_DequantizeLinear_Output",
+                "backbone_encoder_blocks_3_5_dw_mid_conv_weight_bias",
+                "relu_26_DequantizeLinear_Output",
+                "relu_26_QuantizeLinear_Output"
+            ]
+        },
+        "Quantize_159": {
+            "names": [
+                "__FE_GENERATED__"
+            ]
+        },
+        "Dequantize_160": {
+            "names": [
+                "__FE_GENERATED__"
+            ]
+        },
+        "Conv2D_161": {
+            "names": [
+                "getitem_129",
+                "backbone_encoder_blocks_3_5_pw_proj_conv_weight_DequantizeLinear_Output",
+                "backbone_encoder_blocks_3_5_pw_proj_conv_weight_bias",
+                "relu_27_DequantizeLinear_Output",
+                "relu_27_QuantizeLinear_Output"
+            ]
+        },
+        "Quantize_162": {
+            "names": [
+                "__FE_GENERATED__"
+            ]
+        },
+        "Dequantize_163": {
+            "names": [
+                "__FE_GENERATED__"
+            ]
+        },
+        "Add_164": {
+            "names": [
+                "add_9",
+                "add_8_DequantizeLinear_Output",
+                "add_8_QuantizeLinear_Output",
+                "getitem_129_DequantizeLinear_Output",
+                "getitem_129_QuantizeLinear_Output"
+            ]
+        },
+        "Quantize_165": {
+            "names": [
+                "__FE_GENERATED__"
+            ]
+        },
+        "Dequantize_166": {
+            "names": [
+                "__FE_GENERATED__"
+            ]
+        },
+        "Conv2D_167": {
+            "names": [
+                "relu_28",
+                "backbone_encoder_blocks_4_0_conv_weight_DequantizeLinear_Output",
+                "backbone_encoder_blocks_4_0_conv_weight_bias",
+                "add_9_DequantizeLinear_Output",
+                "add_9_QuantizeLinear_Output"
+            ]
+        },
+        "Quantize_168": {
+            "names": [
+                "__FE_GENERATED__"
+            ]
+        },
+        "Dequantize_169": {
+            "names": [
+                "__FE_GENERATED__"
+            ]
+        },
+        "Resize_170": {
+            "names": [
+                "upsample_bilinear2d",
+                "relu_28_DequantizeLinear_Output",
+                "relu_28_QuantizeLinear_Output"
+            ]
+        },
+        "Conv2D_171": {
+            "names": [
+                "relu_29",
+                "backbone_refiner_refine_conv1_weight_DequantizeLinear_Output",
+                "backbone_refiner_refine_conv1_weight_bias",
+                "upsample_bilinear2d_DequantizeLinear_Output",
+                "upsample_bilinear2d_QuantizeLinear_Output"
+            ]
+        },
+        "Quantize_172": {
+            "names": [
+                "__FE_GENERATED__"
+            ]
+        },
+        "Dequantize_173": {
+            "names": [
+                "__FE_GENERATED__"
+            ]
+        },
+        "Conv2D_174": {
+            "names": [
+                "getitem_138",
+                "backbone_refiner_refine_conv2_weight_DequantizeLinear_Output",
+                "backbone_refiner_refine_conv2_weight_bias",
+                "relu_29_DequantizeLinear_Output",
+                "relu_29_QuantizeLinear_Output"
+            ]
+        },
+        "Quantize_175": {
+            "names": [
+                "__FE_GENERATED__"
+            ]
+        },
+        "Dequantize_176": {
+            "names": [
+                "__FE_GENERATED__"
+            ]
+        },
+        "Add_177": {
+            "names": [
+                "relu_30",
+                "upsample_bilinear2d_DequantizeLinear_Output",
+                "upsample_bilinear2d_QuantizeLinear_Output",
+                "getitem_138_DequantizeLinear_Output",
+                "getitem_138_QuantizeLinear_Output"
+            ]
+        },
+        "Quantize_178": {
+            "names": [
+                "__FE_GENERATED__"
+            ]
+        },
+        "Dequantize_179": {
+            "names": [
+                "__FE_GENERATED__"
+            ]
+        },
+        "Conv2D_180": {
+            "names": [
+                "getitem_147",
+                "backbone_decoder_0_downsample_0_weight_DequantizeLinear_Output",
+                "backbone_decoder_0_downsample_0_weight_bias",
+                "relu_30_DequantizeLinear_Output",
+                "relu_30_QuantizeLinear_Output"
+            ]
+        },
+        "Quantize_181": {
+            "names": [
+                "__FE_GENERATED__"
+            ]
+        },
+        "Dequantize_182": {
+            "names": [
+                "__FE_GENERATED__"
+            ]
+        },
+        "Conv2D_183": {
+            "names": [
+                "relu_31",
+                "backbone_decoder_0_conv1_weight_DequantizeLinear_Output",
+                "backbone_decoder_0_conv1_weight_bias",
+                "relu_30_DequantizeLinear_Output",
+                "relu_30_QuantizeLinear_Output"
+            ]
+        },
+        "Quantize_184": {
+            "names": [
+                "__FE_GENERATED__"
+            ]
+        },
+        "Dequantize_185": {
+            "names": [
+                "__FE_GENERATED__"
+            ]
+        },
+        "Conv2D_186": {
+            "names": [
+                "getitem_144",
+                "backbone_decoder_0_conv2_weight_DequantizeLinear_Output",
+                "backbone_decoder_0_conv2_weight_bias",
+                "relu_31_DequantizeLinear_Output",
+                "relu_31_QuantizeLinear_Output"
+            ]
+        },
+        "Quantize_187": {
+            "names": [
+                "__FE_GENERATED__"
+            ]
+        },
+        "Dequantize_188": {
+            "names": [
+                "__FE_GENERATED__"
+            ]
+        },
+        "Add_189": {
+            "names": [
+                "relu_32",
+                "getitem_147_DequantizeLinear_Output",
+                "getitem_147_QuantizeLinear_Output",
+                "getitem_144_DequantizeLinear_Output",
+                "getitem_144_QuantizeLinear_Output"
+            ]
+        },
+        "Quantize_190": {
+            "names": [
+                "__FE_GENERATED__"
+            ]
+        },
+        "Dequantize_191": {
+            "names": [
+                "__FE_GENERATED__"
+            ]
+        },
+        "Conv2D_192": {
+            "names": [
+                "getitem_156",
+                "backbone_decoder_1_downsample_0_weight_DequantizeLinear_Output",
+                "backbone_decoder_1_downsample_0_weight_bias",
+                "relu_32_DequantizeLinear_Output",
+                "relu_32_QuantizeLinear_Output"
+            ]
+        },
+        "Quantize_193": {
+            "names": [
+                "__FE_GENERATED__"
+            ]
+        },
+        "Dequantize_194": {
+            "names": [
+                "__FE_GENERATED__"
+            ]
+        },
+        "Conv2D_195": {
+            "names": [
+                "relu_33",
+                "backbone_decoder_1_conv1_weight_DequantizeLinear_Output",
+                "backbone_decoder_1_conv1_weight_bias",
+                "relu_32_DequantizeLinear_Output",
+                "relu_32_QuantizeLinear_Output"
+            ]
+        },
+        "Quantize_196": {
+            "names": [
+                "__FE_GENERATED__"
+            ]
+        },
+        "Dequantize_197": {
+            "names": [
+                "__FE_GENERATED__"
+            ]
+        },
+        "Conv2D_198": {
+            "names": [
+                "getitem_153",
+                "backbone_decoder_1_conv2_weight_DequantizeLinear_Output",
+                "backbone_decoder_1_conv2_weight_bias",
+                "relu_33_DequantizeLinear_Output",
+                "relu_33_QuantizeLinear_Output"
+            ]
+        },
+        "Quantize_199": {
+            "names": [
+                "__FE_GENERATED__"
+            ]
+        },
+        "Dequantize_200": {
+            "names": [
+                "__FE_GENERATED__"
+            ]
+        },
+        "Add_201": {
+            "names": [
+                "relu_34",
+                "getitem_156_DequantizeLinear_Output",
+                "getitem_156_QuantizeLinear_Output",
+                "getitem_153_DequantizeLinear_Output",
+                "getitem_153_QuantizeLinear_Output"
+            ]
+        },
+        "Quantize_202": {
+            "names": [
+                "__FE_GENERATED__"
+            ]
+        },
+        "Dequantize_203": {
+            "names": [
+                "__FE_GENERATED__"
+            ]
+        },
+        "Conv2D_204": {
+            "names": [
+                "conv2d_54",
+                "bin_head_weight_DequantizeLinear_Output",
+                "bin_head_bias",
+                "relu_34_DequantizeLinear_Output",
+                "relu_34_QuantizeLinear_Output"
+            ]
+        },
+        "Quantize_205": {
+            "names": [
+                "__FE_GENERATED__"
+            ]
+        },
+        "Dequantize_206": {
+            "names": [
+                "__FE_GENERATED__"
+            ]
+        },
+        "Softmax_207": {
+            "names": [
+                "softmax",
+                "conv2d_54_DequantizeLinear_Output",
+                "conv2d_54_QuantizeLinear_Output"
+            ]
+        },
+        "Mul_208": {
+            "names": [
+                "mul",
+                "softmax_DequantizeLinear_Output",
+                "softmax_QuantizeLinear_Output"
+            ]
+        },
+        "Quantize_209": {
+            "names": [
+                "__FE_GENERATED__"
+            ]
+        },
+        "Dequantize_210": {
+            "names": [
+                "__FE_GENERATED__"
+            ]
+        },
+        "ReduceSum_211": {
+            "names": [
+                "sum_1",
+                "mul_DequantizeLinear_Output",
+                "mul_QuantizeLinear_Output"
+            ]
+        },
+        "Conv2D_212": {
+            "names": [
+                "conv2d_53",
+                "pi_head_weight_DequantizeLinear_Output",
+                "pi_head_bias",
+                "relu_34_DequantizeLinear_Output",
+                "relu_34_QuantizeLinear_Output"
+            ]
+        },
+        "Quantize_213": {
+            "names": [
+                "__FE_GENERATED__"
+            ]
+        },
+        "Dequantize_214": {
+            "names": [
+                "__FE_GENERATED__"
+            ]
+        },
+        "Softmax_215": {
+            "names": [
+                "softmax_1",
+                "conv2d_53_DequantizeLinear_Output",
+                "conv2d_53_QuantizeLinear_Output"
+            ]
+        },
+        "Slice_216": {
+            "names": [
+                "slice_2",
+                "softmax_1_DequantizeLinear_Output",
+                "softmax_1_QuantizeLinear_Output"
+            ]
+        },
+        "Quantize_218": {
+            "names": [
+                "__FE_GENERATED__"
+            ]
+        }
+    }
+}
