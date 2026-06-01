@@ -47,8 +47,9 @@ class IncidentManager:
         "bin": "cleaning",
     }
     
-    def __init__(self, routing_service_url: str):
+    def __init__(self, routing_service_url: str, map_service_url: Optional[str] = None):
         self.routing_service_url = routing_service_url
+        self.map_service_url = map_service_url  # Optional parameter for compatibility with tests
         
         # Initialize staff tracker
         self.staff_tracker = create_mock_staff_tracker(num_per_role=3)
