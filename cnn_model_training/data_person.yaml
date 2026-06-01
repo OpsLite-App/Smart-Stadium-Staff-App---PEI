@@ -1,0 +1,4 @@
+train: person_dataset/images/train
+val: person_dataset/images/val
+nc: 1
+names: ['person']
