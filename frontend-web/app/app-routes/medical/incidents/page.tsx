@@ -203,15 +203,20 @@ export default function MedicalIncidentsPage() {
         timeout: 5000,
       });
       
-      // Buscar meus despachos ativos
-      const dispatchesRes = await axios.get(`${EMERGENCY_SERVICE}/dispatch/active`, {
-        timeout: 5000,
-      });
-      
       // Filtrar despachos do médico atual. Alguns dispatches automáticos usam
       // o formato STAFF_MEDICAL_001; os manuais usam o id real do utilizador.
       const myId = String(user.id);
       const syntheticMedicalId = `STAFF_MEDICAL_${myId.padStart(3, '0')}`;
+      const [dispatchesRes, dispatchHistoryRes] = await Promise.all([
+        axios.get(`${EMERGENCY_SERVICE}/dispatch/active`, {
+          timeout: 5000,
+        }),
+        axios.get(`${EMERGENCY_SERVICE}/dispatch/responder/${myId}`, {
+          params: { responder_alias: syntheticMedicalId, limit: 100 },
+          timeout: 5000,
+        }).catch(() => ({ data: [] })),
+      ]);
+
       const myActiveDispatches = ((dispatchesRes.data || []) as MyDispatch[]).filter(
         (d) =>
           (d.responder_id === myId || d.responder_id === syntheticMedicalId) &&
@@ -219,9 +224,15 @@ export default function MedicalIncidentsPage() {
       );
 
       const myIncidentIds = new Set(myActiveDispatches.map((dispatch) => dispatch.incident_id));
+      const myCompletedIncidentIds = new Set(
+        ((dispatchHistoryRes.data || []) as MyDispatch[])
+          .filter((dispatch) => dispatch.status === 'completed')
+          .map((dispatch) => dispatch.incident_id)
+      );
       const visibleIncidents = ((incidentsRes.data?.incidents || []) as MedicalIncident[]).filter((incident) => {
         const status = String(incident.status || '').toLowerCase();
         if (status === 'resolved') return false;
+        if (myCompletedIncidentIds.has(incident.id)) return false;
         if (status === 'false_alarm') return myIncidentIds.has(incident.id);
         return true;
       });

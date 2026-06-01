@@ -450,6 +450,14 @@ class IncidentManager:
         if incident_db.status in self.TERMINAL_INCIDENT_STATUSES:
             raise ValueError("Cannot dispatch responders to a closed incident")
 
+        existing_dispatch = db.query(ResponderDispatch).filter(
+            ResponderDispatch.incident_id == request.incident_id,
+            ResponderDispatch.responder_id == request.responder_id,
+            ResponderDispatch.status != "declined"
+        ).first()
+        if existing_dispatch:
+            raise ValueError("Responder has already been assigned to this incident")
+
         route_data = {"path": [], "distance": 0, "eta_seconds": 0}
         try:
             async with httpx.AsyncClient(timeout=5.0) as client:

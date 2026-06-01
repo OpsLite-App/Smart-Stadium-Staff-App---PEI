@@ -99,6 +99,15 @@ http:
         - websocket-protection
       service: websocket
 
+    frontend:
+      rule: PathPrefix(`/`)
+      priority: 1
+      entryPoints:
+        - web
+      middlewares:
+        - security-headers
+      service: frontend
+
   middlewares:
     security-headers:
       headers:
@@ -251,3 +260,8 @@ http:
       loadBalancer:
         servers:
           - url: http://ws-gateway:8089
+
+    frontend:
+      loadBalancer:
+        servers:
+          - url: http://frontend-web:3000

@@ -1,20 +1,27 @@
 # OpsLite API Gateway
 
-Traefik provides a single public entry point for the OpsLite microservices:
+Traefik provides a single public entry point for the OpsLite frontend and
+microservices:
 
 ```text
-http://localhost:8080
+http://localhost
 ```
 
-The existing direct service ports remain available for debugging. The Docker
-frontend already forwards its same-origin `/api/*` requests to Traefik through
-`API_GATEWAY_URL=http://traefik-gateway:8080`, and browser WebSocket traffic
-uses `ws://localhost:8080/ws`.
+Port `8080` remains available for debugging and load testing. The Docker
+frontend forwards its same-origin `/api/*` requests to Traefik through
+`API_GATEWAY_URL=http://traefik-gateway:8080`. Browser WebSocket traffic uses
+the same public host through `/ws`, including when the Android shell loads the
+app from `http://opslite-server.local`.
+
+For a local-router demonstration, advertise the VM hostname with Avahi and open
+`http://opslite-server.local` from the phone. For a public deployment, create a
+DNS record such as `opslite.nmiguelcosta.pt` and terminate TLS before Traefik.
 
 ## Public Routes
 
 | Public prefix | Target service |
 | --- | --- |
+| `/` | `frontend-web` |
 | `/api/auth/*` | `auth-service` |
 | `/api/routing/*` | `routing-service` |
 | `/api/gis/*` | `routing-service` |
@@ -32,6 +39,7 @@ uses `ws://localhost:8080/ws`.
 docker compose -f docker-compose.dev.yml up -d traefik
 docker compose -f docker-compose.dev.yml ps traefik
 
+curl -I http://localhost
 curl http://localhost:8080/api/routing/route/pgrouting/geojson?from_node=62\&to_node=66
 curl http://localhost:8080/api/gis/nodes?floor_id=1
 curl http://localhost:8080/api/emergency/incidents
