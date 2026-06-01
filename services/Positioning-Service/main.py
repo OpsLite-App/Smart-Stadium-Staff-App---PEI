@@ -4,6 +4,8 @@ from database import get_db, init_db
 from schemas import FingerprintCreate, FingerprintResponse, LocateRequest, PositionResponse, SimulatedPositionUpdate
 import positioning
 
+from typing import List
+
 app = FastAPI(title="Positioning Service")
 
 
@@ -28,6 +30,12 @@ def locate(req: LocateRequest, db: Session = Depends(get_db)):
 @app.put("/position/simulate", response_model=PositionResponse)
 def simulate(req: SimulatedPositionUpdate, db: Session = Depends(get_db)):
     return positioning.update_simulated_position(db, req.staff_id, req.x, req.y, req.zone, req.location_id)
+
+
+@app.get("/positions", response_model=List[PositionResponse])
+def get_all_positions(db: Session = Depends(get_db)):
+    from models import StaffPosition
+    return db.query(StaffPosition).all()
 
 
 @app.get("/position/{staff_id}", response_model=PositionResponse)

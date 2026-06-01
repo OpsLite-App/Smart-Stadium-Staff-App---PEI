@@ -4,7 +4,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import axios from 'axios';
 import { useRouter } from 'next/navigation';
 import { useAuthStore } from '@/lib/stores/useAuthStore';
-import { useTranslation } from 'react-i18next';
+import { useLangStore } from '@/lib/stores/useLangStore';
 import {
   User,
   Shield,
@@ -27,10 +27,10 @@ import {
 import { Avatar } from '@/components/ui/Avatar';
 import { Switch } from '@/components/ui/Switch';
 import { Badge } from '@/components/ui/Badge';
-import { useNavigationStore } from '@/lib/stores/useNavigationStore';
-import { AUTH_SERVICE, EMERGENCY_SERVICE, MAINTENANCE_SERVICE, api } from '@/lib/services/api';
+import { RouteWaypoint, useNavigationStore } from '@/lib/stores/useNavigationStore';
+import { AUTH_SERVICE, EMERGENCY_EVENTS_URL, EMERGENCY_SERVICE, MAINTENANCE_SERVICE, api } from '@/lib/services/api';
 
-type Role = 'Security' | 'Cleaning' | 'Supervisor' | string;
+type Role = 'Security' | 'Cleaning' | 'Supervisor' | 'Medical' | string;
 
 interface StaffApiItem {
   id: number;
@@ -85,16 +85,22 @@ interface RecentActivity {
   status: 'completed' | 'pending' | 'in-progress';
 }
 
-function getTokenFromStorage(): string {
-  if (typeof window === 'undefined') return '';
-  try {
-    const raw = localStorage.getItem('auth-storage');
-    if (!raw) return '';
-    const parsed = JSON.parse(raw);
-    return parsed?.state?.user?.token || '';
-  } catch {
-    return '';
-  }
+interface PendingDispatch {
+  id: string;
+  incident_id: string;
+  responder_id: string;
+  route_nodes?: string[];
+  eta_seconds?: number;
+  incident_type?: string;
+  incident_location?: string;
+  incident_severity?: string;
+}
+
+interface IncidentSummary {
+  id: string;
+  incident_type?: string;
+  location_node?: string;
+  severity?: string;
 }
 
 function relativeTime(iso: string): string {
@@ -112,6 +118,7 @@ function roleIcon(role: Role) {
   if (role === 'Security') return Shield;
   if (role === 'Cleaning') return Brush;
   if (role === 'Supervisor') return UserCog;
+  if (role === 'Medical') return AlertTriangle;
   return User;
 }
 
@@ -125,7 +132,7 @@ function roleBadgeVariant(role: Role): 'primary' | 'success' | 'warning' | 'defa
 export default function ProfilePage() {
   const router = useRouter();
   const { user, logout } = useAuthStore();
-  const { i18n } = useTranslation();
+  const { lang: language, setLang } = useLangStore();
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -134,7 +141,6 @@ export default function ProfilePage() {
   const [pushEnabled, setPushEnabled] = useState(true);
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [vibrationEnabled, setVibrationEnabled] = useState(false);
-  const [language, setLanguage] = useState<'pt' | 'en'>('pt');
   const [fontSize, setFontSize] = useState<'sm' | 'md' | 'lg'>(() =>
     (localStorage.getItem('font-size') as 'sm' | 'md' | 'lg') || 'md'
   );
@@ -155,13 +161,8 @@ export default function ProfilePage() {
     badges: [],
   });
   const [recentActivity, setRecentActivity] = useState<RecentActivity[]>([]);
-  const [pendingDispatches, setPendingDispatches] = useState<any[]>([]);
+  const [pendingDispatches, setPendingDispatches] = useState<PendingDispatch[]>([]);
   const [dispatchActionLoading, setDispatchActionLoading] = useState<string | null>(null);
-
-  useEffect(() => {
-    const storedLang = localStorage.getItem('user-language');
-    if (storedLang === 'pt' || storedLang === 'en') setLanguage(storedLang);
-  }, []);
 
   useEffect(() => {
     const sizeMap = { sm: '14px', md: '16px', lg: '19px' };
@@ -181,21 +182,18 @@ export default function ProfilePage() {
       setLoading(true);
       setError('');
 
-      const token = user.token || getTokenFromStorage();
-      const headers = token ? { Authorization: `Bearer ${token}` } : undefined;
+      const requestConfig = { withCredentials: true, timeout: 6000 };
 
       try {
         const [staffRes, emergencyStatsRes, timelineRes, maintenanceStatsRes] = await Promise.allSettled([
-          axios.get<StaffApiItem[]>(`${AUTH_SERVICE}/staff`, { headers, timeout: 6000 }),
-          axios.get<EmergencyStats>(`${EMERGENCY_SERVICE}/stats`, { headers, timeout: 6000 }),
+          axios.get<StaffApiItem[]>(`${AUTH_SERVICE}/staff`, requestConfig),
+          axios.get<EmergencyStats>(`${EMERGENCY_SERVICE}/stats`, requestConfig),
           axios.get<TimelineEntry[]>(`${EMERGENCY_SERVICE}/stats/timeline`, {
-            headers,
             params: { hours: 24 },
-            timeout: 6000,
+            ...requestConfig,
           }),
           axios.get<MaintenanceStaffStats>(`${MAINTENANCE_SERVICE}/stats/staff/${user.id ?? ''}`, {
-            headers,
-            timeout: 6000,
+            ...requestConfig,
           }),
         ]);
 
@@ -305,11 +303,17 @@ export default function ProfilePage() {
         if (user.role !== 'Supervisor') {
           try {
             const [dispatchRes, incidentRes] = await Promise.all([
-              axios.get(`${EMERGENCY_SERVICE}/dispatch/active`, { headers, timeout: 5000 }),
-              axios.get(`${EMERGENCY_SERVICE}/incidents`, { headers, timeout: 5000 }),
+              axios.get(`${EMERGENCY_SERVICE}/dispatch/active`, {
+                withCredentials: true,
+                timeout: 5000,
+              }),
+              axios.get(`${EMERGENCY_SERVICE}/incidents`, {
+                withCredentials: true,
+                timeout: 5000,
+              }),
             ]);
-            const allDispatches: any[] = dispatchRes.data ?? [];
-            const allIncidents: any[] = incidentRes.data?.incidents ?? incidentRes.data ?? [];
+            const allDispatches: PendingDispatch[] = dispatchRes.data ?? [];
+            const allIncidents: IncidentSummary[] = incidentRes.data?.incidents ?? incidentRes.data ?? [];
             const myId = String(user.id);
             const mine = allDispatches.filter(
               d => d.responder_id === myId ||
@@ -338,28 +342,72 @@ export default function ProfilePage() {
     };
 
     void run();
+
+    const eventSource =
+      typeof window !== 'undefined'
+        ? new EventSource(EMERGENCY_EVENTS_URL, { withCredentials: true })
+        : null;
+
+    const handleRealtimeUpdate = (event: MessageEvent) => {
+      try {
+        const parsed = JSON.parse(event.data) as { type?: string };
+        console.debug('[Profile SSE] Received update:', parsed.type || 'unknown');
+      } catch {
+        console.debug('[Profile SSE] Received update');
+      }
+      void run();
+    };
+
+    [
+      'incident.created',
+      'incident.updated',
+      'incident.escalated',
+      'incident.resolved',
+      'sensor.alert',
+      'dispatch.created',
+      'dispatch.accepted',
+      'dispatch.declined',
+      'dispatch.completed',
+      'dispatch.arrived',
+      'evacuation.created',
+      'evacuation.safe',
+      'evacuation.completed',
+    ].forEach((eventType) => {
+      eventSource?.addEventListener(eventType, handleRealtimeUpdate);
+    });
+
+    eventSource?.addEventListener('connected', () => {
+      console.info('[Profile SSE] Connected');
+    });
+
+    eventSource?.addEventListener('error', () => {
+      console.warn('[Profile SSE] Disconnected; the browser will retry automatically');
+    });
+
+    return () => {
+      eventSource?.close();
+    };
   }, [user]);
 
   const handleLanguageChange = (lang: 'pt' | 'en') => {
-    setLanguage(lang);
-    i18n.changeLanguage(lang);
-    localStorage.setItem('user-language', lang);
+    setLang(lang);
   };
 
   const { setNavigation } = useNavigationStore();
 
-  const handleNavigateDispatch = async (d: any) => {
-    setDispatchActionLoading(`nav-${d.id}`);
-    try {
-      const fromNode = 'N1';
-      const waypoints = d.route_nodes?.length >= 2
-        ? d.route_nodes.map((n: string) => ({ node_id: n, x: 0, y: 0 }))
-        : (await api.getRoute(fromNode, d.incident_location ?? 'N1').catch(() => ({ waypoints: [] }))).waypoints;
+  const handleNavigateDispatch = async (d: PendingDispatch) => {
+      setDispatchActionLoading(`nav-${d.id}`);
+      try {
+        const fromNode = '62';
+      const routeNodes = d.route_nodes ?? [];
+      const waypoints: RouteWaypoint[] = routeNodes.length >= 2
+        ? routeNodes.map((n: string) => ({ node_id: n, x: 0, y: 0 }))
+        : (await api.getRoute(fromNode, d.incident_location ?? '62').catch(() => ({ waypoints: [] }))).waypoints;
       setNavigation({
         taskId: d.id, binId: d.incident_id,
         binName: `${(d.incident_type ?? 'incident').toUpperCase()} — ${d.incident_location}`,
-        targetNode: d.incident_location ?? 'N1', fromNode,
-        waypoints: waypoints as any, etaSeconds: d.eta_seconds ?? 0,
+        targetNode: d.incident_location ?? '62', fromNode,
+        waypoints, etaSeconds: d.eta_seconds ?? 0,
       });
       router.push('/app-routes/map');
     } catch { alert('Não foi possível calcular a rota.'); }
@@ -429,18 +477,18 @@ export default function ProfilePage() {
         {/* Pending dispatches banner */}
         {pendingDispatches.length > 0 && (
           <div className="mb-4 rounded-xl border border-blue-200 bg-blue-50 p-4">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex min-w-0 items-center gap-2">
                 <AlertTriangle size={16} className="text-blue-500" />
                 <span className="font-semibold text-blue-700 text-sm">
                   {pendingDispatches.length} tarefa{pendingDispatches.length > 1 ? 's' : ''} atribuída{pendingDispatches.length > 1 ? 's' : ''} a ti
                 </span>
               </div>
               <button
-                onClick={() => router.push('/app-routes/tasks')}
+                onClick={() => router.push(user.role === 'Medical' ? '/app-routes/medical/incidents' : '/app-routes/tasks')}
                 className="text-xs font-medium text-blue-600 hover:underline"
               >
-                Ver no separador Tarefas →
+                Ver no separador {user.role === 'Medical' ? 'Incidentes Médicos' : 'Tarefas'} →
               </button>
             </div>
           </div>
@@ -463,10 +511,10 @@ export default function ProfilePage() {
             {loading ? <span className="text-xs text-gray-500">A atualizar...</span> : null}
           </div>
 
-          <div className="grid grid-cols-2 gap-4 mt-4">
-            <div className="flex items-center gap-2 text-[#6B7280]">
+          <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div className="flex min-w-0 items-center gap-2 text-[#6B7280]">
               <Mail size={16} />
-              <span className="text-sm">{user.email}</span>
+              <span className="break-all text-sm">{user.email}</span>
             </div>
             <div className="flex items-center gap-2 text-[#6B7280]">
               <Phone size={16} />
@@ -519,7 +567,7 @@ export default function ProfilePage() {
               <div className="p-2 bg-purple-100 rounded-lg">
                 <Star size={16} className="text-purple-600" />
               </div>
-              <span className="text-xs text-[#6B7280]">Rating</span>
+              <span className="text-xs text-[#6B7280]">Avaliação</span>
             </div>
             <span className="text-xl font-bold text-[#1F2937]">{profileStats.rating}</span>
           </div>
@@ -667,7 +715,7 @@ export default function ProfilePage() {
               />
               <div className="flex justify-between text-xs text-gray-400">
                 <span>Baixo</span>
-                <button onClick={() => setContrast(100)} className="text-[#4F46E5] hover:underline">Reset</button>
+                <button onClick={() => setContrast(100)} className="text-[#4F46E5] hover:underline">Repor</button>
                 <span>Alto</span>
               </div>
             </div>

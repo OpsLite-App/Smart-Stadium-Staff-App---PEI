@@ -99,7 +99,7 @@ def initialize_queue_state(location_id: str, location_type: str, num_servers: in
     queue_state[location_id] = {
         "location_type": location_type,
         "num_servers": num_servers,
-        "arrival_rate": 0.0,
+        "arrival_rate": None,  # None = sem observação ainda
         "service_rate": get_default_service_rate(location_type),
         "current_queue_length": 0,
         "observations": [],
@@ -153,11 +153,15 @@ def update_queue_state(update: QueueStateUpdate):
     # Update arrival rate with smoothing
     if update.arrivals_last_minute is not None:
         new_arrival_rate = update.arrivals_last_minute  # per minute
-        state["arrival_rate"] = smooth_arrival_rate(
-            state["arrival_rate"],
-            new_arrival_rate,
-            alpha=0.3
-        )
+        if state["arrival_rate"] is None:
+            # Primeira observação — usar diretamente sem smoothing
+            state["arrival_rate"] = float(new_arrival_rate)
+        else:
+            state["arrival_rate"] = smooth_arrival_rate(
+                state["arrival_rate"],
+                new_arrival_rate,
+                alpha=0.3
+            )
     
     # Update service rate if departures observed
     if update.departures_last_minute is not None and update.departures_last_minute > 0:
@@ -210,6 +214,10 @@ def get_wait_time(location_id: str):
     
     state = queue_state[location_id]
     
+    # Sem observações ainda
+    if state["arrival_rate"] is None:
+        raise HTTPException(status_code=404, detail=f"No arrival data yet for {location_id}")
+
     # Calculate metrics
     if state["num_servers"] == 1:
         metrics = mm1_queue(state["arrival_rate"], state["service_rate"])
@@ -222,6 +230,22 @@ def get_wait_time(location_id: str):
     
     if not metrics:
         raise HTTPException(status_code=500, detail="Failed to calculate metrics")
+
+    # Sistema instável (utilização > 1) — estimar pelo tamanho atual da fila
+    if not metrics.is_stable:
+        queue_len = state.get("current_queue_length", 0)
+        wait_time = round(queue_len / state["service_rate"], 1) if state["service_rate"] > 0 else 0.0
+        return WaitTimeResponse(
+            location_id=location_id,
+            avg_wait_time_minutes=wait_time,
+            wait_time_range=(round(wait_time * 0.8, 1), round(wait_time * 1.2, 1)),
+            queue_length=float(queue_len),
+            status="crowded",
+            confidence="medium",
+            utilization=min(metrics.utilization, 1.0),
+            is_stable=False,
+            timestamp=state["last_update"]
+        )
     
     # Calculate confidence bounds
     wait_time_range = calculate_wait_time_bounds(metrics)
@@ -306,13 +330,18 @@ def get_all_queues():
             )
         
         if metrics:
+            queue_len = state["current_queue_length"]
+            wait_time = metrics.avg_wait_time
+            # Sistema instável — estimar pelo tamanho da fila
+            if not metrics.is_stable:
+                wait_time = round(queue_len / state["service_rate"], 1) if state["service_rate"] > 0 else 0.0
             result.append({
                 "location_id": location_id,
                 "location_type": state["location_type"],
-                "wait_time_minutes": metrics.avg_wait_time,
-                "queue_length": state["current_queue_length"],
-                "status": metrics.status.value,
-                "utilization": metrics.utilization,
+                "wait_time_minutes": wait_time,
+                "queue_length": queue_len,
+                "status": "crowded" if not metrics.is_stable else metrics.status.value,
+                "utilization": min(round(metrics.utilization, 2), 1.0),
                 "last_update": state["last_update"]
             })
     

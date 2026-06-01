@@ -24,7 +24,7 @@ def test_create_incident_persistence(db_session):
     # Setup
     manager = IncidentManager("http://routing", "http://map")
     incident_in = IncidentCreate(
-        incident_type="fire",
+        incident_type="security",
         location_node="N_ENTRANCE_1",
         severity="critical",
         description="Fogo detetado na entrada principal"

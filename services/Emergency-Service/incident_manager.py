@@ -17,6 +17,7 @@ from models import (
 from schemas import (
     IncidentCreate, IncidentUpdate, IncidentResponse,
     SensorAlertCreate, SensorAlertResponse,
+    normalize_incident_category,
     DispatchResponse, ManualDispatchRequest
 )
 from nearest_responder import (
@@ -28,22 +29,39 @@ from nearest_responder import (
 
 class IncidentManager:
     """Manages emergency incidents lifecycle"""
+
+    TERMINAL_INCIDENT_STATUSES = {IncidentStatus.RESOLVED, IncidentStatus.FALSE_ALARM}
+    OPEN_DISPATCH_STATUSES = {"dispatched", "en_route", "arrived"}
+
+    LEGACY_INCIDENT_CATEGORY_ALIASES = {
+        "fire": "security",
+        "smoke": "security",
+        "gas_leak": "security",
+        "structural": "security",
+        "electrical": "security",
+        "chemical": "security",
+        "bomb_threat": "security",
+        "other": "security",
+        "medical": "medic",
+        "maintenance": "cleaning",
+        "bin": "cleaning",
+    }
     
-    def __init__(self, routing_service_url: str, map_service_url: str):
+    def __init__(self, routing_service_url: str):
         self.routing_service_url = routing_service_url
-        self.map_service_url = map_service_url
         
         # Initialize staff tracker
         self.staff_tracker = create_mock_staff_tracker(num_per_role=3)
-        print(f"✅ Staff tracker initialized with {len(self.staff_tracker.staff)} staff members")
+        print(f"[INFO] Staff tracker initialized: staff_count={len(self.staff_tracker.staff)}")
     
     # ========== INCIDENT CREATION ==========
     
     def create_incident(self, db: Session, incident_data: IncidentCreate) -> IncidentResponse:
         """Create new emergency incident"""
+        incident_type = normalize_incident_category(incident_data.incident_type)
         incident = EmergencyIncident(
             id=f"inc-{uuid.uuid4().hex[:8]}",
-            incident_type=IncidentType(incident_data.incident_type),
+            incident_type=IncidentType(incident_type),
             location_node=incident_data.location_node,
             severity=IncidentSeverity(incident_data.severity),
             description=incident_data.description,
@@ -60,17 +78,10 @@ class IncidentManager:
         db.commit()
         db.refresh(incident)
         
-        # Se for fire critical, criar evacuação E atualizar campo
-        if incident_data.incident_type == "fire" and incident_data.severity == "critical":
-            # Este método deveria retornar o incidente atualizado
-            incident.evacuation_triggered = True
-            db.commit()
-            db.refresh(incident)
-        
         # Log creation
         self._log_event(db, incident.id, "created", f"Incident created: {incident.incident_type.value}")
         
-        print(f"🚨 Created incident {incident.id}: {incident.incident_type.value} @ {incident.location_node} [{incident.severity.value}]")
+        print(f"[INFO] Incident created: incident_id={incident.id} type={incident.incident_type.value} location_node={incident.location_node} severity={incident.severity.value}")
         
         return self._incident_to_response(incident)
     
@@ -79,14 +90,14 @@ class IncidentManager:
         
         # Map sensor type to incident type
         sensor_to_incident = {
-            "smoke": "smoke",
-            "fire": "fire",
-            "heat": "fire",
-            "gas": "gas_leak",
-            "co2": "gas_leak"
+            "smoke": "security",
+            "fire": "security",
+            "heat": "security",
+            "gas": "security",
+            "co2": "security",
         }
         
-        incident_type = sensor_to_incident.get(alert.sensor_type, "other")
+        incident_type = sensor_to_incident.get(alert.sensor_type, "security")
         
         # Create sensor alert record
         sensor_alert = SensorAlert(
@@ -149,7 +160,14 @@ class IncidentManager:
             query = query.filter(EmergencyIncident.severity == IncidentSeverity(filters['severity']))
         
         if 'incident_type' in filters:
-            query = query.filter(EmergencyIncident.incident_type == IncidentType(filters['incident_type']))
+            incident_type = normalize_incident_category(filters['incident_type'])
+            matching_values = [IncidentType(incident_type)]
+            legacy_matches = [
+                IncidentType(value)
+                for value, canonical in self.LEGACY_INCIDENT_CATEGORY_ALIASES.items()
+                if canonical == incident_type and value in IncidentType._value2member_map_
+            ]
+            query = query.filter(EmergencyIncident.incident_type.in_(matching_values + legacy_matches))
         
         query = query.order_by(EmergencyIncident.created_at.desc())
         incidents = query.all()
@@ -188,13 +206,49 @@ class IncidentManager:
         # Update fields
         if update.status:
             new_status = IncidentStatus(update.status)
+
+            if incident.status in self.TERMINAL_INCIDENT_STATUSES and new_status != incident.status:
+                raise ValueError("Incident is already closed and cannot be updated")
+
+            dispatches = self._get_dispatches_for_incident(db, incident_id)
+
+            if new_status == IncidentStatus.RESOLVED:
+                if not dispatches:
+                    raise ValueError("Cannot resolve incident without assigned team")
+
+                completed_dispatches = [d for d in dispatches if d.status == "completed"]
+                if not completed_dispatches:
+                    raise ValueError("At least one assigned responder must complete the incident before supervisor resolution")
+
+                self._close_open_dispatches(
+                    db,
+                    incident_id,
+                    "completed",
+                    {
+                        "closed_by_supervisor": True,
+                        "supervisor_notes": update.notes,
+                    },
+                )
+
+            elif new_status == IncidentStatus.FALSE_ALARM:
+                self._close_open_dispatches(
+                    db,
+                    incident_id,
+                    "false_alarm",
+                    {
+                        "false_alarm": True,
+                        "cancelled_by_supervisor": True,
+                        "supervisor_notes": update.notes,
+                    },
+                )
+
             incident.status = new_status
             
             if new_status == IncidentStatus.RESPONDING and not incident.responded_at:
                 incident.responded_at = datetime.now()
             elif new_status == IncidentStatus.CONTAINED and not incident.contained_at:
                 incident.contained_at = datetime.now()
-            elif new_status == IncidentStatus.RESOLVED and not incident.resolved_at:
+            elif new_status in self.TERMINAL_INCIDENT_STATUSES and not incident.resolved_at:
                 incident.resolved_at = datetime.now()
         
         if update.severity:
@@ -254,7 +308,7 @@ class IncidentManager:
             f"Escalated from {current_severity.value} to {new_severity.value}"
         )
         
-        print(f"⬆️  Incident {incident_id} escalated to {new_severity.value}")
+        print(f"[WARNING] Incident escalated: incident_id={incident_id} severity={new_severity.value}")
         
         return self._incident_to_response(incident)
     
@@ -296,8 +350,11 @@ class IncidentManager:
         ).first()
         
         if not incident_db:
-            print(f"❌ Incident {incident_id} not found")
+            print(f"[ERROR] Incident not found: incident_id={incident_id}")
             return []
+
+        if incident_db.status in self.TERMINAL_INCIDENT_STATUSES:
+            raise ValueError("Cannot dispatch responders to a closed incident")
         
         # Convert to IncidentRequest for nearest_responder
         incident_request = IncidentRequest(
@@ -305,7 +362,7 @@ class IncidentManager:
             location=incident_db.location_node,
             type=incident_db.incident_type.value,
             priority=incident_db.severity.value,
-            required_role=StaffRole(responder_role.lower()),
+            required_role=StaffRole(normalize_incident_category(responder_role)),
             timestamp=incident_db.created_at.isoformat()
         )
         
@@ -318,7 +375,7 @@ class IncidentManager:
         )
         
         if not assignments:
-            print(f"❌ No available {responder_role} responders found")
+            print(f"[WARNING] No responders available: role={responder_role}")
             return []
         
         # Create dispatches in DB
@@ -329,7 +386,7 @@ class IncidentManager:
                 id=f"dispatch-{uuid.uuid4().hex[:8]}",
                 incident_id=incident_id,
                 responder_id=assignment.staff_id,
-                responder_role=responder_role,
+                responder_role=normalize_incident_category(responder_role),
                 route_nodes=assignment.path,
                 route_distance=assignment.distance,
                 eta_seconds=assignment.eta_seconds
@@ -352,7 +409,7 @@ class IncidentManager:
             f"Dispatched {len(dispatches)} {responder_role} responders"
         )
         
-        print(f"✅ Dispatched {len(dispatches)} {responder_role} to incident {incident_id}")
+        print(f"[INFO] Responders dispatched: incident_id={incident_id} role={responder_role} count={len(dispatches)}")
         
         return [self._dispatch_to_response(d) for d in dispatches]
     
@@ -387,8 +444,11 @@ class IncidentManager:
         ).first()
 
         if not incident_db:
-            print(f"❌ Incident {request.incident_id} not found")
+            print(f"[ERROR] Incident not found: incident_id={request.incident_id}")
             return None
+
+        if incident_db.status in self.TERMINAL_INCIDENT_STATUSES:
+            raise ValueError("Cannot dispatch responders to a closed incident")
 
         route_data = {"path": [], "distance": 0, "eta_seconds": 0}
         try:
@@ -404,18 +464,22 @@ class IncidentManager:
                 if response.status_code == 200:
                     route_data = response.json()
                 else:
-                    print(f"⚠️  Route unavailable for {request.responder_id}, dispatching without route")
+                    print(f"[WARNING] Route unavailable; dispatching without route: responder_id={request.responder_id}")
         except httpx.RequestError as e:
-            print(f"⚠️  Routing Service unreachable for {request.responder_id}: {e}")
+            print(f"[WARNING] Routing Service unreachable: responder_id={request.responder_id} error={e}")
 
         dispatch = ResponderDispatch(
             id=f"dispatch-{uuid.uuid4().hex[:8]}",
             incident_id=request.incident_id,
             responder_id=request.responder_id,
-            responder_role=request.responder_role,
+            responder_role=normalize_incident_category(request.responder_role),
             route_nodes=route_data.get("path", []),
             route_distance=route_data.get("distance", 0),
-            eta_seconds=route_data.get("eta_seconds", 0)
+            eta_seconds=route_data.get("eta_seconds", 0),
+            incident_metadata={
+                "responder_name": request.responder_name,
+                "assigned_from": request.current_position,
+            }
         )
 
         db.add(dispatch)
@@ -435,16 +499,131 @@ class IncidentManager:
             f"Supervisor dispatched {request.responder_id} ({request.responder_role})"
         )
 
-        print(f"✅ Manually dispatched {request.responder_id} to incident {request.incident_id}")
+        print(f"[INFO] Responder manually dispatched: responder_id={request.responder_id} incident_id={request.incident_id}")
         return self._dispatch_to_response(dispatch)
     
     def get_active_dispatches(self, db: Session) -> List[DispatchResponse]:
-        """Get all active responder dispatches"""
+        """Get active responder dispatches and supervisor cancellations still visible to staff."""
         dispatches = db.query(ResponderDispatch).filter(
-            ResponderDispatch.status.in_(["dispatched", "en_route"])
+            ResponderDispatch.status.in_(["dispatched", "en_route", "arrived", "false_alarm"])
         ).all()
         
         return [self._dispatch_to_response(d) for d in dispatches]
+
+    def _get_dispatches_for_incident(self, db: Session, incident_id: str) -> List[ResponderDispatch]:
+        return db.query(ResponderDispatch).filter(
+            ResponderDispatch.incident_id == incident_id
+        ).all()
+
+    def _close_open_dispatches(
+        self,
+        db: Session,
+        incident_id: str,
+        status: str,
+        metadata_updates: Optional[Dict[str, Any]] = None
+    ) -> None:
+        """Close still-active dispatches when a supervisor closes the incident."""
+        for dispatch in self._get_dispatches_for_incident(db, incident_id):
+            if dispatch.status not in self.OPEN_DISPATCH_STATUSES:
+                continue
+
+            dispatch.status = status
+            dispatch.completed_at = datetime.now()
+
+            metadata = dispatch.incident_metadata or {}
+            if metadata_updates:
+                metadata.update({k: v for k, v in metadata_updates.items() if v is not None})
+            dispatch.incident_metadata = metadata
+
+    def get_dispatches_for_incident(self, db: Session, incident_id: str) -> List[DispatchResponse]:
+        """Get all responder dispatches for one incident, including completed/refused."""
+        dispatches = db.query(ResponderDispatch).filter(
+            ResponderDispatch.incident_id == incident_id
+        ).order_by(ResponderDispatch.dispatched_at.desc()).all()
+
+        return [self._dispatch_to_response(d) for d in dispatches]
+
+    def accept_responder_dispatch(self, db: Session, dispatch_id: str) -> Optional[DispatchResponse]:
+        """Mark a responder dispatch as accepted and en route."""
+        dispatch = db.query(ResponderDispatch).filter(
+            ResponderDispatch.id == dispatch_id
+        ).first()
+
+        if not dispatch:
+            return None
+
+        if dispatch.status == "dispatched":
+            dispatch.status = "en_route"
+            dispatch.en_route_at = datetime.now()
+            db.commit()
+            db.refresh(dispatch)
+
+            self._log_event(
+                db,
+                dispatch.incident_id,
+                "dispatch_accepted",
+                f"Responder {dispatch.responder_id} accepted dispatch"
+            )
+
+        return self._dispatch_to_response(dispatch)
+
+    def refuse_responder_dispatch(self, db: Session, dispatch_id: str) -> Optional[DispatchResponse]:
+        """Mark a responder dispatch as refused so it is no longer active."""
+        dispatch = db.query(ResponderDispatch).filter(
+            ResponderDispatch.id == dispatch_id
+        ).first()
+
+        if not dispatch:
+            return None
+
+        dispatch.status = "declined"
+        dispatch.completed_at = datetime.now()
+
+        db.commit()
+        db.refresh(dispatch)
+
+        self._log_event(
+            db,
+            dispatch.incident_id,
+            "dispatch_declined",
+            f"Responder {dispatch.responder_id} declined dispatch"
+        )
+
+        return self._dispatch_to_response(dispatch)
+
+    def complete_responder_dispatch(
+        self,
+        db: Session,
+        dispatch_id: str,
+        notes: Optional[str] = None
+    ) -> Optional[DispatchResponse]:
+        """Mark a responder dispatch as completed without resolving the whole incident."""
+        dispatch = db.query(ResponderDispatch).filter(
+            ResponderDispatch.id == dispatch_id
+        ).first()
+
+        if not dispatch:
+            return None
+
+        dispatch.status = "completed"
+        dispatch.completed_at = datetime.now()
+
+        metadata = dispatch.incident_metadata or {}
+        if notes:
+            metadata["completion_notes"] = notes
+        dispatch.incident_metadata = metadata
+
+        db.commit()
+        db.refresh(dispatch)
+
+        self._log_event(
+            db,
+            dispatch.incident_id,
+            "dispatch_completed",
+            f"Responder {dispatch.responder_id} completed dispatch"
+        )
+
+        return self._dispatch_to_response(dispatch)
     
     def mark_responder_arrived(self, db: Session, dispatch_id: str) -> Optional[DispatchResponse]:
         """Mark responder as arrived at incident"""
@@ -520,7 +699,7 @@ class IncidentManager:
             if incident.status in [IncidentStatus.ACTIVE, IncidentStatus.INVESTIGATING, IncidentStatus.RESPONDING]:
                 stats["active_incidents"] += 1
             
-            itype = incident.incident_type.value
+            itype = self.LEGACY_INCIDENT_CATEGORY_ALIASES.get(incident.incident_type.value, incident.incident_type.value)
             stats["by_type"][itype] = stats["by_type"].get(itype, 0) + 1
             
             severity = incident.severity.value
@@ -561,7 +740,7 @@ class IncidentManager:
         return [
             {
                 "incident_id": i.id,
-                "incident_type": i.incident_type.value,
+                "incident_type": self.LEGACY_INCIDENT_CATEGORY_ALIASES.get(i.incident_type.value, i.incident_type.value),
                 "severity": i.severity.value,
                 "status": i.status.value,
                 "timestamp": i.created_at.isoformat(),
@@ -574,9 +753,13 @@ class IncidentManager:
     
     def _incident_to_response(self, incident: EmergencyIncident) -> IncidentResponse:
         """Convert model to response"""
+        incident_type = self.LEGACY_INCIDENT_CATEGORY_ALIASES.get(
+            incident.incident_type.value,
+            incident.incident_type.value,
+        )
         return IncidentResponse(
             id=incident.id,
-            incident_type=incident.incident_type.value,
+            incident_type=incident_type,
             status=incident.status.value,
             severity=incident.severity.value,
             location_node=incident.location_node,
@@ -602,11 +785,15 @@ class IncidentManager:
     
     def _dispatch_to_response(self, dispatch: ResponderDispatch) -> DispatchResponse:
         """Convert dispatch to response"""
+        responder_role = self.LEGACY_INCIDENT_CATEGORY_ALIASES.get(
+            str(dispatch.responder_role).lower(),
+            dispatch.responder_role,
+        )
         return DispatchResponse(
             id=dispatch.id,
             incident_id=dispatch.incident_id,
             responder_id=dispatch.responder_id,
-            responder_role=dispatch.responder_role,
+            responder_role=responder_role,
             route_nodes=dispatch.route_nodes,
             route_distance=dispatch.route_distance or 0,
             eta_seconds=dispatch.eta_seconds or 0,
@@ -614,7 +801,8 @@ class IncidentManager:
             dispatched_at=dispatch.dispatched_at.isoformat(),
             en_route_at=dispatch.en_route_at.isoformat() if dispatch.en_route_at else None,
             arrived_at=dispatch.arrived_at.isoformat() if dispatch.arrived_at else None,
-            completed_at=dispatch.completed_at.isoformat() if dispatch.completed_at else None
+            completed_at=dispatch.completed_at.isoformat() if dispatch.completed_at else None,
+            incident_metadata=dispatch.incident_metadata or {}
         )
     
     def _sensor_alert_to_response(self, alert: SensorAlert) -> SensorAlertResponse:

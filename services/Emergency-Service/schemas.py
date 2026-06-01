@@ -3,16 +3,29 @@ PYDANTIC SCHEMAS for Emergency Service
 Request/Response models for API endpoints
 """
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from typing import Optional, List, Dict, Any
 from datetime import datetime
 
 
 # ========== INCIDENT SCHEMAS ==========
 
+INCIDENT_CATEGORY_ALIASES = {
+    "security": "security",
+    "medic": "medic",
+    "cleaning": "cleaning",
+}
+
+
+def normalize_incident_category(value: str) -> str:
+    normalized = str(value or "").strip().lower()
+    if normalized not in INCIDENT_CATEGORY_ALIASES:
+        raise ValueError("Incident category must be one of: security, medic, cleaning")
+    return INCIDENT_CATEGORY_ALIASES[normalized]
+
 class IncidentCreate(BaseModel):
     """Create new incident"""
-    incident_type: str = Field(..., description="Type: fire, smoke, gas_leak, structural, electrical")
+    incident_type: str = Field(..., description="Category: security, medic, cleaning")
     location_node: str = Field(..., description="Node ID of incident location")
     severity: str = Field(default="medium", description="Severity: low, medium, high, critical")
     description: Optional[str] = Field(None, description="Incident description")
@@ -22,6 +35,11 @@ class IncidentCreate(BaseModel):
     sensor_id: Optional[str] = Field(None, description="Sensor ID if detected by sensor")
     reported_by: Optional[str] = Field(None, description="Staff ID who reported")
     incident_metadata: Dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("incident_type")
+    @classmethod
+    def validate_incident_type(cls, value: str) -> str:
+        return normalize_incident_category(value)
 
 
 class IncidentUpdate(BaseModel):
@@ -110,17 +128,27 @@ class SensorAlertResponse(BaseModel):
 class DispatchRequest(BaseModel):
     """Request responder dispatch"""
     incident_id: str = Field(..., description="Incident ID")
-    responder_role: str = Field(..., description="Required role: security, supervisor, maintenance")
+    responder_role: str = Field(..., description="Required role: security, medic, cleaning")
     num_responders: int = Field(default=1, ge=1, le=10, description="Number of responders to dispatch")
+
+    @field_validator("responder_role")
+    @classmethod
+    def validate_responder_role(cls, value: str) -> str:
+        return normalize_incident_category(value)
 
 
 class ManualDispatchRequest(BaseModel):
     """Request dispatch to a specific responder chosen by a supervisor"""
     incident_id: str = Field(..., description="Incident ID")
     responder_id: str = Field(..., description="Selected responder ID")
-    responder_role: str = Field(..., description="Responder role: security, supervisor, maintenance, medical")
+    responder_role: str = Field(..., description="Responder role: security, medic, cleaning")
     current_position: str = Field(..., description="Current responder node/location")
     responder_name: Optional[str] = Field(None, description="Optional responder display name")
+
+    @field_validator("responder_role")
+    @classmethod
+    def validate_responder_role(cls, value: str) -> str:
+        return normalize_incident_category(value)
 
 
 class DispatchResponse(BaseModel):
@@ -137,6 +165,7 @@ class DispatchResponse(BaseModel):
     en_route_at: Optional[str]
     arrived_at: Optional[str]
     completed_at: Optional[str]
+    incident_metadata: Dict[str, Any] = Field(default_factory=dict)
     
     class Config:
         from_attributes = True
@@ -182,6 +211,46 @@ class EvacuationRouteResponse(BaseModel):
     estimated_time_sec: int
     hazards_avoided: List[str]
     alternative_routes: List[Dict[str, Any]]
+
+
+class GlobalEvacuationCreate(BaseModel):
+    """Supervisor-created building evacuation."""
+    title: str = Field(..., min_length=3, description="Short operational title")
+    description: Optional[str] = Field(None, description="Operational details shown to staff")
+    emergency_type: str = Field(default="other", description="fire, gas, structural, security, medical, other")
+    severity: str = Field(default="critical", description="high or critical")
+    source_node: str = Field(..., description="Problem location node")
+    floor_id: Optional[int] = Field(None, description="Affected floor, when known")
+    affected_nodes: List[str] = Field(default_factory=list, description="Nodes to mark as affected/blocked")
+    affected_zones: List[str] = Field(default_factory=list, description="Human-readable affected zones")
+    instructions: Optional[str] = Field(None, description="Extra instructions for staff")
+
+
+class GlobalEvacuationResponse(BaseModel):
+    """Active global evacuation state."""
+    id: str
+    active: bool
+    status: str
+    title: str
+    description: Optional[str]
+    emergency_type: str
+    severity: str
+    source_node: str
+    floor_id: Optional[int]
+    exit_node: str
+    affected_nodes: List[str]
+    affected_zones: List[str]
+    instructions: Optional[str]
+    initiated_at: str
+    completed_at: Optional[str]
+    evacuated_count: int
+    confirmations: Dict[str, Any]
+
+
+class EvacuationSafeRequest(BaseModel):
+    """Staff confirmation that they are safe."""
+    current_node: Optional[str] = Field(None, description="Current staff node, when available")
+    notes: Optional[str] = Field(None, description="Optional confirmation notes")
 
 
 # ========== CORRIDOR CLOSURE SCHEMAS ==========

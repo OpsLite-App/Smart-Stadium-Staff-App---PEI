@@ -50,6 +50,10 @@ MQTT_TOPICS = [
 wait_times_cache: Dict[str, Dict] = {}
 # {location_id: {wait_time, status, last_update, location_type, ...}}
 
+# Janela deslizante de eventos por portão para calcular arrival_rate
+gate_event_timestamps: Dict[str, list] = {}
+# {gate_id: [timestamp, timestamp, ...]}
+
 
 # ========== MODELS ==========
 
@@ -102,28 +106,51 @@ def on_mqtt_message(client, userdata, msg):
         
         elif event_type == "gate_passage":
             gate_id = event.get("gate_id")
-            
-            # Try to get wait time from Queueing Service
-            try:
-                response = requests.get(
-                    f"{QUEUEING_SERVICE_URL}/api/queue/waittime/{gate_id}",
-                    timeout=1
-                )
-                if response.status_code == 200:
-                    data = response.json()
-                    
-                    wait_times_cache[gate_id] = {
-                        "location_id": gate_id,
-                        "location_name": _get_friendly_name(gate_id),
-                        "location_type": "gate",
-                        "wait_time_minutes": data["avg_wait_time_minutes"],
-                        "status": data["status"],
-                        "queue_length": int(data.get("queue_length", 0)),
-                        "confidence": data["confidence"],
-                        "last_update": datetime.now().isoformat()
-                    }
-            except:
-                pass  # Silently fail
+            if not gate_id:
+                return
+
+            # Registar timestamp deste evento na janela deslizante
+            now = datetime.now()
+            if gate_id not in gate_event_timestamps:
+                gate_event_timestamps[gate_id] = []
+            gate_event_timestamps[gate_id].append(now)
+
+            # Manter só os últimos 60 segundos
+            cutoff = now - timedelta(seconds=60)
+            gate_event_timestamps[gate_id] = [
+                t for t in gate_event_timestamps[gate_id] if t > cutoff
+            ]
+
+            # arrivals_last_minute = nº de eventos na janela
+            arrivals_last_minute = len(gate_event_timestamps[gate_id])
+            current_count = event.get("current_count", 0)
+
+            # Calcular tempo de espera: queue_length / service_rate (M/M/1 simplificado)
+            # service_rate para portão = 4 pessoas/min (15s por pessoa)
+            SERVICE_RATE_GATE = 4.0
+            wait_time = round(current_count / SERVICE_RATE_GATE, 1)
+            utilization = round(min(arrivals_last_minute / SERVICE_RATE_GATE, 1.0), 2)
+
+            if wait_time == 0:
+                status = "empty"
+            elif wait_time < 2:
+                status = "normal"
+            elif wait_time < 5:
+                status = "busy"
+            else:
+                status = "crowded"
+
+            wait_times_cache[gate_id] = {
+                "location_id": gate_id,
+                "location_name": _get_friendly_name(gate_id),
+                "location_type": "gate",
+                "wait_time_minutes": wait_time,
+                "status": status,
+                "queue_length": current_count,
+                "utilization": utilization,
+                "confidence": "high",
+                "last_update": now.isoformat()
+            }
     
     except Exception as e:
         pass  # Don't log every error
@@ -135,7 +162,7 @@ def start_mqtt_listener():
         return
     
     def mqtt_thread():
-        client = mqtt.Client(protocol=mqtt.MQTTv5)
+        client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, protocol=mqtt.MQTTv5)
         client.on_message = on_mqtt_message
         
         try:
@@ -232,7 +259,7 @@ async def startup():
     asyncio.create_task(sync_with_queueing_service())
     print("✓ Queueing Service sync started")
     
-    print("✅ Wait Times Service ready\n")
+    print("[INFO] Wait Times Service ready\n")
 
 
 # ========== ENDPOINTS ==========

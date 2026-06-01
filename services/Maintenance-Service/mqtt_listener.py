@@ -12,7 +12,7 @@ try:
     MQTT_AVAILABLE = True
 except ImportError:
     MQTT_AVAILABLE = False
-    print("⚠️  paho-mqtt not installed. Install with: pip install paho-mqtt")
+    print("[WARNING] paho-mqtt is not installed. Install it with: pip install paho-mqtt")
 
 
 import os
@@ -28,12 +28,12 @@ MQTT_TOPICS = [
 def on_connect(client, userdata, flags, rc, properties=None):
     """Callback when connected to MQTT broker"""
     if rc == 0:
-        print(f"✅ Connected to MQTT broker at {MQTT_BROKER}:{MQTT_PORT}")
+        print(f"[INFO] Connected to MQTT broker: host={MQTT_BROKER} port={MQTT_PORT}")
         for topic in MQTT_TOPICS:
             client.subscribe(topic)
-            print(f"✅ Subscribed to topic: {topic}")
+            print(f"[INFO] Subscribed to MQTT topic: {topic}")
     else:
-        print(f"❌ Failed to connect to MQTT broker (code: {rc})")
+        print(f"[ERROR] MQTT connection failed: return_code={rc}")
 
 
 def on_message(client, userdata, msg):
@@ -61,9 +61,9 @@ def on_message(client, userdata, msg):
             db.close()
     
     except json.JSONDecodeError:
-        print(f"❌ Invalid JSON in MQTT message")
+        print("[ERROR] Invalid JSON in MQTT message")
     except Exception as e:
-        print(f"❌ Error processing MQTT message: {e}")
+        print(f"[ERROR] MQTT message processing failed: {e}")
 
 
 def process_event(event: dict, task_manager, db):
@@ -91,8 +91,10 @@ def handle_bin_full(event: dict, task_manager, db):
     location_node = event.get('location_node', event.get('poi_node'))
     fill_percentage = event.get('fill_pct', event.get('fill_percentage', 0))
     
-    if not bin_id or not location_node:
+    if not bin_id or location_node is None:
         return
+    
+    location_node = str(location_node)
     
     # Determine priority
     if fill_percentage >= 95:
@@ -111,7 +113,7 @@ def handle_bin_full(event: dict, task_manager, db):
     
     task = task_manager.create_bin_task(db, alert)
     
-    print(f"📦 Created bin task: {task.id} for {bin_id} ({fill_percentage}%)")
+    print(f"[INFO] Bin task created: task_id={task.id} bin_id={bin_id} fill_percentage={fill_percentage}")
 
 
 def handle_spill(event: dict, task_manager, db):
@@ -122,8 +124,10 @@ def handle_spill(event: dict, task_manager, db):
     spill_type = event.get('spill_type', 'unknown')
     severity = event.get('severity', 'medium')
     
-    if not location_node:
+    if location_node is None:
         return
+    
+    location_node = str(location_node)
     
     task_data = TaskCreate(
         task_type="spill_cleanup",
@@ -141,7 +145,7 @@ def handle_spill(event: dict, task_manager, db):
     
     task = task_manager.create_task(db, task_data)
     
-    print(f"🧹 Created spill cleanup task: {task.id} at {location_node}")
+    print(f"[INFO] Spill cleanup task created: task_id={task.id} location_node={location_node}")
 
 
 def handle_restroom_check(event: dict, task_manager, db):
@@ -152,8 +156,10 @@ def handle_restroom_check(event: dict, task_manager, db):
     restroom_id = event.get('restroom_id', 'unknown')
     reason = event.get('reason', 'scheduled_check')
     
-    if not location_node:
+    if location_node is None:
         return
+    
+    location_node = str(location_node)
     
     # Priority based on reason
     priority_map = {
@@ -180,7 +186,7 @@ def handle_restroom_check(event: dict, task_manager, db):
     
     task = task_manager.create_task(db, task_data)
     
-    print(f"🚽 Created restroom check task: {task.id} for {restroom_id}")
+    print(f"[INFO] Restroom check task created: task_id={task.id} restroom_id={restroom_id}")
 
 
 def handle_equipment_issue(event: dict, task_manager, db):
@@ -191,8 +197,10 @@ def handle_equipment_issue(event: dict, task_manager, db):
     equipment_type = event.get('equipment_type', 'unknown')
     issue = event.get('issue', 'malfunction')
     
-    if not location_node:
+    if location_node is None:
         return
+    
+    location_node = str(location_node)
     
     task_data = TaskCreate(
         task_type="equipment_repair",
@@ -208,18 +216,19 @@ def handle_equipment_issue(event: dict, task_manager, db):
     
     task = task_manager.create_task(db, task_data)
     
-    print(f"🔧 Created equipment repair task: {task.id}")
+    print(f"[INFO] Equipment repair task created: task_id={task.id}")
 
 
 def start_mqtt_listener(task_manager):
     """Start MQTT listener in background thread"""
     if not MQTT_AVAILABLE:
-        print("⚠️  MQTT not available - listener not started")
+        print("[WARNING] MQTT unavailable; listener was not started")
         return
     
     def mqtt_thread():
         """Background thread for MQTT"""
         client = mqtt.Client(
+            mqtt.CallbackAPIVersion.VERSION2,
             client_id="maintenance-service",
             protocol=mqtt.MQTTv5,
             userdata={'task_manager': task_manager}
@@ -229,20 +238,20 @@ def start_mqtt_listener(task_manager):
         client.on_message = on_message
         
         def on_disconnect(client, userdata, rc):
-            print(f"⚠️  MQTT listener disconnected (rc={rc})")
+            print(f"[WARNING] MQTT listener disconnected: return_code={rc}")
 
         client.on_disconnect = on_disconnect
         try:
             client.connect(MQTT_BROKER, MQTT_PORT, 60)
             client.loop_forever()
         except Exception as e:
-            print(f"❌ MQTT listener error: {e}")
+            print(f"[ERROR] MQTT listener failed: {e}")
     
     import threading
     thread = threading.Thread(target=mqtt_thread, daemon=True)
     thread.start()
     
-    print("✅ MQTT listener thread started")
+    print("[INFO] MQTT listener thread started")
 
 
 # ========== MANUAL TESTING ==========
@@ -268,7 +277,7 @@ if __name__ == "__main__":
     # Start listener
     start_mqtt_listener(mock_manager)
     
-    print("\n✅ Listener running. Waiting for events...")
+    print("\n[INFO] MQTT listener running; waiting for events")
     print("   Send test events to topic: stadium/events")
     print("   Press Ctrl+C to stop\n")
     
@@ -277,4 +286,4 @@ if __name__ == "__main__":
         while True:
             time.sleep(1)
     except KeyboardInterrupt:
-        print("\n👋 Stopped")
+        print("\n[INFO] MQTT listener stopped")

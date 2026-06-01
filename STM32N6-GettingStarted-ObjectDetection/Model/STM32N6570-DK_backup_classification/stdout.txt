@@ -1,0 +1,181 @@
+>>> stedgeai generate --model zip_224_ebc_n_PerTensor_quant_random_2.onnx --st-neural-art custom@/tmp/stm32ai_service/b9b14abb-c24f-431f-a28a-d545af2b844f/profile-f9f4dbb0-39b6-419d-b877-388c987937a2.json --target stm32n6 --optimize.export_hybrid True --name network --workspace workspace --output output
+ST Edge AI Core v4.0.0-20500 359356bb0
+ >>>> EXECUTING NEURAL ART COMPILER
+   atonn -i "/tmp/stm32ai_service/b9b14abb-c24f-431f-a28a-d545af2b844f/output/zip_224_ebc_n_PerTensor_quant_random_2_OE_3_3_1.onnx" --json-quant-file "/tmp/stm32ai_service/b9b14abb-c24f-431f-a28a-d545af2b844f/output/zip_224_ebc_n_PerTensor_quant_random_2_OE_3_3_1_Q.json" -g "network.c" --load-mdesc "/app/stm32ai/Utilities/configs/stm32n6.mdesc" --load-mpool "/app/stm32ai/Utilities/linux/targets/stm32/resources/NPU/STM32N6xx/stm32n6.mpool" --load-cdesc cortex-m55.cdesc --save-mpool-file "/tmp/stm32ai_service/b9b14abb-c24f-431f-a28a-d545af2b844f/workspace/neural_art__network/stm32n6.mpool" --out-dir-prefix "/tmp/stm32ai_service/b9b14abb-c24f-431f-a28a-d545af2b844f/workspace/neural_art__network/" --network-name "network" --native-float --cache-maintenance --Ocache-opt --enable-virtual-mem-pools --Os --Oauto-sched --optimization 3 --enable-virtual-mem-pools --Oshuffle-dma --Ocache-opt --cache-maintenance --Oauto-sched --Omax-ca-pipe 4 --output-info-file "c_info.json" --generate-stai
+ <<<< DONE EXECUTING NEURAL ART COMPILER
+ Exec/report summary (generate)
+ -------------------------------------------------------------------------------------------------------------------------------
+ model file         :   zip_224_ebc_n_PerTensor_quant_random_2.onnx   
+ type               :   onnx                                                                                                    
+ c_name             :   network                                                                                                 
+ compression        :   lossless                                                                                                
+ options            :   allocate-inputs, allocate-outputs, use-lite-runtime, use-st-ai                                          
+ optimization       :   balanced                                                                                                
+ target/series      :   stm32n6npu                                                                                              
+ workspace dir      :   workspace                                     
+ output dir         :   output                                        
+ model_fmt          :   ss/sa per tensor                                                                                        
+ model_name         :   zip_224_ebc_n_PerTensor_quant_random_2                                                                  
+ model_hash         :   0xb1a8a42d40dc066c7d5e56fac7e3e58b                                                                      
+ params #           :   4,284,010 items (16.34 MiB)                                                                             
+ -------------------------------------------------------------------------------------------------------------------------------
+ input 1/1          :   'Input_1_out_0', int8(1x3x224x224), 147.00 KBytes, QLinear(0.003921560,-128,int8), activations          
+ output 1/1         :   'Quantize_232_out_0', int8(1x1x28x28), 784 Bytes, QLinear(0.005676019,-128,int8), activations           
+ macc               :   2,073,808,184                                                                                           
+ weights (ro)       :   4,651,329 B (4.44 MiB) (1 segment) / -12,484,711(-72.9%) vs float model                                 
+ activations (rw)   :   3,424,512 B (3.27 MiB) (6 segments) *                                                                   
+ ram (total)        :   3,424,512 B (3.27 MiB) = 3,424,512 + 0 + 0                                                              
+ -------------------------------------------------------------------------------------------------------------------------------
+ (*) 'input'/'output' buffers are allocated in the activations buffer
+Computing AI RT data/code size (target=stm32n6npu)..
+Compilation details
+   ---------------------------------------------------------------------------------
+Compiler version: 1.1.3-262
+Compiler arguments:  -i zip_224_ebc_n_PerTensor_quant_random_2_OE_3_3_1.onnx --json-quant-file zip_224_ebc_n_PerTensor_quant_random_2_OE_3_3_1_Q.json -g network.c --load-mdesc stm32n6.mdesc --load-mpool stm32n6.mpool --load-cdesc cortex-m55.cdesc --save-mpool-file stm32n6.mpool --out-dir-prefix neural_art__network/ --network-name network --native-float --cache-maintenance --Ocache-opt --enable-virtual-mem-pools --Os --Oauto-sched --optimization 3 --enable-virtual-mem-pools --Oshuffle-dma --Ocache-opt --cache-maintenance --Oauto-sched --Omax-ca-pipe 4 --output-info-file c_info.json --generate-stai
+====================================================================================
+Memory usage information  (input/output buffers are included in activations)
+   ---------------------------------------------------------------------------------
+	flexMEM    [0x34000000 - 0x34000000]:          0  B /          0  B  (  0.00 % used) -- weights:          0  B (  0.00 % used)  activations:          0  B (  0.00 % used)
+	cpuRAM1    [0x34064000 - 0x34064000]:          0  B /          0  B  (  0.00 % used) -- weights:          0  B (  0.00 % used)  activations:          0  B (  0.00 % used)
+	cpuRAM2    [0x34100000 - 0x34200000]:      1.000 MB /      1.000 MB  (100.00 % used) -- weights:          0  B (  0.00 % used)  activations:      1.000 MB (100.00 % used)
+	npuRAM3    [0x34200000 - 0x34270000]:    446.000 kB /    448.000 kB  ( 99.55 % used) -- weights:          0  B (  0.00 % used)  activations:    446.000 kB ( 99.55 % used)
+	npuRAM4    [0x34270000 - 0x342E0000]:    367.500 kB /    448.000 kB  ( 82.03 % used) -- weights:          0  B (  0.00 % used)  activations:    367.500 kB ( 82.03 % used)
+	npuRAM5    [0x342E0000 - 0x34350000]:    448.000 kB /    448.000 kB  (100.00 % used) -- weights:          0  B (  0.00 % used)  activations:    448.000 kB (100.00 % used)
+	npuRAM6    [0x34350000 - 0x343C0000]:    323.750 kB /    448.000 kB  ( 72.27 % used) -- weights:          0  B (  0.00 % used)  activations:    323.750 kB ( 72.27 % used)
+	octoFlash  [0x71000000 - 0x78000000]:      4.436 MB /    112.000 MB  (  3.96 % used) -- weights:      4.436 MB (  3.96 % used)  activations:          0  B (  0.00 % used)
+	hyperRAM   [0x90000000 - 0x92000000]:    735.000 kB /     32.000 MB  (  2.24 % used) -- weights:          0  B (  0.00 % used)  activations:    735.000 kB (  2.24 % used)
+Total:                                             7.702 MB                                  -- weights:      4.436 MB                  activations:      3.266 MB
+====================================================================================
+Used memory ranges
+   ---------------------------------------------------------------------------------
+	cpuRAM2    [0x34100000 - 0x34200000]: 0x34100000-0x34200000
+	npuRAM3    [0x34200000 - 0x34270000]: 0x34200000-0x3426F800
+	npuRAM4    [0x34270000 - 0x342E0000]: 0x34270000-0x342CBE00
+	npuRAM5    [0x342E0000 - 0x34350000]: 0x342E0000-0x34350000
+	npuRAM6    [0x34350000 - 0x343C0000]: 0x34350000-0x343A0F00
+	octoFlash  [0x71000000 - 0x78000000]: 0x71000000-0x7146F950
+	hyperRAM   [0x90000000 - 0x92000000]: 0x90000000-0x900B7C00
+====================================================================================
+Epochs details
+   ---------------------------------------------------------------------------------
+Total number of epochs                               71
+>> pure software (SW) epochs                          8
+>> hybrid epochs (using both software and hardware)   0
+>> pure hardware (HW or EC) epochs                   63  (implemented in 0 epoch controller blobs/meta epochs)
++----------+------+------------------+
+| epoch ID | Type |     Details      |
++----------+------+------------------+
+| epoch_1  |  HW  |                  |
+| epoch_2  |  HW  |                  |
+| epoch_3  |  HW  |                  |
+| epoch_4  |  HW  |                  |
+| epoch_5  |  HW  |                  |
+| epoch_6  |  HW  |                  |
+| epoch_7  |  HW  |                  |
+| epoch_8  |  HW  |                  |
+| epoch_9  |  HW  |                  |
+| epoch_10 |  HW  |                  |
+| epoch_11 |  HW  |                  |
+| epoch_12 |  HW  |                  |
+| epoch_13 |  HW  |                  |
+| epoch_14 |  HW  |                  |
+| epoch_15 |  HW  |                  |
+| epoch_16 |  HW  |                  |
+| epoch_17 |  HW  |                  |
+| epoch_18 |  HW  |                  |
+| epoch_19 |  HW  |                  |
+| epoch_20 |  HW  |                  |
+| epoch_21 |  HW  |                  |
+| epoch_22 |  HW  |                  |
+| epoch_23 |  HW  |                  |
+| epoch_24 |  HW  |                  |
+| epoch_25 |  HW  |                  |
+| epoch_26 |  HW  |                  |
+| epoch_27 |  HW  |                  |
+| epoch_28 |  HW  |                  |
+| epoch_29 |  HW  |                  |
+| epoch_30 |  HW  |                  |
+| epoch_31 |  HW  |                  |
+| epoch_32 |  HW  |                  |
+| epoch_33 |  HW  |                  |
+| epoch_34 |  HW  |                  |
+| epoch_35 |  HW  |                  |
+| epoch_36 |  HW  |                  |
+| epoch_37 |  HW  |                  |
+| epoch_38 |  HW  |                  |
+| epoch_39 |  HW  |                  |
+| epoch_40 |  HW  |                  |
+| epoch_41 |  HW  |                  |
+| epoch_42 |  HW  |                  |
+| epoch_43 |  HW  |                  |
+| epoch_44 |  HW  |                  |
+| epoch_45 |  HW  |                  |
+| epoch_46 |  HW  |                  |
+| epoch_47 |  SW  |      Resize      |
+| epoch_48 |  HW  |                  |
+| epoch_49 |  HW  |                  |
+| epoch_50 |  HW  |                  |
+| epoch_51 |  SW  |      Resize      |
+| epoch_52 |  HW  |                  |
+| epoch_53 |  HW  |                  |
+| epoch_54 |  HW  |                  |
+| epoch_55 |  HW  |                  |
+| epoch_56 |  HW  |                  |
+| epoch_57 |  HW  |                  |
+| epoch_58 |  HW  |                  |
+| epoch_59 |  HW  |                  |
+| epoch_60 |  HW  |                  |
+| epoch_61 |  HW  |                  |
+| epoch_62 |  HW  |                  |
+| epoch_63 |  SW  |     Softmax      |
+| epoch_64 |  SW  |     Softmax      |
+| epoch_65 |  HW  |                  |
+| epoch_66 |  SW  | DequantizeLinear |
+| epoch_67 |  SW  | ReduceSum(float) |
+| epoch_68 |  SW  |  QuantizeLinear  |
+| epoch_69 |  SW  |  QuantizeLinear  |
+| epoch_71 |  HW  |                  |
+| epoch_72 |  HW  |                  |
++----------+------+------------------+
+====================================================================================
+ Requested memory size by section - "stm32n6npu" target
+ ------------------------------- -------- ----------- ------ -----------
+ module                              text      rodata   data         bss
+ ------------------------------- -------- ----------- ------ -----------
+ network.o                         13,708      88,909      0           0
+ NetworkRuntime1200_CM55_GCC.a     20,620          16      0           0
+ stai_network.o                         0           0      0           0
+ lib (toolchain)*                   1,332         912      0           0
+ ll atonn runtime                   8,414       2,498      0          29
+ ------------------------------- -------- ----------- ------ -----------
+ RT total**                        44,074      92,335      0          29
+ ------------------------------- -------- ----------- ------ -----------
+ weights                                0   4,651,329      0           0
+ activations                            0           0      0   3,424,512
+ io                                     0           0      0           0
+ ------------------------------- -------- ----------- ------ -----------
+ TOTAL                             44,074   4,743,664      0   3,424,541
+ ------------------------------- -------- ----------- ------ -----------
+ *  toolchain objects (libm/libgcc*)
+ ** RT AI runtime objects (kernels+infrastructure)
+  Summary - "stm32n6npu" target
+  --------------------------------------------------
+               FLASH (ro)     %*    RAM (rw)      %
+  --------------------------------------------------
+  RT total        136,409   2.8%          29   0.0%
+  --------------------------------------------------
+  TOTAL         4,787,738          3,424,541
+  --------------------------------------------------
+  *  rt/total
+ Generated files (8)
+ -------------------------------------------------------------------------------------------------------------------------
+ zip_224_ebc_n_PerTensor_quant_random_2_OE_3_3_1.onnx
+ zip_224_ebc_n_PerTensor_quant_random_2_OE_3_3_1_Q.json
+ network.c
+ stai_network.h
+ stai_network.c
+ network_c_info.json
+ network_atonbuf.xSPI2.raw
+ network.h
+Creating txt report file network_generate_report.txt
+elapsed time (GENERATE): 12.843s

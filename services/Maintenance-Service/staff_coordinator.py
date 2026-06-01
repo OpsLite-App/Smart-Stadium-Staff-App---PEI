@@ -59,7 +59,7 @@ class StaffCoordinator:
         )
         
         self.staff_locations[staff_id] = staff
-        print(f"✅ Registered staff: {staff_id} ({name}) @ {current_location}")
+        print(f"[INFO] Staff registered: staff_id={staff_id} name={name} location={current_location}")
         
         return staff
     
@@ -67,7 +67,7 @@ class StaffCoordinator:
         """Remove staff member from tracking"""
         if staff_id in self.staff_locations:
             del self.staff_locations[staff_id]
-            print(f"🗑️  Unregistered staff: {staff_id}")
+            print(f"[INFO] Staff unregistered: staff_id={staff_id}")
             return True
         return False
     
@@ -99,7 +99,7 @@ class StaffCoordinator:
         self.staff_locations[staff_id].last_seen = datetime.now().isoformat()
         
         status = "available" if is_available else "busy"
-        print(f"📍 Staff {staff_id} is now {status}")
+        print(f"[INFO] Staff status updated: staff_id={staff_id} status={status}")
         
         return True
     
@@ -222,12 +222,12 @@ class StaffCoordinator:
             staff = StaffInfo(**staff_data)
             self.staff_locations[staff.id] = staff
         
-        print(f"✅ Loaded {len(staff_list)} staff members from database")
+        print(f"[INFO] Staff loaded from database: count={len(staff_list)}")
     
     def clear_all(self):
         """Clear all staff (use with caution)"""
         self.staff_locations.clear()
-        print("🗑️  All staff cleared from coordinator")
+        print("[INFO] Staff coordinator cleared")
 
 
 # ========== GLOBAL INSTANCE ==========

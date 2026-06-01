@@ -2,10 +2,13 @@ import json
 import os
 import threading
 import logging
+import time
 import paho.mqtt.client as mqtt
 from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
+from sqlalchemy import text
+from sqlalchemy.exc import OperationalError
 import models, schemas
 from database import SessionLocal, engine, get_db
 
@@ -33,8 +36,28 @@ MQTT_TOPIC = "stadium/chat/#"
 
 @app.on_event("startup")
 def on_startup():
-    # Só tenta criar as tabelas quando o servidor realmente inicia
-    models.Base.metadata.create_all(bind=engine)
+    max_attempts = int(os.getenv("DB_STARTUP_RETRIES", "30"))
+    delay_seconds = float(os.getenv("DB_STARTUP_RETRY_DELAY", "2"))
+
+    for attempt in range(1, max_attempts + 1):
+        try:
+            with engine.begin() as connection:
+                connection.execute(text("SELECT 1"))
+            models.Base.metadata.create_all(bind=engine)
+            logging.info("Chat database is ready.")
+            return
+        except OperationalError as exc:
+            if attempt == max_attempts:
+                logging.exception("Chat database not ready after %s attempts.", max_attempts)
+                raise
+
+            logging.warning(
+                "Chat database not ready yet (%s/%s): %s",
+                attempt,
+                max_attempts,
+                exc.orig if hasattr(exc, "orig") else exc,
+            )
+            time.sleep(delay_seconds)
 
 def on_connect(client, userdata, flags, rc):
     if rc == 0:

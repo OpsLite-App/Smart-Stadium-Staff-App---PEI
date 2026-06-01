@@ -11,7 +11,7 @@ try:
     MQTT_AVAILABLE = True
 except ImportError:
     MQTT_AVAILABLE = False
-    print("⚠️  paho-mqtt not installed")
+    print("[WARNING] paho-mqtt is not installed")
 
 import os
 MQTT_BROKER = os.getenv("MQTT_HOST", os.getenv("MQTT_BROKER", "localhost"))
@@ -26,12 +26,12 @@ MQTT_TOPICS = [
 def on_connect(client, userdata, flags, rc, properties=None):
     """Connected to broker"""
     if rc == 0:
-        print(f"✅ Connected to MQTT broker at {MQTT_BROKER}:{MQTT_PORT}")
+        print(f"[INFO] Connected to MQTT broker: host={MQTT_BROKER} port={MQTT_PORT}")
         for topic in MQTT_TOPICS:
             client.subscribe(topic)
-            print(f"✅ Subscribed to: {topic}")
+            print(f"[INFO] Subscribed to MQTT topic: {topic}")
     else:
-        print(f"❌ Connection failed (code: {rc})")
+        print(f"[ERROR] MQTT connection failed: return_code={rc}")
 
 
 def on_message(client, userdata, msg):
@@ -55,7 +55,7 @@ def on_message(client, userdata, msg):
             db.close()
     
     except Exception as e:
-        print(f"❌ MQTT error: {e}")
+        print(f"[ERROR] MQTT message processing failed: {e}")
 
 
 def process_event(event: dict, incident_manager, evacuation_coordinator, db):
@@ -109,7 +109,7 @@ def handle_sensor_alert(event: dict, incident_manager, db):
     )
     
     incident = incident_manager.create_incident_from_sensor(db, alert)
-    print(f"🚨 Created incident from sensor {sensor_id}: {incident.id}")
+    print(f"[INFO] Sensor incident created: sensor_id={sensor_id} incident_id={incident.id}")
 
 
 def handle_generic_sensor(event: dict, incident_manager, db):
@@ -134,7 +134,7 @@ def handle_manual_alarm(event: dict, incident_manager, db):
     from schemas import IncidentCreate
     
     incident_data = IncidentCreate(
-        incident_type="fire",
+        incident_type="security",
         location_node=event.get('location_node'),
         severity="high",
         description="Manual fire alarm activated",
@@ -143,17 +143,18 @@ def handle_manual_alarm(event: dict, incident_manager, db):
     )
     
     incident_manager.create_incident(db, incident_data)
-    print(f"🚨 Manual alarm activated at {event.get('location_node')}")
+    print(f"[INFO] Manual alarm activated: location_node={event.get('location_node')}")
 
 
 def start_mqtt_listener(incident_manager, evacuation_coordinator):
     """Start MQTT listener thread"""
     if not MQTT_AVAILABLE:
-        print("⚠️  MQTT not available")
+        print("[WARNING] MQTT unavailable")
         return
     
     def mqtt_thread():
         client = mqtt.Client(
+            mqtt.CallbackAPIVersion.VERSION2,
             client_id="emergency-service",
             protocol=mqtt.MQTTv5,
             userdata={
@@ -164,14 +165,14 @@ def start_mqtt_listener(incident_manager, evacuation_coordinator):
         
         # Definir callback ANTES do try
         def on_disconnect(client, userdata, rc):
-            print(f"⚠️  MQTT listener disconnected (rc={rc})")
+            print(f"[WARNING] MQTT listener disconnected: return_code={rc}")
         
         client.on_connect = on_connect
         client.on_message = on_message
 
 
         def on_disconnect(client, userdata, rc):
-                print(f"⚠️  MQTT listener disconnected (rc={rc})")
+                print(f"[WARNING] MQTT listener disconnected: return_code={rc}")
         
         client.on_disconnect = on_disconnect            
 
@@ -179,9 +180,9 @@ def start_mqtt_listener(incident_manager, evacuation_coordinator):
             client.connect(MQTT_BROKER, MQTT_PORT, 60)
             client.loop_forever()
         except Exception as e:
-            print(f"❌ MQTT error: {e}")
+            print(f"[ERROR] MQTT listener failed: {e}")
     
     import threading
     thread = threading.Thread(target=mqtt_thread, daemon=True)
     thread.start()
-    print("✅ MQTT listener thread started")
+    print("[INFO] MQTT listener thread started")

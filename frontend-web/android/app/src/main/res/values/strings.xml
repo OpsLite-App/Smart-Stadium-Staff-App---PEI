@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">OpsLite Staff</string>
+    <string name="title_activity_main">OpsLite Staff</string>
+    <string name="package_name">pt.opslite.staff</string>
+    <string name="custom_url_scheme">pt.opslite.staff</string>
+</resources>

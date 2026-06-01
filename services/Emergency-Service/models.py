@@ -14,7 +14,15 @@ Base = declarative_base()
 # ========== ENUMS ==========
 
 class IncidentType(str, Enum):
-    """Types of emergency incidents"""
+    """Incident categories.
+
+    New incidents use only: security, medic, cleaning.
+    Legacy values remain here so old database rows can still be read safely.
+    """
+    SECURITY = "security"
+    MEDIC = "medic"
+    CLEANING = "cleaning"
+    # Legacy values kept for backward compatibility with existing data.
     FIRE = "fire"
     SMOKE = "smoke"
     GAS_LEAK = "gas_leak"
@@ -23,7 +31,6 @@ class IncidentType(str, Enum):
     CHEMICAL = "chemical"
     BOMB_THREAT = "bomb_threat"
     OTHER = "other"
-    SECURITY = "security"
     MEDICAL = "medical"
 
 
@@ -150,7 +157,7 @@ class ResponderDispatch(Base):
     incident_id = Column(String, nullable=False, index=True)
     
     responder_id = Column(String, nullable=False, index=True)
-    responder_role = Column(String, nullable=False)  # security, supervisor, maintenance
+    responder_role = Column(String, nullable=False)  # security, medic, cleaning
     
     # Route
     route_nodes = Column(JSON, default=list)

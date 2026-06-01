@@ -10,35 +10,16 @@
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 
-## Map Service (porta 8000)
+## Legacy Map Service (porta 8001, profile `legacy`)
 
-| Método | Endpoint | Descrição |
-|--------|----------|-----------|
-| GET | /api/map | Mapa completo (nodes, edges, closures) |
-| GET | /api/nodes | Todos os nodes |
-| GET | /api/nodes/{id} | Node específico |
-| PUT | /api/nodes/{id} | Atualizar node |
-| GET | /api/edges | Todas as edges |
-| GET | /api/edges/{id} | Edge específica |
-| PUT | /api/edges/{id} | Atualizar edge |
-| GET | /api/closures | Todas as closures |
-| GET | /api/closures/{id} | Closure específica |
-| POST | /api/closures | Criar closure |
-| DELETE | /api/closures/{id} | Remover closure |
-| GET | /api/tiles | Todos os tiles |
-| GET | /api/tiles/{id} | Tile específico |
-| PUT | /api/tiles/{id} | Atualizar tile |
-| GET | /api/pois | Todos os POIs |
-| GET | /api/pois/{id} | POI específico |
-| PUT | /api/pois/{id} | Atualizar POI |
-| GET | /api/seats | Todos os lugares |
-| GET | /api/seats/{id} | Lugar específico |
-| PUT | /api/seats/{id} | Atualizar lugar |
-| GET | /api/gates | Todos os portões |
-| GET | /api/gates/{id} | Portão específico |
-| PUT | /api/gates/{id} | Atualizar portão |
-| GET | /health | Health check |
-| POST | /api/reset | Reset da base de dados |
+`services/Map-Service` is not part of the active architecture. It is kept for
+legacy compatibility/tests and only starts with:
+
+```bash
+docker compose -f docker-compose.dev.yml --profile legacy up -d map-service
+```
+
+Normal development should use `routing-service` and `postgres_map` instead.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
@@ -47,17 +28,31 @@
 
 | Método | Endpoint | Descrição |
 |--------|----------|-----------|
-| GET | /api/route | Calcular rota (A*) |
-| POST | /api/route/multi | Rota multi-destino |
-| POST | /api/route/nearest | Nó mais próximo |
-| GET | /api/route/evacuation | Rota de evacuação |
-| POST | /api/hazards/closure | Adicionar closure |
-| DELETE | /api/hazards/closure | Remover closure |
-| POST | /api/hazards/update | Atualizar hazard num nó |
-| POST | /api/hazards/crowd | Atualizar penalidade de multidão |
-| DELETE | /api/hazards/clear | Limpar hazards de um nó |
-| GET | /api/hazards/status | Estado dos hazards |
-| POST | /api/reload | Recarregar grafo do Map Service |
+| GET | /api/route/pgrouting | Calcular rota com pgRouting usando IDs numéricos |
+| GET | /api/route/pgrouting/geojson | Calcular rota e devolver GeoJSON |
+| GET | /api/route/pgrouting/combined | Rota no grafo combinado indoor/outdoor |
+| GET | /api/route/pgrouting/by-poi | Rota entre POIs |
+| GET | /api/route/pgrouting/by-poi/geojson | Rota GeoJSON entre POIs |
+| GET | /api/route/evacuation/geojson | Rota de evacuação em GeoJSON |
+| GET | /api/pois | POIs indoor vindos do PostGIS |
+| GET | /api/gis/rooms | Polígonos de salas |
+| GET | /api/gis/corridors | Polígonos de corredores |
+| GET | /api/gis/nodes | Nós do grafo indoor |
+| GET | /api/gis/cameras | Infraestrutura de câmaras |
+| GET | /api/gis/camera-coverage | Cobertura de câmaras |
+| GET | /api/gis/camera-status | Estado operacional das câmaras |
+| PUT | /api/gis/camera-status/{camera_id} | Atualizar estado de câmara, apenas Supervisor |
+| GET | /api/gis/impacted-edges | Edges afetadas por overrides ativos |
+| GET | /api/gis/vertical-transitions | Escadas/elevadores/transições de piso |
+| GET | /api/graph/status | Estado do grafo pgRouting |
+| GET | /api/graph/edge-overrides | Listar impactos ativos no grafo |
+| POST | /api/graph/edge-overrides | Criar bloqueio/multiplicador de custo |
+| POST | /api/graph/node-closures | Fechar edges ligadas a um nó |
+| POST | /api/graph/edge-overrides/deactivate-by-source | Desativar overrides por origem |
+| GET | /api/graph/events | Listar eventos operacionais |
+| POST | /api/graph/events | Criar evento operacional |
+| GET | /api/route | Endpoint de compatibilidade; usa pgRouting quando o grafo legacy não existe |
+| POST | /api/reload | Legacy only; indisponível quando o Map Service está desativado |
 | GET | /health | Health check |
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -97,7 +92,7 @@
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 
-## Maintenance Service (porta 8006)
+## Maintenance Service (porta 8007)
 
 | Método | Endpoint | Descrição |
 |--------|----------|-----------|
@@ -126,7 +121,7 @@
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 
-## Emergency Service (porta 8007)
+## Emergency Service (porta 8006)
 
 | Método | Endpoint | Descrição |
 |--------|----------|-----------|
@@ -142,7 +137,15 @@
 | POST | /api/emergency/dispatch | Despachar responders |
 | POST | /api/emergency/dispatch/manual | Despacho manual |
 | GET | /api/emergency/dispatch/active | Despachos ativos |
+| GET | /api/emergency/dispatch/incident/{incident_id} | Dispatches de um incidente |
+| POST | /api/emergency/dispatch/{id}/accept | Aceitar dispatch |
+| POST | /api/emergency/dispatch/{id}/refuse | Recusar dispatch |
+| POST | /api/emergency/dispatch/{id}/complete | Completar dispatch com notas opcionais |
 | POST | /api/emergency/dispatch/{id}/arrived | Marcar chegada |
+| POST | /api/emergency/evacuation/global | Iniciar evacuação global |
+| GET | /api/emergency/evacuation/global/active | Evacuação global ativa |
+| POST | /api/emergency/evacuation/global/{id}/safe | Confirmar staff em segurança |
+| POST | /api/emergency/evacuation/global/{id}/complete | Concluir evacuação global |
 | POST | /api/emergency/evacuation | Iniciar evacuação |
 | GET | /api/emergency/evacuation/active | Evacuações ativas |
 | GET | /api/emergency/evacuation/{id} | Detalhes de evacuação |

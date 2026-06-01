@@ -1,60 +1,81 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useTranslation } from 'react-i18next';
-import '@/lib/i18n';
 import axios from 'axios';
 import { useAuthStore } from '@/lib/stores/useAuthStore';
 import {
   AUTH_SERVICE,
-  CONGESTION_SERVICE,
   EMERGENCY_SERVICE,
   MAINTENANCE_SERVICE,
-  QUEUEING_SERVICE,
   type StaffMember,
-  type HeatmapPoint,
 } from '@/lib/services/api';
 import {
   AlertTriangle,
+  CheckCircle,
   Clock,
-  Flame,
+  Radio,
   RefreshCw,
   Shield,
   Trash2,
   Users,
-  Waves,
+  Video,
 } from 'lucide-react';
 
 type Severity = 'low' | 'medium' | 'high' | 'critical';
+type DispatchStatus = 'dispatched' | 'en_route' | 'arrived' | 'completed' | 'declined' | string;
+
+interface StaffApiEntry extends StaffMember {
+  current_location?: string;
+}
 
 interface EmergencyIncident {
   id: string;
   incident_type: string;
   location_node: string;
-  severity: Severity;
+  severity: Severity | string;
   status: string;
+  description?: string | null;
+  responders_dispatched: number;
   created_at?: string;
+  resolved_at?: string | null;
 }
 
-interface BinAlert {
+interface IncidentDispatch {
   id: string;
-  location_node: string;
-  fill_percentage: number;
+  incident_id: string;
+  responder_id: string;
+  responder_role: string;
+  eta_seconds: number;
+  status: DispatchStatus;
+  dispatched_at: string;
+  completed_at?: string | null;
+  incident_metadata?: {
+    responder_name?: string | null;
+    completion_notes?: string | null;
+  };
+}
+
+interface MaintenanceTask {
+  id: string;
+  task_type: string;
+  status: string;
   priority: string;
-  status: string;
+  location_node: string;
+  assigned_to?: string | null;
+  description?: string | null;
   created_at?: string;
+  completed_at?: string | null;
 }
 
-interface QueueAlert {
-  location_id: string;
-  wait_time_minutes: number;
+interface CameraStatus {
+  camera_id: number;
+  camera_name: string | null;
+  floor_id: number;
+  monitored_area: string | null;
+  people_count: number;
+  density_level: 'normal' | 'busy' | 'congested' | 'critical';
   status: string;
-}
-
-interface CongestionAlert {
-  area_id: string;
-  occupancy_rate: number;
-  severity?: Severity;
+  timestamp?: string | null;
 }
 
 interface TimelineItem {
@@ -63,18 +84,15 @@ interface TimelineItem {
   detail: string;
   severity: Severity;
   timestamp: string;
+  kind: 'incident' | 'dispatch' | 'maintenance' | 'camera';
 }
 
-function getStoredToken(): string {
-  if (typeof window === 'undefined') return '';
-  try {
-    const raw = localStorage.getItem('auth-storage');
-    if (!raw) return '';
-    const parsed = JSON.parse(raw);
-    return parsed?.state?.user?.token ?? '';
-  } catch {
-    return '';
-  }
+function toSeverity(value: unknown): Severity {
+  const normalized = String(value ?? '').toLowerCase();
+  if (normalized === 'critical') return 'critical';
+  if (normalized === 'high') return 'high';
+  if (normalized === 'medium') return 'medium';
+  return 'low';
 }
 
 function severityColor(severity: Severity): string {
@@ -84,85 +102,168 @@ function severityColor(severity: Severity): string {
   return 'bg-blue-100 text-blue-700 border-blue-200';
 }
 
-function toSeverity(value: string | undefined | null): Severity {
-  const normalized = String(value ?? '').toLowerCase();
-  if (normalized === 'critical') return 'critical';
-  if (normalized === 'high') return 'high';
-  if (normalized === 'medium') return 'medium';
-  return 'low';
+function normalizeRole(role: unknown): string {
+  const value = String(role ?? '').toLowerCase();
+  if (value.includes('security')) return 'Segurança';
+  if (value.includes('clean')) return 'Limpeza';
+  if (value.includes('supervisor')) return 'Supervisão';
+  if (value.includes('medical') || value.includes('medic')) return 'Médico';
+  return 'Staff';
 }
 
-function normalizeRole(role: string | undefined | null): string {
-  const value = String(role ?? '').toLowerCase();
-  if (value.includes('security')) return 'security';
-  if (value.includes('clean')) return 'cleaning';
-  if (value.includes('supervisor')) return 'supervisor';
-  if (value.includes('medical')) return 'medical';
-  if (value.includes('maintenance')) return 'maintenance';
-  return 'staff';
+function normalizeLocation(member: StaffApiEntry): string {
+  return String(member.current_location || member.location || 'N/A');
+}
+
+function isOpenIncident(incident: EmergencyIncident) {
+  const status = String(incident.status || '').toLowerCase();
+  return !['resolved', 'false_alarm', 'cancelled'].includes(status);
+}
+
+function isActiveDispatch(dispatch: IncidentDispatch) {
+  return ['dispatched', 'en_route', 'arrived'].includes(String(dispatch.status || '').toLowerCase());
+}
+
+function isOpenTask(task: MaintenanceTask) {
+  const status = String(task.status || '').toLowerCase();
+  return ['assigned', 'in_progress'].includes(status);
+}
+
+function incidentMatchesRole(incident: EmergencyIncident, role?: string | null) {
+  const normalizedRole = String(role ?? '').toLowerCase();
+  const type = String(incident.incident_type ?? '').toLowerCase();
+
+  if (normalizedRole.includes('supervisor')) return true;
+  if (normalizedRole.includes('medical') || normalizedRole.includes('medic')) {
+    return ['medic', 'medical', 'health'].some((value) => type.includes(value));
+  }
+  if (normalizedRole.includes('clean')) {
+    return ['cleaning', 'maintenance', 'bin', 'trash', 'lixeira', 'wc'].some((value) => type.includes(value));
+  }
+  if (normalizedRole.includes('security')) {
+    return ['security', 'fire', 'smoke', 'emergency', 'crowd', 'evacuation', 'other'].some((value) => type.includes(value));
+  }
+
+  return true;
+}
+
+function dispatchMatchesRole(dispatch: IncidentDispatch, role?: string | null) {
+  const normalizedRole = String(role ?? '').toLowerCase();
+  const responderRole = String(dispatch.responder_role ?? '').toLowerCase();
+
+  if (normalizedRole.includes('supervisor')) return true;
+  if (normalizedRole.includes('medical') || normalizedRole.includes('medic')) return responderRole.includes('medic') || responderRole.includes('medical');
+  if (normalizedRole.includes('clean')) return responderRole.includes('clean') || responderRole.includes('maintenance');
+  if (normalizedRole.includes('security')) return responderRole.includes('security');
+
+  return true;
+}
+
+function canSeeCleaningWork(role?: string | null) {
+  const normalizedRole = String(role ?? '').toLowerCase();
+  return normalizedRole.includes('supervisor') || normalizedRole.includes('clean');
+}
+
+function canSeeCrowdMonitoring(role?: string | null) {
+  const normalizedRole = String(role ?? '').toLowerCase();
+  return normalizedRole.includes('supervisor') || normalizedRole.includes('security');
+}
+
+function formatEta(seconds: number) {
+  if (!seconds || seconds <= 0) return 'ETA N/A';
+  return `ETA ${Math.ceil(seconds / 60)} min`;
+}
+
+function dispatchTimestamp(dispatch: IncidentDispatch) {
+  const value = dispatch.completed_at || dispatch.dispatched_at;
+  const time = value ? new Date(value).getTime() : 0;
+  return Number.isFinite(time) ? time : 0;
+}
+
+function getLatestDispatchesByResponder(dispatches: IncidentDispatch[]) {
+  const latest = new Map<string, IncidentDispatch>();
+
+  dispatches.forEach((dispatch) => {
+    const responderId = String(dispatch.responder_id);
+    const current = latest.get(responderId);
+
+    if (!current || dispatchTimestamp(dispatch) >= dispatchTimestamp(current)) {
+      latest.set(responderId, dispatch);
+    }
+  });
+
+  return latest;
 }
 
 export default function DashboardPage() {
-  const { t } = useTranslation();
   const { user } = useAuthStore();
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [error, setError] = useState<string>('');
-  const [lastUpdated, setLastUpdated] = useState<string>('');
+  const [error, setError] = useState('');
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
-  const [staff, setStaff] = useState<StaffMember[]>([]);
+  const [staff, setStaff] = useState<StaffApiEntry[]>([]);
   const [incidents, setIncidents] = useState<EmergencyIncident[]>([]);
-  const [binAlerts, setBinAlerts] = useState<BinAlert[]>([]);
-  const [queueAlerts, setQueueAlerts] = useState<QueueAlert[]>([]);
-  const [congestionAlerts, setCongestionAlerts] = useState<CongestionAlert[]>([]);
-  const [heatmapPoints, setHeatmapPoints] = useState<HeatmapPoint[]>([]);
+  const [dispatches, setDispatches] = useState<IncidentDispatch[]>([]);
+  const [tasks, setTasks] = useState<MaintenanceTask[]>([]);
+  const [cameraStatuses, setCameraStatuses] = useState<CameraStatus[]>([]);
 
   const fetchDashboardData = useCallback(async () => {
-    const token = user?.token || getStoredToken();
-    const headers = token ? { Authorization: `Bearer ${token}` } : undefined;
+    const requestConfig = { withCredentials: true, timeout: 6000 };
 
-    const requests = await Promise.allSettled([
-      axios.get<StaffMember[]>(`${AUTH_SERVICE}/staff`, { headers, timeout: 6000 }),
-      axios.get<{ incidents?: EmergencyIncident[] }>(`${EMERGENCY_SERVICE}/incidents`, { headers, timeout: 6000 }),
-      axios.get<{ tasks?: BinAlert[]; total?: number }>(`${MAINTENANCE_SERVICE}/tasks`, { 
-        params: { task_type: 'bin_full' },
-        headers, timeout: 6000 
-      }),
-      axios.get<{ alerts?: QueueAlert[] }>(`${QUEUEING_SERVICE}/alerts`, {
-        params: { threshold_minutes: 8 },
-        headers,
-        timeout: 6000,
-      }),
-      axios.get<{ alerts?: CongestionAlert[] }>(`${CONGESTION_SERVICE}/alerts`, {
-        params: { threshold: 80 },
-        headers,
-        timeout: 6000,
-      }),
-      axios.get<{ points?: HeatmapPoint[] }>(`${CONGESTION_SERVICE}/heatmap/points`, { headers, timeout: 6000 }),
-    ]);
+    try {
+      const [staffResult, incidentsResult, assignedTasksResult, inProgressTasksResult, cameraResult] = await Promise.allSettled([
+        axios.get<StaffApiEntry[]>(`${AUTH_SERVICE}/staff`, requestConfig),
+        axios.get<{ incidents?: EmergencyIncident[] }>(`${EMERGENCY_SERVICE}/incidents`, requestConfig),
+        axios.get<{ tasks?: MaintenanceTask[] }>(`${MAINTENANCE_SERVICE}/tasks`, {
+          params: { status: 'assigned', limit: 50 },
+          ...requestConfig,
+        }),
+        axios.get<{ tasks?: MaintenanceTask[] }>(`${MAINTENANCE_SERVICE}/tasks`, {
+          params: { status: 'in_progress', limit: 50 },
+          ...requestConfig,
+        }),
+        axios.get<{ statuses?: CameraStatus[] }>('/api/gis/camera-status', requestConfig),
+      ]);
 
-    const [staffRes, incidentsRes, binsRes, queueRes, congestionRes, heatRes] = requests;
+      const loadedStaff = staffResult.status === 'fulfilled' ? staffResult.value.data || [] : [];
+      const loadedIncidents = incidentsResult.status === 'fulfilled' ? incidentsResult.value.data?.incidents || [] : [];
+      const loadedTasks = [
+        ...(assignedTasksResult.status === 'fulfilled' ? assignedTasksResult.value.data?.tasks || [] : []),
+        ...(inProgressTasksResult.status === 'fulfilled' ? inProgressTasksResult.value.data?.tasks || [] : []),
+      ];
+      const loadedCameras = cameraResult.status === 'fulfilled' ? cameraResult.value.data?.statuses || [] : [];
 
-    if (staffRes.status === 'fulfilled') setStaff(staffRes.value.data || []);
-    if (incidentsRes.status === 'fulfilled') setIncidents(incidentsRes.value.data?.incidents || []);
-    if (binsRes.status === 'fulfilled') setBinAlerts((binsRes.value.data as { tasks?: BinAlert[] })?.tasks || []);
-    if (queueRes.status === 'fulfilled') setQueueAlerts(queueRes.value.data?.alerts || []);
-    if (congestionRes.status === 'fulfilled') setCongestionAlerts(congestionRes.value.data?.alerts || []);
-    if (heatRes.status === 'fulfilled') setHeatmapPoints(heatRes.value.data?.points || []);
+      const dispatchResults = await Promise.allSettled(
+        loadedIncidents.map((incident) =>
+          axios.get<IncidentDispatch[]>(`${EMERGENCY_SERVICE}/dispatch/incident/${incident.id}`, requestConfig)
+        )
+      );
 
-    const allFailed = requests.every((r) => r.status === 'rejected');
-    setError(allFailed ? 'Não foi possível carregar dados dos serviços.' : '');
-    setLastUpdated(new Date().toISOString());
-  }, [user?.token]);
+      const loadedDispatches = dispatchResults.flatMap((result) =>
+        result.status === 'fulfilled' ? result.value.data || [] : []
+      );
+
+      setStaff(loadedStaff);
+      setIncidents(loadedIncidents);
+      setTasks(loadedTasks);
+      setCameraStatuses(loadedCameras);
+      setDispatches(loadedDispatches);
+      setError('');
+      setLastUpdated(new Date());
+    } catch {
+      setError('Não foi possível carregar os dados reais da dashboard.');
+    }
+  }, []);
 
   useEffect(() => {
     let mounted = true;
 
-    const runInitial = async () => {
+    async function runInitial() {
       setLoading(true);
       await fetchDashboardData();
       if (mounted) setLoading(false);
-    };
+    }
 
     void runInitial();
 
@@ -184,202 +285,251 @@ export default function DashboardPage() {
   };
 
   const derived = useMemo(() => {
-    const activeStaff = staff.filter((s) => {
-      const status = String(s.status || '').toLowerCase();
-      return ['active', 'online', 'available', 'patrol', 'responding'].includes(status);
-    }).length;
-
-    const openIncidents = incidents.filter((i) => {
-      const status = String(i.status || '').toLowerCase();
-      return status !== 'resolved' && status !== 'false_alarm';
-    });
-
-    const criticalIncidents = openIncidents.filter((i) => toSeverity(i.severity) === 'critical').length;
-
-    const openBinAlerts = binAlerts.filter((b) => {
-      const status = String(b.status || '').toLowerCase();
-      return status !== 'completed' && status !== 'resolved';
-    });
-
-    const heatRiskAreas = heatmapPoints.filter((p) => {
-      const occupancy = Number(p.occupancy_rate ?? p.weight * 100 ?? 0);
-      return occupancy >= 80;
-    }).length;
+    const visibleIncidents = incidents.filter((incident) => incidentMatchesRole(incident, user?.role));
+    const openIncidents = visibleIncidents.filter(isOpenIncident);
+    const criticalIncidents = openIncidents.filter((incident) => toSeverity(incident.severity) === 'critical');
+    const visibleDispatches = dispatches.filter((dispatch) => dispatchMatchesRole(dispatch, user?.role));
+    const latestDispatches = Array.from(getLatestDispatchesByResponder(visibleDispatches).values());
+    const activeDispatches = latestDispatches.filter(isActiveDispatch);
+    const pendingDispatches = latestDispatches.filter((dispatch) => String(dispatch.status).toLowerCase() === 'dispatched');
+    const completedDispatches = visibleDispatches.filter((dispatch) => String(dispatch.status).toLowerCase() === 'completed');
+    const openTasks = canSeeCleaningWork(user?.role) ? tasks.filter(isOpenTask) : [];
+    const criticalCameras = cameraStatuses.filter((camera) => camera.density_level === 'critical');
+    const riskyCameras = canSeeCrowdMonitoring(user?.role)
+      ? cameraStatuses.filter((camera) => ['busy', 'congested', 'critical'].includes(camera.density_level))
+      : [];
+    const busyStaffIds = new Set(activeDispatches.map((dispatch) => String(dispatch.responder_id)));
+    const staffInOperation = staff.filter((member) => busyStaffIds.has(String(member.id))).length;
 
     const timeline: TimelineItem[] = [
-      ...openIncidents.slice(0, 6).map((i) => ({
-        id: `incident-${i.id}`,
-        title: t('dashboard.timeline.incident', { type: i.incident_type }),
-        detail: `${t('dashboard.timeline.location')}: ${i.location_node}`,
-        severity: toSeverity(i.severity),
-        timestamp: i.created_at || new Date().toISOString(),
+      ...openIncidents.map((incident) => ({
+        id: `incident-${incident.id}`,
+        title: `${incident.incident_type} em ${incident.location_node}`,
+        detail: incident.description || `Estado: ${incident.status}`,
+        severity: toSeverity(incident.severity),
+        timestamp: incident.created_at || new Date().toISOString(),
+        kind: 'incident' as const,
       })),
-      ...congestionAlerts.slice(0, 6).map((a, idx) => ({
-        id: `congestion-${a.area_id}-${idx}`,
-        title: t('dashboard.timeline.congestion'),
-        detail: `${a.area_id} com ${Math.round(a.occupancy_rate)}%`,
-        severity: toSeverity(a.severity || (a.occupancy_rate >= 95 ? 'critical' : 'high')),
-        timestamp: new Date().toISOString(),
+      ...activeDispatches.map((dispatch) => ({
+        id: `dispatch-${dispatch.id}`,
+        title: `${dispatch.incident_metadata?.responder_name || `Staff ${dispatch.responder_id}`} em operação`,
+        detail: `${dispatch.responder_role} • ${dispatch.status} • ${formatEta(dispatch.eta_seconds)}`,
+        severity: String(dispatch.status).toLowerCase() === 'dispatched' ? 'medium' as const : 'low' as const,
+        timestamp: dispatch.dispatched_at || new Date().toISOString(),
+        kind: 'dispatch' as const,
       })),
-      ...openBinAlerts.slice(0, 6).map((b) => ({
-        id: `bin-${b.id}`,
-        title: t('dashboard.timeline.bin'),
-        detail: `${b.location_node} (${Math.round(b.fill_percentage)}%)`,
-        severity: toSeverity(b.priority),
-        timestamp: b.created_at || new Date().toISOString(),
+      ...openTasks.map((task) => ({
+        id: `task-${task.id}`,
+        title: task.description || `Tarefa ${task.task_type}`,
+        detail: `${task.location_node} • ${task.status}`,
+        severity: toSeverity(task.priority),
+        timestamp: task.created_at || new Date().toISOString(),
+        kind: 'maintenance' as const,
       })),
-      ...queueAlerts.slice(0, 6).map((q, idx) => ({
-        id: `queue-${q.location_id}-${idx}`,
-        title: t('dashboard.timeline.queue'),
-        detail: `${q.location_id} (${q.wait_time_minutes.toFixed(1)} min)`,
-        severity: toSeverity(q.status),
-        timestamp: new Date().toISOString(),
+      ...riskyCameras.map((camera) => ({
+        id: `camera-${camera.camera_id}`,
+        title: camera.camera_name || `Câmara ${camera.camera_id}`,
+        detail: `${camera.monitored_area || `Piso ${camera.floor_id}`} • ${camera.people_count} pessoas • ${camera.density_level}`,
+        severity: camera.density_level === 'critical' ? 'critical' as const : camera.density_level === 'congested' ? 'high' as const : 'medium' as const,
+        timestamp: camera.timestamp || new Date().toISOString(),
+        kind: 'camera' as const,
       })),
     ]
       .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
-      .slice(0, 8);
+      .slice(0, 10);
 
     return {
-      activeStaff,
-      openIncidents: openIncidents.length,
+      openIncidents,
       criticalIncidents,
-      openBinAlerts: openBinAlerts.length,
-      queueAlerts: queueAlerts.length,
-      congestionAlerts: congestionAlerts.length,
-      heatRiskAreas,
+      activeDispatches,
+      pendingDispatches,
+      completedDispatches,
+      openTasks,
+      criticalCameras,
+      riskyCameras,
+      staffInOperation,
       timeline,
     };
-  }, [staff, incidents, binAlerts, heatmapPoints, congestionAlerts, queueAlerts]);
+  }, [cameraStatuses, dispatches, incidents, staff, tasks, user?.role]);
 
-  const roleTitle = useMemo(() => {
-    const role = normalizeRole(user?.role);
-    return t(`dashboard.title_${role}`, { defaultValue: t('dashboard.title_default') });
-  }, [user?.role, t]);
+  const teamRows = useMemo(() => {
+    const dispatchByResponder = getLatestDispatchesByResponder(dispatches);
 
-  const formattedUpdated = useMemo(() => {
-    if (!lastUpdated) return 'sem atualização';
-    return new Date(lastUpdated).toLocaleString('pt-PT');
-  }, [lastUpdated]);
+    return staff.map((member) => {
+      const latestDispatch = dispatchByResponder.get(String(member.id));
+      const activeDispatch = latestDispatch && isActiveDispatch(latestDispatch) ? latestDispatch : undefined;
+
+      return {
+        ...member,
+        location: normalizeLocation(member),
+        displayRole: normalizeRole(member.role),
+        operationStatus: activeDispatch ? String(activeDispatch.status) : String(member.status || 'available'),
+        activeDispatch,
+        lastDispatch: latestDispatch,
+      };
+    });
+  }, [dispatches, staff]);
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h1 className="text-3xl font-bold text-gray-900">{roleTitle}</h1>
-            <p className="text-sm text-gray-500 mt-1">{t('dashboard.subtitle')}</p>
-          </div>
-          <div className="flex items-center gap-3">
+    <div className="w-full space-y-6 px-4 py-5 sm:px-6 lg:p-0">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <p className="text-xs font-bold uppercase tracking-[0.22em] text-orange-600">Supervisão</p>
+          <h1 className="mt-1 text-3xl font-black text-gray-950">Painel de supervisão</h1>
+          <p className="mt-1 text-sm text-gray-500">Dados reais dos serviços operacionais, incidentes e GIS.</p>
+        </div>
+        <div className="flex flex-wrap items-center gap-3">
+          {lastUpdated && (
             <span className="text-xs text-gray-400">
-              {lastUpdated ? `${t('common.updated_at')} ${new Date(lastUpdated).toLocaleTimeString()}` : ''}
+              Atualizado às {lastUpdated.toLocaleTimeString('pt-PT')}
             </span>
-            <button
-              onClick={onRefresh}
-              disabled={refreshing}
-              className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
-            >
-              <RefreshCw size={18} className={refreshing ? 'animate-spin' : ''} />
-              {t('common.refresh')}
-            </button>
+          )}
+          <button
+            onClick={onRefresh}
+            disabled={refreshing}
+            className="flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-bold text-white hover:bg-blue-700 disabled:opacity-50"
+          >
+            <RefreshCw size={18} className={refreshing ? 'animate-spin' : ''} />
+            Atualizar
+          </button>
+        </div>
+      </div>
+
+      {error && (
+        <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>
+      )}
+
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+          <div className="flex items-center justify-between">
+            <span className="text-sm text-gray-500">Equipa em operação</span>
+            <Users className="text-blue-600" size={20} />
           </div>
+          <p className="mt-2 text-3xl font-black text-gray-950">{loading ? '...' : derived.staffInOperation}</p>
+          <p className="mt-1 text-xs text-gray-500">Total registado: {staff.length}</p>
         </div>
 
-        {error && (
-          <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{t('dashboard.error')}</div>
-        )}
-
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
-          <div className="rounded-xl border border-gray-200 bg-white p-5">
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-gray-500">{t('dashboard.stats.active_staff')}</span>
-              <Users className="text-blue-600" size={20} />
-            </div>
-            <p className="text-3xl font-bold text-gray-900 mt-2">{loading ? '...' : derived.activeStaff}</p>
-            <p className="text-xs text-gray-500 mt-1">{t('dashboard.stats.total_registered')}: {staff.length}</p>
+        <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+          <div className="flex items-center justify-between">
+            <span className="text-sm text-gray-500">Incidentes abertos</span>
+            <Shield className="text-red-600" size={20} />
           </div>
-
-          <div className="rounded-xl border border-gray-200 bg-white p-5">
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-gray-500">{t('dashboard.stats.open_incidents')}</span>
-              <Shield className="text-red-600" size={20} />
-            </div>
-            <p className="text-3xl font-bold text-gray-900 mt-2">{loading ? '...' : derived.openIncidents}</p>
-            <p className="text-xs text-gray-500 mt-1">{t('dashboard.stats.critical')}: {derived.criticalIncidents}</p>
-          </div>
-
-          <div className="rounded-xl border border-gray-200 bg-white p-5">
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-gray-500">{t('dashboard.stats.congestion')}</span>
-              <Flame className="text-orange-600" size={20} />
-            </div>
-            <p className="text-3xl font-bold text-gray-900 mt-2">{loading ? '...' : derived.congestionAlerts}</p>
-            <p className="text-xs text-gray-500 mt-1">{t('dashboard.stats.risk_zones')}: {derived.heatRiskAreas}</p>
-          </div>
-
-          <div className="rounded-xl border border-gray-200 bg-white p-5">
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-gray-500">{t('dashboard.stats.pending_ops')}</span>
-              <Trash2 className="text-emerald-600" size={20} />
-            </div>
-            <p className="text-3xl font-bold text-gray-900 mt-2">{loading ? '...' : derived.openBinAlerts + derived.queueAlerts}</p>
-            <p className="text-xs text-gray-500 mt-1">{t('dashboard.stats.bins')}: {derived.openBinAlerts} • {t('dashboard.stats.queues')}: {derived.queueAlerts}</p>
-          </div>
+          <p className="mt-2 text-3xl font-black text-gray-950">{loading ? '...' : derived.openIncidents.length}</p>
+          <p className="mt-1 text-xs text-gray-500">Críticos: {derived.criticalIncidents.length}</p>
         </div>
 
-        <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-          <div className="xl:col-span-2 rounded-xl border border-gray-200 bg-white">
-            <div className="border-b border-gray-100 px-5 py-4 flex items-center gap-2">
-              <AlertTriangle size={18} className="text-gray-700" />
-              <h2 className="text-lg font-semibold text-gray-900">{t('dashboard.feed.title')}</h2>
-            </div>
-            <div className="p-4 space-y-3">
-              {loading ? (
-                <p className="text-sm text-gray-500">{t('dashboard.feed.loading')}</p>
-              ) : derived.timeline.length === 0 ? (
-                <p className="text-sm text-gray-500">{t('dashboard.feed.empty')}</p>
-              ) : (
-                derived.timeline.map((item) => (
-                  <div key={item.id} className="rounded-lg border border-gray-100 p-3">
-                    <div className="flex items-center justify-between gap-2">
-                      <p className="font-medium text-gray-900">{item.title}</p>
-                      <span className={`rounded-full border px-2 py-0.5 text-xs font-medium ${severityColor(item.severity)}`}>
-                        {item.severity}
-                      </span>
-                    </div>
-                    <p className="text-sm text-gray-600 mt-1">{item.detail}</p>
-                    <div className="mt-2 flex items-center gap-1 text-xs text-gray-400">
-                      <Clock size={12} />
-                      {new Date(item.timestamp).toLocaleString()}
-                    </div>
+        <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+          <div className="flex items-center justify-between">
+            <span className="text-sm text-gray-500">Despachos ativos</span>
+            <Radio className="text-orange-600" size={20} />
+          </div>
+          <p className="mt-2 text-3xl font-black text-gray-950">{loading ? '...' : derived.activeDispatches.length}</p>
+          <p className="mt-1 text-xs text-gray-500">Pendentes de aceitar: {derived.pendingDispatches.length}</p>
+        </div>
+
+        <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+          <div className="flex items-center justify-between">
+            <span className="text-sm text-gray-500">Operações pendentes</span>
+            <Trash2 className="text-emerald-600" size={20} />
+          </div>
+          <p className="mt-2 text-3xl font-black text-gray-950">{loading ? '...' : derived.openTasks.length + derived.riskyCameras.length}</p>
+          <p className="mt-1 text-xs text-gray-500">Tarefas atribuídas: {derived.openTasks.length} • Câmaras risco: {derived.riskyCameras.length}</p>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,2fr)_minmax(360px,0.9fr)]">
+        <div className="rounded-xl border border-gray-200 bg-white shadow-sm">
+          <div className="flex items-center gap-2 border-b border-gray-100 px-5 py-4">
+            <AlertTriangle size={18} className="text-gray-700" />
+            <h2 className="text-lg font-bold text-gray-950">Feed operacional</h2>
+          </div>
+          <div className="space-y-3 p-4">
+            {loading ? (
+              <p className="text-sm text-gray-500">A carregar dados...</p>
+            ) : derived.timeline.length === 0 ? (
+              <p className="text-sm text-gray-500">Sem operações ativas neste momento.</p>
+            ) : (
+              derived.timeline.map((item) => (
+                <div key={item.id} className="rounded-lg border border-gray-100 p-4">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="font-semibold text-gray-900">{item.title}</p>
+                    <span className={`rounded-full border px-2 py-0.5 text-xs font-bold ${severityColor(item.severity)}`}>
+                      {item.severity}
+                    </span>
                   </div>
-                ))
-              )}
-            </div>
+                  <p className="mt-1 text-sm text-gray-600">{item.detail}</p>
+                  <div className="mt-2 flex items-center gap-1 text-xs text-gray-400">
+                    <Clock size={12} />
+                    {new Date(item.timestamp).toLocaleString('pt-PT')}
+                  </div>
+                </div>
+              ))
+            )}
           </div>
+        </div>
 
-          <div className="rounded-xl border border-gray-200 bg-white">
-            <div className="border-b border-gray-100 px-5 py-4 flex items-center gap-2">
-              <Waves size={18} className="text-gray-700" />
-              <h2 className="text-lg font-semibold text-gray-900">{t('dashboard.team.title')}</h2>
-            </div>
-            <div className="p-4 space-y-3">
-              {loading ? (
-                <p className="text-sm text-gray-500">{t('dashboard.team.loading')}</p>
-              ) : staff.length === 0 ? (
-                <p className="text-sm text-gray-500">{t('dashboard.team.empty')}</p>
-              ) : (
-                staff.slice(0, 8).map((member) => (
-                  <div key={member.id} className="flex items-center justify-between rounded-lg bg-gray-50 px-3 py-2">
+        <div className="rounded-xl border border-gray-200 bg-white shadow-sm">
+          <div className="flex items-center gap-2 border-b border-gray-100 px-5 py-4">
+            <Video size={18} className="text-gray-700" />
+            <h2 className="text-lg font-bold text-gray-950">Estado da equipa</h2>
+          </div>
+          <div className="space-y-3 p-4">
+            {loading ? (
+              <p className="text-sm text-gray-500">A carregar equipa...</p>
+            ) : teamRows.length === 0 ? (
+              <p className="text-sm text-gray-500">Sem staff registado.</p>
+            ) : (
+              teamRows.map((member) => (
+                <div key={member.id} className="rounded-lg bg-gray-50 px-4 py-3">
+                  <div className="flex items-center justify-between gap-2">
                     <div>
-                      <p className="text-sm font-medium text-gray-900">{member.name || `Staff ${member.id}`}</p>
-                      <p className="text-xs text-gray-500">{t(`dashboard.roles.${normalizeRole(member.role)}`, { defaultValue: member.role })} • {member.location || 'N/A'}</p>
+                      <p className="text-sm font-semibold text-gray-900">{member.name || `Staff ${member.id}`}</p>
+                      <p className="text-xs text-gray-500">{member.displayRole} • {member.location}</p>
                     </div>
-                    <span className="text-xs text-gray-600">{member.status || 'unknown'}</span>
+                    <span className={`rounded-full px-2 py-1 text-xs font-bold ${member.activeDispatch ? 'bg-blue-100 text-blue-700' : 'bg-emerald-100 text-emerald-700'}`}>
+                      {member.activeDispatch ? member.operationStatus : 'disponível'}
+                    </span>
                   </div>
-                ))
-              )}
-            </div>
+                  {member.activeDispatch && (
+                    <p className="mt-1 text-xs text-gray-500">
+                      Incidente {member.activeDispatch.incident_id} • {formatEta(member.activeDispatch.eta_seconds)}
+                    </p>
+                  )}
+                </div>
+              ))
+            )}
           </div>
         </div>
       </div>
+
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+        <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+          <div className="flex items-center gap-2">
+            <CheckCircle size={18} className="text-emerald-600" />
+            <h3 className="font-bold text-gray-950">Concluídos</h3>
+          </div>
+          <p className="mt-2 text-2xl font-black text-gray-950">{derived.completedDispatches.length}</p>
+          <p className="text-sm text-gray-500">Despachos com relatório submetido.</p>
+        </div>
+
+        <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+          <div className="flex items-center gap-2">
+            <Video size={18} className="text-orange-600" />
+            <h3 className="font-bold text-gray-950">Câmaras em risco</h3>
+          </div>
+          <p className="mt-2 text-2xl font-black text-gray-950">{derived.riskyCameras.length}</p>
+          <p className="text-sm text-gray-500">Críticas: {derived.criticalCameras.length}</p>
+        </div>
+
+        <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+          <div className="flex items-center gap-2">
+            <Trash2 size={18} className="text-slate-600" />
+            <h3 className="font-bold text-gray-950">Manutenção</h3>
+          </div>
+          <p className="mt-2 text-2xl font-black text-gray-950">{derived.openTasks.length}</p>
+          <p className="text-sm text-gray-500">Tarefas atribuídas ou em progresso.</p>
+        </div>
+      </div>
+    </div>
   );
 }

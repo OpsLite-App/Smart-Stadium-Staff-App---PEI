@@ -2,16 +2,40 @@
 CONGESTION SERVICE
 Real-time crowd density monitoring and heatmap generation
 Listens to MQTT crowd_density events and provides heatmap API
+
+With Redis Caching:
+- GET /api/heatmap (cached 30s)
+- GET /api/heatmap/points (cached 30s)
 """
 
 import requests
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.responses import Response
 from pydantic import BaseModel
 from typing import Dict, List, Optional
 from datetime import datetime, timedelta
 from collections import defaultdict
 import asyncio
+import sys
+import os
+import time
+
+# Add parent directory to path to import cache_config
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+try:
+    from cache_config import RedisCache
+    CACHE_AVAILABLE = True
+except ImportError:
+    CACHE_AVAILABLE = False
+    print("[WARNING] Redis cache unavailable; continuing without caching")
+
+try:
+    from prometheus_client import CONTENT_TYPE_LATEST, Counter, Histogram, generate_latest
+    METRICS_AVAILABLE = True
+except ImportError:
+    METRICS_AVAILABLE = False
 
 try:
     import paho.mqtt.client as mqtt
@@ -33,12 +57,50 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ========== CONFIGURATION ==========
+if METRICS_AVAILABLE:
+    REQUEST_COUNT = Counter(
+        "http_requests_total",
+        "Total HTTP requests",
+        ["service", "method", "path", "status"],
+    )
+    REQUEST_LATENCY = Histogram(
+        "http_request_duration_seconds",
+        "HTTP request latency in seconds",
+        ["service", "method", "path"],
+    )
 
-import os
+    @app.middleware("http")
+    async def prometheus_metrics_middleware(request, call_next):
+        if request.url.path == "/metrics":
+            return await call_next(request)
+
+        start = time.perf_counter()
+        response = await call_next(request)
+        path = getattr(request.scope.get("route"), "path", request.url.path)
+        elapsed = time.perf_counter() - start
+
+        REQUEST_COUNT.labels(
+            service="congestion-service",
+            method=request.method,
+            path=path,
+            status=str(response.status_code),
+        ).inc()
+        REQUEST_LATENCY.labels(
+            service="congestion-service",
+            method=request.method,
+            path=path,
+        ).observe(elapsed)
+
+        return response
+
+    @app.get("/metrics", include_in_schema=False)
+    async def metrics():
+        return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
+
+# ========== CONFIGURATION ==========
 MQTT_BROKER = os.getenv("MQTT_HOST", os.getenv("MQTT_BROKER", "localhost"))
 MQTT_PORT = int(os.getenv("MQTT_PORT", "1883"))
-MAP_SERVICE_URL = os.getenv("MAP_SERVICE_URL", "http://map-service:8000")
+MAP_SERVICE_URL = os.getenv("MAP_SERVICE_URL", "")
 # Subscribe to crowd-specific topics
 MQTT_TOPICS = [
     "stadium/crowd/gate-updates",
@@ -72,6 +134,7 @@ class CrowdDensity(BaseModel):
     heat_level: str  # green, yellow, red
     status: str  # empty, normal, busy, crowded, critical
     last_update: str
+    floor_id: Optional[int] = 1
 
 
 class HeatmapResponse(BaseModel):
@@ -86,6 +149,14 @@ import logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# Initialize cache
+redis_cache = RedisCache() if CACHE_AVAILABLE else None
+
+def invalidate_heatmap_cache():
+    """Invalidate heatmap caches when new data arrives"""
+    if redis_cache:
+        redis_cache.clear_pattern("heatmap:*")
+
 def on_mqtt_message(client, userdata, msg):
     """Process crowd density events from MQTT"""
     try:
@@ -95,7 +166,7 @@ def on_mqtt_message(client, userdata, msg):
         event = json.loads(msg.payload.decode())
         event_type = event.get("event_type")
         
-        logger.info(f"📊 Evento: {event_type}")
+        logger.debug("Received congestion event: type=%s", event_type)
         
         if event_type == "crowd_density":
             area_id = event.get("area_id")
@@ -110,10 +181,10 @@ def on_mqtt_message(client, userdata, msg):
             x = location.get("x")  # latitude
             y = location.get("y")  # longitude
             
-            logger.info(f"📍 {area_id}: ({x}, {y}) - {occupancy_rate}%")
+            logger.debug("Congestion update: area_id=%s x=%s y=%s occupancy_rate=%s", area_id, x, y, occupancy_rate)
             
             if x is None or y is None:
-                logger.warning(f"⚠️ {area_id}: Sem coordenadas!")
+                logger.warning("Congestion update has no coordinates: area_id=%s", area_id)
                 return
             
             # Determine status
@@ -128,6 +199,8 @@ def on_mqtt_message(client, userdata, msg):
             else:
                 status = "critical"
             
+            floor_id = event.get("floor_id", 1)
+
             # Update current data - INCLUIR AS COORDENADAS
             crowd_data[area_id] = {
                 "area_id": area_id,
@@ -138,10 +211,14 @@ def on_mqtt_message(client, userdata, msg):
                 "heat_level": heat_level,
                 "status": status,
                 "last_update": datetime.now().isoformat(),
-                "location": {"x": x, "y": y}  # 🔥 GUARDAR AS COORDENADAS!
+                "location": {"x": x, "y": y},  # 🔥 GUARDAR AS COORDENADAS!
+                "floor_id": floor_id
             }
             
-            logger.info(f"✅ {area_id} guardado. Total áreas: {len(crowd_data)}")
+            logger.debug("Congestion area stored: area_id=%s total_areas=%s", area_id, len(crowd_data))
+            
+            # Invalidate heatmap cache on new data
+            invalidate_heatmap_cache()
             
             # Add to historical data
             historical_data[area_id].append({
@@ -154,7 +231,7 @@ def on_mqtt_message(client, userdata, msg):
                 historical_data[area_id] = historical_data[area_id][-MAX_HISTORY:]
             
     except Exception as e:
-        logger.error(f"❌ Erro no MQTT: {e}")
+        logger.error("MQTT message processing failed: %s", e)
         import traceback
         traceback.print_exc()
 
@@ -164,11 +241,11 @@ def start_mqtt_listener():
         return
     
     def mqtt_thread():
-        client = mqtt.Client(protocol=mqtt.MQTTv5)
+        client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, protocol=mqtt.MQTTv5)
         client.on_message = on_mqtt_message
         
         def on_disconnect(client, userdata, rc):
-            print(f"⚠️  MQTT disconnected (rc={rc})")
+            print(f"[WARNING] MQTT disconnected: return_code={rc}")
 
         client.on_disconnect = on_disconnect
         try:
@@ -200,6 +277,9 @@ async def cleanup_stale_data():
         
         for area_id in to_remove:
             del crowd_data[area_id]
+
+        if to_remove:
+            invalidate_heatmap_cache()
         
         await asyncio.sleep(60)  # Run every minute
 
@@ -209,7 +289,7 @@ async def cleanup_stale_data():
 @app.on_event("startup")
 async def startup():
     """Initialize service"""
-    print("\n📊 Congestion Service starting...")
+    print("\n[INFO] Congestion Service starting")
     
     # Start MQTT listener
     start_mqtt_listener()
@@ -219,7 +299,7 @@ async def startup():
     asyncio.create_task(cleanup_stale_data())
     print("✓ Cleanup task started")
     
-    print("✅ Congestion Service ready\n")
+    print("[INFO] Congestion Service ready\n")
 
 
 # ========== ENDPOINTS ==========
@@ -242,7 +322,17 @@ def get_heatmap():
     Get complete stadium heatmap
     
     Returns all areas with current crowd density
+    Results are cached for 30 seconds
     """
+    # Try to get from cache
+    cache_key = "heatmap:complete"
+    if redis_cache:
+        cached = redis_cache.get(cache_key)
+        if cached:
+            logger.info(f"✨ Cache hit: {cache_key}")
+            return HeatmapResponse(**cached)
+    
+    # Generate heatmap
     areas = [CrowdDensity(**data) for data in crowd_data.values()]
     
     # Calculate summary
@@ -250,24 +340,44 @@ def get_heatmap():
     for area in areas:
         summary[area.heat_level] += 1
     
-    return HeatmapResponse(
+    response = HeatmapResponse(
         timestamp=datetime.now().isoformat(),
         total_areas=len(areas),
         areas=areas,
         summary=summary
     )
+    
+    # Cache for 30 seconds
+    if redis_cache:
+        redis_cache.set(cache_key, response.model_dump(), ttl=30)
+        logger.debug("Heatmap cached: key=%s ttl_seconds=30", cache_key)
+    
+    return response
 
 
 @app.get("/api/heatmap/points")
-def get_heatmap_points():
+def get_heatmap_points(floor_id: Optional[int] = Query(None, description="Filter by floor ID")):
     """
     Get heatmap points with geographic coordinates
-    Returns: [{latitude, longitude, weight, occupancy_rate, area_id}, ...]
+    Returns: [{latitude, longitude, weight, occupancy_rate, area_id, floor_id}, ...]
+    Results are cached for 30 seconds
     """
+    # Build cache key based on floor_id
+    cache_key = f"heatmap:points:{floor_id}"
+    if redis_cache:
+        cached = redis_cache.get(cache_key)
+        if cached:
+            logger.info(f"✨ Cache hit: {cache_key}")
+            return cached
+    
     try:
         points = []
         
         for area_id, data in crowd_data.items():
+            point_floor = data.get('floor_id')
+            if floor_id is not None and point_floor is not None and point_floor != floor_id:
+                continue
+
             occupancy = data.get('occupancy_rate', 0)
             
             # Se já temos coordenadas nos dados de crowd, usamos
@@ -290,7 +400,8 @@ def get_heatmap_points():
                         "weight": round(weight, 3),
                         "occupancy_rate": round(occupancy, 1),
                         "area_id": area_id,
-                        "heat_level": data.get("heat_level", "green")
+                        "heat_level": data.get("heat_level", "green"),
+                        "floor_id": point_floor
                     })
                     continue  # Já temos coordenadas, passa para o próximo
         
@@ -308,6 +419,10 @@ def get_heatmap_points():
                     if any(p['area_id'] == area_id for p in points):
                         continue
                     
+                    point_floor = data.get('floor_id')
+                    if floor_id is not None and point_floor is not None and point_floor != floor_id:
+                        continue
+
                     if area_id in node_lookup:
                         node = node_lookup[area_id]
                         occupancy = data.get('occupancy_rate', 0)
@@ -321,21 +436,30 @@ def get_heatmap_points():
                             "weight": round(weight, 3),
                             "occupancy_rate": round(occupancy, 1),
                             "area_id": area_id,
-                            "heat_level": data.get("heat_level", "green")
+                            "heat_level": data.get("heat_level", "green"),
+                            "floor_id": point_floor
                         })
         except Exception as e:
-            print(f"⚠️ Map Service não disponível: {e}")
+            logger.warning("Map Service unavailable: %s", e)
             # Continua com os pontos que já temos
         
-        print(f"✅ Gerados {len(points)} pontos de heatmap")
-        return {
+        logger.debug("Heatmap points generated: count=%s", len(points))
+        
+        response = {
             "timestamp": datetime.now().isoformat(),
             "points": points,
             "count": len(points)
         }
+        
+        # Cache for 30 seconds
+        if redis_cache:
+            redis_cache.set(cache_key, response, ttl=30)
+            logger.debug("Heatmap cached: key=%s ttl_seconds=30", cache_key)
+        
+        return response
     
     except Exception as e:
-        print(f"❌ Erro ao gerar heatmap points: {e}")
+        logger.error("Failed to generate heatmap points: %s", e)
         return {"points": [], "count": 0, "error": str(e)}
     
 @app.get("/api/heatmap/{area_id}", response_model=CrowdDensity)

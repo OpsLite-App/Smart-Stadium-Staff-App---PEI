@@ -1,6 +1,6 @@
 """
 EVENT PROCESSOR - Integration Layer
-Connects Simulator → Services (Routing, Queueing, Map)
+Connects Simulator → Services (Routing, Queueing, Congestion, Maintenance)
 
 Listens to MQTT events and updates services accordingly
 """
@@ -20,7 +20,7 @@ try:
     MQTT_AVAILABLE = True
 except ImportError:
     MQTT_AVAILABLE = False
-    print("⚠️  paho-mqtt not installed. Install: pip install paho-mqtt")
+    print("[WARNING] paho-mqtt is not installed. Install it with: pip install paho-mqtt")
 
 # ========== CONFIGURATION ==========
 
@@ -29,7 +29,6 @@ MQTT_BROKER = os.getenv("MQTT_HOST", os.getenv("MQTT_BROKER", "localhost"))
 MQTT_PORT = int(os.getenv("MQTT_PORT", "1883"))
 MQTT_TOPIC = "stadium/#"
 
-MAP_SERVICE_URL = os.getenv("MAP_SERVICE_URL", "http://map-service:8000")
 ROUTING_SERVICE_URL = os.getenv("ROUTING_SERVICE_URL", "http://routing-service:8002")
 QUEUEING_SERVICE_URL = os.getenv("QUEUEING_SERVICE_URL", "http://queueing-service:8003")
 WAIT_TIMES_SERVICE_URL = os.getenv("WAIT_TIMES_SERVICE_URL", "http://event-processor:8004")
@@ -87,10 +86,10 @@ class EventProcessor:
             
             # Log every 10 events
             if self.event_count % 10 == 0:
-                print(f"📊 Processed {self.event_count} events")
+                print(f"[INFO] Events processed: count={self.event_count}")
         
         except Exception as e:
-            print(f"❌ Error processing {event_type}: {e}", flush=True)
+            print(f"[ERROR] Event processing failed: type={event_type} error={e}", flush=True)
     
     def handle_gate_passage(self, event: Dict):
         """
@@ -151,7 +150,7 @@ class EventProcessor:
                     obs["last_update"] = current_time
             
             except Exception as e:
-                print(f"⚠️  Failed to update queueing for {gate_id}: {e}", flush=True)
+                print(f"[WARNING] Queueing update failed: gate_id={gate_id} error={e}", flush=True)
     
     def handle_bin_alert(self, event: Dict):
         """
@@ -160,17 +159,17 @@ class EventProcessor:
         {
             "event_type": "bin_alert",
             "bin_id": "B123",
-            "poi_node": "N5",
+            "poi_node": "65",
             "fill_percentage": 90,
             "priority": "high"
         }
         """
-        fill_percentage = event.get("fill_percentage", 0)
-        if fill_percentage < 85:
-            return  # Only process high fill levels
+        fill_percentage = int(round(event.get("fill_percentage", 0)))
+        if fill_percentage < 100:
+            return  # Only process 100% full bins
 
         bin_id = event.get("bin_id")
-        location_node = event.get("poi_node", "N5")
+        location_node = str(event.get("poi_node", "65"))
         priority = event.get("priority", "medium")
 
         payload = {
@@ -194,21 +193,21 @@ class EventProcessor:
                 task_info = response.json()
                 self.processed["bin_alert"] += 1
                 assigned_to = task_info.get("assigned_to", "unassigned")
-                print(f"🗑️  BIN ALERT: {bin_id} → Task {task_info['id']} assigned to {assigned_to}", flush=True)
+                print(f"[INFO] Bin alert created: bin_id={bin_id} task_id={task_info['id']} assigned_to={assigned_to}", flush=True)
             else:
-                print(f"⚠️ Failed to create bin alert for {bin_id}: {response.text}", flush=True)
+                print(f"[WARNING] Bin alert creation failed: bin_id={bin_id} response={response.text}", flush=True)
 
         except Exception as e:
-            print(f"⚠️  Error creating bin alert for {bin_id}: {e}", flush=True)
+            print(f"[WARNING] Bin alert creation failed: bin_id={bin_id} error={e}", flush=True)
     
     def handle_sos_event(self, event: Dict):
         sos_id = event.get("sos_id")
-        location_node = event.get("location_node", "N10")
+        location_node = event.get("location_node", "66")
         priority = event.get("priority", "high")
         details = event.get("details", "").lower()
 
         # Determine role
-        role = "medical" if any(x in details for x in ["medical", "faint", "injury"]) else "security"
+        role = "medic" if any(x in details for x in ["medical", "medic", "faint", "injury"]) else "security"
 
         incident_payload = {
             "incident_type": role,
@@ -222,15 +221,15 @@ class EventProcessor:
             r = requests.post(f"{EMERGENCY_SERVICE_URL}/api/emergency/incidents",
                             json=incident_payload, timeout=3)
             if r.status_code not in [200, 201]:
-                print(f"⚠️ Failed to create incident {sos_id}: {r.text}", flush=True)
+                print(f"[WARNING] Incident creation failed: sos_id={sos_id} response={r.text}", flush=True)
                 return
             incident_data = r.json()
             incident_id = incident_data.get("id") or incident_data.get("incident_id")
             if not incident_id:
-                print(f"⚠️ Could not retrieve incident ID for {sos_id}", flush=True)
+                print(f"[WARNING] Incident ID unavailable after creation: sos_id={sos_id}", flush=True)
                 return
         except Exception as e:
-            print(f"⚠️ Error creating incident {sos_id}: {e}", flush=True)
+            print(f"[WARNING] Incident creation failed: sos_id={sos_id} error={e}", flush=True)
             return
 
         # 2️⃣ Dispatch responders
@@ -256,14 +255,14 @@ class EventProcessor:
                     eta = assigned.get("eta_seconds") or assigned.get("etaSeconds") or 0
 
                     self.processed["sos_event"] += 1
-                    print(f"🚨 SOS: {sos_id} → {staff_id} ({role}) ETA: {eta}s", flush=True)
+                    print(f"[INFO] SOS responder assigned: sos_id={sos_id} staff_id={staff_id} role={role} eta_seconds={eta}", flush=True)
                 else:
-                    print(f"⚠️ No {role} staff assigned for {sos_id}", flush=True)
+                    print(f"[WARNING] SOS responder not assigned: sos_id={sos_id} role={role}", flush=True)
             else:
-                print(f"⚠️ No {role} staff available for {sos_id} (status {response.status_code})", flush=True)
+                print(f"[WARNING] SOS responder unavailable: sos_id={sos_id} role={role} status={response.status_code}", flush=True)
 
         except Exception as e:
-            print(f"⚠️ Failed to respond to {sos_id}: {e}", flush=True)
+            print(f"[WARNING] SOS response failed: sos_id={sos_id} error={e}", flush=True)
         
     def handle_crowd_density(self, event: Dict):
         """
@@ -271,7 +270,7 @@ class EventProcessor:
         
         Event: {
             "event_type": "crowd_density",
-            "area_id": "N42",
+            "area_id": "62",
             "current_count": 150,
             "capacity": 200,
             "occupancy_rate": 75.0,
@@ -299,10 +298,10 @@ class EventProcessor:
                     self.processed["crowd_density"] += 1
                     
                     if occupancy_rate > 80:
-                        print(f"👥 CROWD ALERT: {area_id} at {occupancy_rate:.0f}% capacity", flush=True)
+                        print(f"[WARNING] Crowd threshold exceeded: area_id={area_id} occupancy_rate={occupancy_rate:.0f}", flush=True)
             
             except Exception as e:
-                print(f"⚠️  Failed to update crowd penalty for {area_id}: {e}", flush=True)
+                print(f"[WARNING] Crowd penalty update failed: area_id={area_id} error={e}", flush=True)
     
     def handle_evacuation(self, event: Dict):
         """
@@ -312,9 +311,9 @@ class EventProcessor:
         {
             "event_type": "evac_update",
             "closure": {
-                "edge": "N23-N24",
-                "from_node": "N23",
-                "to_node": "N24",
+                "edge": "63-70",
+                "from_node": "63",
+                "to_node": "70",
                 "reason": "smoke",
                 "closed": true
             }
@@ -337,33 +336,10 @@ class EventProcessor:
             )
             if routing_resp.status_code == 200:
                 self.processed["evac_update"] += 1
-                print(f"🚧 EVACUATION: Closed {from_node} ↔ {to_node} ({reason})", flush=True)
+                print(f"[WARNING] Evacuation corridor closed: from_node={from_node} to_node={to_node} reason={reason}", flush=True)
 
-            # 2️⃣ Find the edge ID for Map Service
-            # This assumes your edges have IDs like "N23-N24" or you can query DB/API
-            edge_id = f"{from_node}-{to_node}"  # Implement a lookup in DB or routing service
-            if not edge_id:
-                print(f"⚠️ Could not find edge_id for {from_node}-{to_node}")
-                return
-
-            # 3️⃣ Add closure to Map Service
-            map_payload = {
-                "id": f"CL-{from_node}-{to_node}",
-                "reason": reason,
-                "edge_id": edge_id,
-                "node_id": None
-            }
-            map_resp = requests.post(
-                f"{MAP_SERVICE_URL}/api/closures",
-                json=map_payload,
-                timeout=2
-            )
-            if map_resp.status_code == 200:
-                print(f"✅ Map closure added for {from_node}-{to_node}",flush=True)
-            else:
-                print(f"⚠️ Map closure failed: {map_resp.status_code}, {map_resp.text}",flush=True)
         except Exception as e:
-            print(f"⚠️ Failed to add closure {from_node}-{to_node}: {e}", flush=True)
+            print(f"[WARNING] Corridor closure failed: from_node={from_node} to_node={to_node} error={e}", flush=True)
     
     def handle_queue_update(self, event: Dict):
         """
@@ -399,12 +375,12 @@ class EventProcessor:
                 self.processed["queue_update"] += 1
         
         except Exception as e:
-            print(f"⚠️  Failed to update queue {location_id}: {e}", flush=True)
+            print(f"[WARNING] Queue update failed: location_id={location_id} error={e}", flush=True)
     
     def print_stats(self):
         """Print processing statistics"""
         print("\n" + "="*60)
-        print("📊 EVENT PROCESSOR STATISTICS")
+        print("EVENT PROCESSOR STATISTICS")
         print("="*60)
         print(f"Total events: {self.event_count}")
         print("\nProcessed by type:")
@@ -421,11 +397,10 @@ if MQTT_AVAILABLE:
     class MQTTEventClient:
 
         print("\n" + "="*60)
-        print("🔌 EVENT PROCESSOR - Starting")
+        print("EVENT PROCESSOR - Starting")
         print("="*60)
         print(f"MQTT Broker: {MQTT_BROKER}:{MQTT_PORT}")
         print(f"MQTT Topic: {MQTT_TOPIC}")
-        print(f"Map Service: {MAP_SERVICE_URL}")
         print(f"Routing Service: {ROUTING_SERVICE_URL}")
         print(f"Queueing Service: {QUEUEING_SERVICE_URL}")
         print(f"Wait Times Service: {WAIT_TIMES_SERVICE_URL}")
@@ -433,68 +408,58 @@ if MQTT_AVAILABLE:
         print("="*60 + "\n")
         
         # Check services are running
-        print("🏥 Checking services...")
+        print("[INFO] Checking service availability")
         services_ok = True
-        
-        try:
-            r = requests.get(f"{MAP_SERVICE_URL}/health", timeout=2)
-            if r.status_code == 200:
-                print("✅ Map Service")
-            else:
-                print("⚠️  Map Service not responding")
-                services_ok = False
-        except:
-            print("❌ Map Service not available")
-            services_ok = False
         
         try:
             r = requests.get(f"{ROUTING_SERVICE_URL}/health", timeout=2)
             if r.status_code == 200:
-                print("✅ Routing Service")
+                print("[INFO] Routing Service available")
             else:
-                print("⚠️  Routing Service not responding")
+                print("[WARNING] Routing Service not responding")
                 services_ok = False
         except:
-            print("❌ Routing Service not available")
+            print("[ERROR] Routing Service unavailable")
             services_ok = False
         
         try:
             r = requests.get(f"{QUEUEING_SERVICE_URL}/", timeout=2)
             if r.status_code == 200:
-                print("✅ Queueing Service")
+                print("[INFO] Queueing Service available")
             else:
-                print("⚠️  Queueing Service not responding")
+                print("[WARNING] Queueing Service not responding")
                 services_ok = False
         except:
-            print("❌ Queueing Service not available")
+            print("[ERROR] Queueing Service unavailable")
             services_ok = False
         
         try:
             r = requests.get(f"{WAIT_TIMES_SERVICE_URL}/", timeout=2)
             if r.status_code == 200:
-                print("✅ Wait Times Service")
+                print("[INFO] Wait Times Service available")
             else:
-                print("⚠️  Wait Times Service not responding")
+                print("[WARNING] Wait Times Service not responding")
         except:
-            print("⚠️  Wait Times Service not available (optional)")
+            print("[WARNING] Wait Times Service unavailable (optional)")
         
         try:
             r = requests.get(f"{CONGESTION_SERVICE_URL}/", timeout=2)
             if r.status_code == 200:
-                print("✅ Congestion Service")
+                print("[INFO] Congestion Service available")
             else:
-                print("⚠️  Congestion Service not responding")
+                print("[WARNING] Congestion Service not responding")
         except:
-            print("⚠️  Congestion Service not available (optional)")
+            print("[WARNING] Congestion Service unavailable (optional)")
         
         if not services_ok:
-            print("\n⚠️  Some services not available. Starting anyway...")
+            print("\n[WARNING] Some services are unavailable; continuing startup")
         
-        print("\n🚀 Starting event processing...\n")
+        print("\n[INFO] Starting event processing\n")
 
         def __init__(self, processor: EventProcessor):
             self.processor = processor
             self.client = mqtt.Client(
+                mqtt.CallbackAPIVersion.VERSION1,
                 client_id=f"event-processor-{os.getpid()}",
                 clean_session=True
             )
@@ -522,7 +487,7 @@ if MQTT_AVAILABLE:
 
         def on_connect(self, client, userdata, flags, rc):
             if rc == 0:
-                print(f"✅ Connected to MQTT broker {MQTT_BROKER}:{MQTT_PORT}" , flush=True)
+                print(f"[INFO] Connected to MQTT broker: host={MQTT_BROKER} port={MQTT_PORT}" , flush=True)
                 client.subscribe(MQTT_TOPIC, qos=1)
                 client.publish(
                     "stadium/system/event_processor/status",
@@ -530,15 +495,15 @@ if MQTT_AVAILABLE:
                     qos=1,
                     retain=True
                 )
-                print(f"📡 Subscribed to topic: {MQTT_TOPIC}" , flush=True)
+                print(f"[INFO] Subscribed to MQTT topic: {MQTT_TOPIC}" , flush=True)
             else:
-                print(f"❌ MQTT connection failed (code {rc})" , flush=True)
+                print(f"[ERROR] MQTT connection failed: return_code={rc}" , flush=True)
 
         def on_disconnect(self, client, userdata, rc):
             if rc != 0:
-                print("⚠️  Unexpected MQTT disconnection, retrying...", flush=True)
+                print("[WARNING] Unexpected MQTT disconnection; retrying", flush=True)
             else:
-                print("🔌 MQTT disconnected cleanly", flush=True)
+                print("[INFO] MQTT disconnected cleanly", flush=True)
 
         def on_message(self, client, userdata, msg):
             try:
@@ -548,22 +513,22 @@ if MQTT_AVAILABLE:
                 if isinstance(event, Dict):
                     self.processor.process_event(event)
                 else:
-                    print(f"⚠️  Invalid event format on {msg.topic}", flush=True)
+                    print(f"[WARNING] Invalid event format: topic={msg.topic}", flush=True)
 
             except json.JSONDecodeError:
-                print(f"⚠️  Invalid JSON on topic {msg.topic}" , flush=True)
+                print(f"[WARNING] Invalid JSON payload: topic={msg.topic}" , flush=True)
             except Exception as e:
-                print(f"❌ Error handling MQTT message: {e}", flush=True)
+                print(f"[ERROR] MQTT message handling failed: {e}", flush=True)
 
         # ---------- CONTROL ----------
 
         def start(self):
-            print("🚀 Starting MQTT event listener...", flush=True)
+            print("[INFO] Starting MQTT event listener", flush=True)
             self.client.connect(MQTT_BROKER, MQTT_PORT, keepalive=60)
             self.client.loop_start()
 
         def stop(self):
-            print("🛑 Stopping MQTT client...", flush=True)
+            print("[INFO] Stopping MQTT client", flush=True)
             self.client.publish(
                 "stadium/system/event_processor/status",
                 payload="offline",
@@ -586,7 +551,7 @@ class HealthHandler(BaseHTTPRequestHandler):
 
 def start_health_server():
     server = HTTPServer(("0.0.0.0", 8004), HealthHandler)
-    print("💓 Health endpoint listening on port 8004", flush=True)
+    print("[INFO] Health endpoint listening: port=8004", flush=True)
     server.serve_forever()
 
 if __name__ == "__main__":
@@ -600,7 +565,7 @@ if __name__ == "__main__":
     threading.Thread(target=start_health_server, daemon=True).start()
 
     def shutdown(signum, frame):
-        print("\n👋 Shutting down event processor...", flush=True)
+        print("\n[INFO] Shutting down event processor", flush=True)
         mqtt_client.stop()
         processor.print_stats()
         exit(0)

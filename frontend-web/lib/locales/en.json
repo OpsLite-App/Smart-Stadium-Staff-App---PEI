@@ -3,7 +3,6 @@
     "title": "Login to System",
     "email_label": "Username",
     "pass_label": "Password",
-    "role_select": "SELECT YOUR ROLE",
     "button": "LOGIN"
   },
   "tab": {
@@ -95,7 +94,7 @@
     "mode_title": "EMERGENCY MODE",
     "mode_subtitle": "FOLLOW EVACUATION PROTOCOL",
     "instructions_title": "INSTRUCTIONS (SECURITY)",
-    "instruction_gates": "Open Emergency Gates N1 and N2",
+    "instruction_gates": "Open Emergency Gates 1 and 2",
     "instruction_megaphone": "Use megaphone to guide crowd",
     "instruction_radio": "Keep channel 1 free for Coordination",
     "location_sharing": "Your location is being shared.",

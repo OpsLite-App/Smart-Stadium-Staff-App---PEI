@@ -3,49 +3,59 @@
 import { useEffect, useCallback } from 'react';
 import { useAuthStore } from '@/lib/stores/useAuthStore';
 import { api } from '@/lib/services/api';
+import { mergePermissions, normalizeRole } from '@/lib/auth/rbac';
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const { user, logout, checkStorage } = useAuthStore();
+  const { logout, checkStorage, restoreUser } = useAuthStore();
 
-  const validateToken = useCallback(async () => {
+  const restoreSession = useCallback(async () => {
     const currentUser = useAuthStore.getState().user;
+    // ✅ REMOVED: currentUser?.token check (token no longer stored)
+    // Session is restored via cookie, not token in store
     
-    if (!currentUser?.token) {
-      console.log('Nenhum token encontrado');
-      return;
+    // If we're already on an auth route (login/register), skip automatic /me checks
+    if (typeof window !== 'undefined') {
+      const p = window.location.pathname || '';
+      if (p.startsWith('/auth-routes')) return;
     }
 
-    console.log('A validar token para utilizador:', currentUser.email);
-    
+    console.debug('[Auth Provider] Restoring session from authentication cookie');
+
     try {
-      const isValid = await api.validateToken(currentUser.token);
+      const data = await api.me();
+      const serverRole = normalizeRole(data.role);
       
-      if (isValid) {
-        console.log('Token válido - sessão mantida');
-        
-      } else {
-        console.log('Token inválido - a fazer logout');
-        await logout();
-        
-        if (typeof window !== 'undefined') {
-          window.location.href = '/login';
-        }
-      }
+      // ✅ CORRIGIDO: Use email from data or fallback
+      // ✅ REMOVED: token from restoreUser (no longer stored)
+      restoreUser({
+        email: data.email ?? data.username ?? currentUser?.email ?? '',
+        role: serverRole,
+        id: data.user_id,
+        permissions: mergePermissions(serverRole, data.permissions),
+      });
+      console.debug('[Auth Provider] Session restored');
     } catch (error) {
-      console.error('Erro na validação do token:', error);
+      console.warn('[Auth Provider] Session restoration failed:', error);
+      // If we're already on an auth route, don't force a redirect (avoids reload loop)
+      if (typeof window !== 'undefined') {
+        const p = window.location.pathname || '';
+        if (p.startsWith('/auth-routes')) return;
+      }
+
+      await logout();
+      if (typeof window !== 'undefined') {
+        window.location.href = '/auth-routes/login';
+      }
     }
-  }, [logout]);
+  }, [logout, restoreUser]);
 
   useEffect(() => {
     checkStorage();
-    
-    validateToken();
-    
-    const intervalId = setInterval(validateToken, 5 * 60 * 1000);
-    
+    void restoreSession();
+
+    const intervalId = setInterval(restoreSession, 5 * 60 * 1000);
     return () => clearInterval(intervalId);
-    
-  }, [validateToken, checkStorage]);
+  }, [checkStorage, restoreSession]);
 
   return <>{children}</>;
 }

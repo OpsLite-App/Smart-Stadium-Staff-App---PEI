@@ -1,15 +1,17 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import axios from "axios";
+import type { PermissionSet } from "@/lib/auth/rbac";
 
-// Base paths (via Next rewrites)
+// Base paths are same-origin in the browser. In Docker, Next forwards them to
+// Traefik so the frontend no longer needs to know individual service ports.
 export const AUTH_BASE = process.env.NEXT_PUBLIC_API_AUTH || "/api/auth";
 export const CONGESTION_BASE = process.env.NEXT_PUBLIC_API_CONGESTION || "/api/congestion";
 export const EMERGENCY_BASE = process.env.NEXT_PUBLIC_API_EMERGENCY || "/api/emergency";
+export const EMERGENCY_EVENTS_URL = `${EMERGENCY_BASE}/events`;
 export const MAINTENANCE_BASE = process.env.NEXT_PUBLIC_API_MAINTENANCE || "/api/maintenance";
 export const QUEUEING_BASE = process.env.NEXT_PUBLIC_API_QUEUEING || "/api/queueing";
 export const CHAT_BASE = process.env.NEXT_PUBLIC_API_CHAT || "/api/chat";
 export const ROUTING_BASE = process.env.NEXT_PUBLIC_API_ROUTING || '/api/routing';
-export const MAP_BASE = process.env.NEXT_PUBLIC_API_MAP || '/api/map';
 export const ROUTING_SERVICE = ROUTING_BASE;
 
 export const POSITIONING_BASE = process.env.NEXT_PUBLIC_API_POSITIONING || "/api/positioning";
@@ -19,33 +21,51 @@ export const EMERGENCY_SERVICE = EMERGENCY_BASE;
 export const MAINTENANCE_SERVICE = MAINTENANCE_BASE;
 export const QUEUEING_SERVICE = QUEUEING_BASE;
 export const CHAT_SERVICE = CHAT_BASE;
-// WS does not use rewrites
-export const WS_GATEWAY =
-  process.env.NEXT_PUBLIC_WS_GATEWAY ||
-  process.env.NEXT_PUBLIC_WS_URL ||
-  "ws://localhost:8089/ws";
+function resolveWsGateway() {
+  const configured =
+    process.env.NEXT_PUBLIC_WS_GATEWAY ||
+    process.env.NEXT_PUBLIC_WS_URL ||
+    "ws://localhost:8080/ws";
 
-function getToken(): string {
-  try {
-    const raw = localStorage.getItem("auth-storage");
-    if (!raw) return "";
-    const parsed = JSON.parse(raw);
-    return parsed?.state?.user?.token || "";
-  } catch {
-    return "";
+  if (typeof window === "undefined") return configured;
+
+  // When the app is opened from a phone, localhost points to the phone itself.
+  // Keep local desktop behaviour, but rewrite localhost WS URLs to the current host.
+  if (configured.includes("localhost") || configured.includes("127.0.0.1")) {
+    const protocol = window.location.protocol === "https:" ? "wss" : "ws";
+    const configuredUrl = new URL(configured);
+    return `${protocol}://${window.location.hostname}:${configuredUrl.port}${configuredUrl.pathname}`;
   }
+
+  return configured;
 }
 
-function bearerHeader() {
-  const token = getToken();
-  return token ? { Authorization: `Bearer ${token}` } : {};
-}
+// WebSocket traffic reaches Traefik directly because Next rewrites do not
+// proxy browser WebSocket connections.
+export const WS_GATEWAY = resolveWsGateway();
+
+// ✅ REMOVED: authToken variable (no longer needed - cookie is used)
+// ✅ KEPT: authAxios with withCredentials: true (sends cookie automatically)
+const authAxios = axios.create({ withCredentials: true, timeout: 5000 });
+
+// ✅ REMOVED: setAuthToken function
+// ✅ REMOVED: bearerHeader function - cookie is sent automatically via authAxios
 
 // --- Interfaces de Dados ---
 export interface LoginResponse {
-  token: string;
+  // ✅ REMOVED: token: string; - Token is now only in HttpOnly cookie
   user_id: number;
   role: string;
+  email?: string;
+  username?: string;
+  permissions?: Partial<PermissionSet>;
+}
+
+export interface TokenClaims {
+  user_id: number;
+  username: string;
+  role: string;
+  exp: number;
 }
 
 export interface StaffPosition {
@@ -72,6 +92,38 @@ export interface StaffMember {
   role: string;
   status: string;
   location: string;
+}
+
+export interface GlobalEvacuation {
+  id?: string;
+  active: boolean;
+  status?: string;
+  title?: string;
+  description?: string | null;
+  emergency_type?: string;
+  severity?: string;
+  source_node?: string;
+  floor_id?: number | null;
+  exit_node?: string;
+  affected_nodes?: string[];
+  affected_zones?: string[];
+  instructions?: string | null;
+  initiated_at?: string;
+  completed_at?: string | null;
+  evacuated_count?: number;
+  confirmations?: Record<string, unknown>;
+}
+
+export interface CreateGlobalEvacuationPayload {
+  title: string;
+  description?: string;
+  emergency_type: string;
+  severity: string;
+  source_node: string;
+  floor_id?: number;
+  affected_nodes: string[];
+  affected_zones: string[];
+  instructions?: string;
 }
 
 export interface HeatmapPoint {
@@ -104,72 +156,90 @@ interface HeatmapApiResponse {
 // --- Cliente API ---
 export const api = {
   // ---- AUTH ----
-  login: async (
-    email: string,
-    password: string,
-    role: string
-  ): Promise<LoginResponse> => {
-    const response = await axios.post<LoginResponse>(
+  login: async (email: string, password: string): Promise<LoginResponse> => {
+    const response = await authAxios.post<LoginResponse>(
       `${AUTH_SERVICE}/login`,
-      {
-        username: email,   // ou "email" se o backend usar email
-        password,
-        role,
-      },
-      { timeout: 5000 }
+      { username: email, password }
     );
-
+    // ✅ REMOVED: setAuthToken(response.data.token) - Token is in cookie only
     return response.data;
+  },
+
+  me: async (): Promise<LoginResponse> => {
+    const response = await authAxios.get<LoginResponse>(`${AUTH_SERVICE}/me`);
+    // ✅ REMOVED: setAuthToken(response.data.token) - Token is in cookie only
+    return response.data;
+  },
+
+  logout: async (): Promise<void> => {
+    try {
+      await authAxios.post(`${AUTH_SERVICE}/logout`, {});
+    } finally {
+      // ✅ REMOVED: setAuthToken("") - No longer needed
+    }
   },
 
   validateToken: async (token: string): Promise<boolean> => {
     try {
-      console.log(`🔐 Validando token em ${AUTH_SERVICE}/validate`);
+      console.debug(`[Auth API] Validating token at ${AUTH_SERVICE}/validate`);
       const response = await axios.post(
         `${AUTH_SERVICE}/validate`,
         {},
         { headers: { Authorization: `Bearer ${token}` }, timeout: 5000 }
       );
-      console.log(`✅ Token válido: ${response.status}`);
+      console.debug(`[Auth API] Token validation completed with status ${response.status}`);
       return response.status === 200;
     } catch (error: any) {
-      console.error("❌ Erro ao validar token:", error.message);
+      console.error("[Auth API] Token validation failed:", error.message);
       if (error.response?.status === 401) return false;
       return false;
     }
   },
 
+  validateTokenClaims: async (token: string): Promise<TokenClaims | null> => {
+    try {
+      const response = await axios.post<TokenClaims>(
+        `${AUTH_SERVICE}/validate`,
+        {},
+        { headers: { Authorization: `Bearer ${token}` }, timeout: 5000 }
+      );
+      return response.data;
+    } catch {
+      return null;
+    }
+  },
+
   getStaff: async (): Promise<StaffMember[]> => {
     try {
-      console.log(`👥 Buscando staff de ${AUTH_SERVICE}/staff`);
-      const response = await axios.get<StaffMember[]>(`${AUTH_SERVICE}/staff`, {
+      console.debug(`[Auth API] Fetching staff from ${AUTH_SERVICE}/staff`);
+      // ✅ REMOVED: headers: { ...bearerHeader() } - cookie is sent automatically
+      const response = await authAxios.get<StaffMember[]>(`${AUTH_SERVICE}/staff`, {
         timeout: 5000,
-        headers: { ...bearerHeader() },
       });
-      console.log(`✅ Staff carregado: ${response.data.length} pessoas`);
+      console.debug(`[Auth API] Loaded ${response.data.length} staff members`);
       return response.data;
     } catch (error: any) {
-      console.warn("⚠️ Erro getStaff:", error.message);
+      console.warn("[Auth API] Staff request failed; using fallback data:", error.message);
       return [
-        { id: 8, name: "João Silva", role: "Security", status: "active", location: "N1" },
-        { id: 9, name: "Maria Santos", role: "Cleaning", status: "active", location: "N2" },
-        { id: 10, name: "Ana Oliveira", role: "Security", status: "patrol", location: "N4" },
+        { id: 8, name: "João Silva", role: "Security", status: "active", location: "62" },
+        { id: 9, name: "Maria Santos", role: "Cleaning", status: "active", location: "70" },
+        { id: 10, name: "Ana Oliveira", role: "Security", status: "patrol", location: "66" },
         { id: 11, name: "Pedro Costa", role: "Supervisor", status: "active", location: "VIP" },
-        { id: 12, name: "Carlos Rodrigues", role: "Medical", status: "break", location: "N7" },
+        { id: 12, name: "Carlos Rodrigues", role: "Medical", status: "break", location: "1" },
       ];
     }
   },
 
   // ---- CONGESTION ----
-  // ✅ rewrite já mete /api/ no destino, então aqui NÃO usamos /api/...
-  getHeatmapPoints: async (): Promise<HeatmapPointsResponse> => {
+  getHeatmapPoints: async (params?: { floorId?: number }): Promise<HeatmapPointsResponse> => {
     try {
       const url = `${CONGESTION_SERVICE}/heatmap/points`;
-      console.log(`🔥 Buscando heatmap de: ${url}`);
+      console.debug(`[Congestion API] Fetching heatmap points from ${url}`, { params });
 
-      const response = await axios.get<HeatmapPointsResponse>(url, {
+      // ✅ CHANGED: Use authAxios instead of axios to send cookie
+      const response = await authAxios.get<HeatmapPointsResponse>(url, {
+        params: params ? { floor_id: params.floorId } : undefined,
         timeout: 10000,
-        headers: { ...bearerHeader() },
       });
 
       const validPoints = (response.data.points || []).filter(
@@ -177,25 +247,12 @@ export const api = {
       );
 
       if (validPoints.length !== (response.data.points?.length || 0)) {
-        console.warn(`⚠️ Filtrados ${(response.data.points?.length || 0) - validPoints.length} pontos inválidos`);
+        console.warn(`[Congestion API] Removed ${(response.data.points?.length || 0) - validPoints.length} invalid heatmap points`);
       }
 
       return { ...response.data, points: validPoints, count: validPoints.length };
     } catch (error: any) {
-      console.error("❌ Erro ao buscar heatmap points:", error.message);
-
-      if (process.env.NODE_ENV === "development") {
-        console.log("⚠️ Retornando dados mock para desenvolvimento...");
-        return {
-          timestamp: new Date().toISOString(),
-          points: [
-            { latitude: 41.16135, longitude: -8.5842, weight: 0.8, occupancy_rate: 85.5, area_id: "TEST-1", heat_level: "red" },
-            { latitude: 41.16145, longitude: -8.5832, weight: 0.4, occupancy_rate: 45.2, area_id: "TEST-2", heat_level: "yellow" },
-            { latitude: 41.16155, longitude: -8.5835, weight: 0.6, occupancy_rate: 65.3, area_id: "TEST-3", heat_level: "yellow" },
-          ],
-          count: 3,
-        };
-      }
+      console.error("[Congestion API] Heatmap points request failed:", error.message);
 
       return { timestamp: new Date().toISOString(), points: [], count: 0, error: error.message };
     }
@@ -203,104 +260,138 @@ export const api = {
 
   getHeatmap: async (): Promise<CrowdDensity[]> => {
     try {
-      console.log(`📊 Buscando heatmap de ${CONGESTION_SERVICE}/heatmap`);
-      const response = await axios.get<HeatmapApiResponse>(`${CONGESTION_SERVICE}/heatmap`, {
+      console.debug(`[Congestion API] Fetching heatmap from ${CONGESTION_SERVICE}/heatmap`);
+      // ✅ CHANGED: Use authAxios instead of axios
+      const response = await authAxios.get<HeatmapApiResponse>(`${CONGESTION_SERVICE}/heatmap`, {
         timeout: 5000,
-        headers: { ...bearerHeader() },
       });
-      console.log(`✅ Heatmap carregado: ${response.data.areas?.length || 0} áreas`);
+      console.debug(`[Congestion API] Loaded ${response.data.areas?.length || 0} heatmap areas`);
       return response.data.areas || [];
     } catch (error: any) {
-      console.warn("⚠️ Erro getHeatmap:", error.message);
+      console.warn("[Congestion API] Heatmap request failed:", error.message);
       return [];
     }
   },
 
   checkCongestionServiceHealth: async (): Promise<boolean> => {
     try {
-      console.log(`🏥 Health check Congestion Service: ${CONGESTION_SERVICE}/`);
+      console.debug(`[Congestion API] Checking service health at ${CONGESTION_SERVICE}/`);
       const response = await axios.get(`${CONGESTION_SERVICE}/`, { timeout: 3000 });
-      console.log(`✅ Congestion Service health: ${response.status}`);
+      console.debug(`[Congestion API] Health check completed with status ${response.status}`);
       return response.status === 200;
     } catch (error: any) {
-      console.warn(`⚠️ Congestion Service offline: ${error.message}`);
+      console.warn(`[Congestion API] Service health check failed: ${error.message}`);
       return false;
     }
   },
 
   // ---- EMERGENCY ----
   getIncidentDetails: async (incidentId: string) => {
-    console.log(`📋 Buscando detalhes do incidente ${incidentId} em ${EMERGENCY_SERVICE}/incidents/${incidentId}`);
-    const response = await axios.get(`${EMERGENCY_SERVICE}/incidents/${incidentId}`, {
+    console.debug(`[Emergency API] Fetching incident ${incidentId} from ${EMERGENCY_SERVICE}/incidents/${incidentId}`);
+    // ✅ CHANGED: Use authAxios instead of axios
+    const response = await authAxios.get(`${EMERGENCY_SERVICE}/incidents/${incidentId}`, {
       timeout: 5000,
-      headers: { ...bearerHeader() },
     });
     return response.data;
   },
 
-  acceptIncident: async (incidentId: string, userId?: number) => {
-    console.log(`✅ Aceitando incidente ${incidentId} em ${EMERGENCY_SERVICE}/incidents/${incidentId}/accept`);
-    const response = await axios.post(
-      `${EMERGENCY_SERVICE}/incidents/${incidentId}/accept`,
-      { userId },
-      { timeout: 5000, headers: { ...bearerHeader() } }
+  getActiveGlobalEvacuation: async (): Promise<GlobalEvacuation> => {
+    const response = await authAxios.get<GlobalEvacuation>(`${EMERGENCY_SERVICE}/evacuation/global/active`, {
+      timeout: 5000,
+    });
+    return response.data;
+  },
+
+  createGlobalEvacuation: async (payload: CreateGlobalEvacuationPayload): Promise<GlobalEvacuation> => {
+    const response = await authAxios.post<GlobalEvacuation>(`${EMERGENCY_SERVICE}/evacuation/global`, payload, {
+      timeout: 8000,
+    });
+    return response.data;
+  },
+
+  markEvacuationSafe: async (evacuationId: string, currentNode?: string, notes?: string): Promise<GlobalEvacuation> => {
+    const response = await authAxios.post<GlobalEvacuation>(
+      `${EMERGENCY_SERVICE}/evacuation/global/${evacuationId}/safe`,
+      { current_node: currentNode || undefined, notes },
+      { timeout: 5000 }
     );
     return response.data;
   },
 
+  completeGlobalEvacuation: async (evacuationId: string): Promise<GlobalEvacuation> => {
+    const response = await authAxios.post<GlobalEvacuation>(
+      `${EMERGENCY_SERVICE}/evacuation/global/${evacuationId}/complete`,
+      {},
+      { timeout: 8000 }
+    );
+    return response.data;
+  },
+
+  getEvacuationRouteGeoJson: async (fromNode: string) => {
+    const response = await authAxios.get(`${ROUTING_BASE}/route/evacuation/geojson`, {
+      params: { from_node: fromNode },
+      timeout: 8000,
+    });
+    return response.data.route;
+  },
+
   // ---- MAINTENANCE ----
-  getTaskDetails: async (taskId: string) => {
-    console.log(`📋 Buscando detalhes da tarefa ${taskId} em ${MAINTENANCE_SERVICE}/tasks/${taskId}`);
-    const response = await axios.get(`${MAINTENANCE_SERVICE}/tasks/${taskId}`, {
+  getBinAlerts: async (): Promise<any[]> => {
+    console.debug(`[Maintenance API] Fetching bin alerts from ${MAINTENANCE_SERVICE}/bins/alerts`);
+    const response = await authAxios.get(`${MAINTENANCE_SERVICE}/bins/alerts`, {
       timeout: 5000,
-      headers: { ...bearerHeader() },
+    });
+    return response.data;
+  },
+
+  getTaskDetails: async (taskId: string) => {
+    console.debug(`[Maintenance API] Fetching task ${taskId} from ${MAINTENANCE_SERVICE}/tasks/${taskId}`);
+    // ✅ CHANGED: Use authAxios instead of axios
+    const response = await authAxios.get(`${MAINTENANCE_SERVICE}/tasks/${taskId}`, {
+      timeout: 5000,
     });
     return response.data;
   },
 
   updateTaskStatus: async (
     taskId: string,
-    status: "pending" | "in-progress" | "completed" | "cancelled"
+    status: "pending" | "assigned" | "in_progress" | "in-progress" | "completed" | "cancelled"
   ) => {
-    console.log(`✅ Atualizando status da tarefa ${taskId} para ${status}`);
-    const response = await axios.put(
-      `${MAINTENANCE_SERVICE}/tasks/${taskId}/status`,
-      { status },
-      { timeout: 5000, headers: { ...bearerHeader() } }
+    const backendStatus = status === "in-progress" ? "in_progress" : status;
+    console.debug(`[Maintenance API] Updating task ${taskId} status to ${backendStatus}`);
+    // ✅ CHANGED: Use authAxios instead of axios
+    const response = await authAxios.patch(
+      `${MAINTENANCE_SERVICE}/tasks/${taskId}`,
+      { status: backendStatus },
+      { timeout: 5000 }
     );
     return response.data;
   },
 
-  updateTaskChecklist: async (taskId: string, checklist: any[]) => {
-    console.log(`✅ Atualizando checklist da tarefa ${taskId}`);
-    const response = await axios.put(
-      `${MAINTENANCE_SERVICE}/tasks/${taskId}/checklist`,
-      { checklist },
-      { timeout: 5000, headers: { ...bearerHeader() } }
-    );
-    return response.data;
-  },
-
-  registerStaffForMaintenance: async (staffId: string, name: string, role: string, location = 'N1') => {
+  registerStaffForMaintenance: async (staffId: string, name: string, role: string, location?: string) => {
     try {
-      await axios.post(`${MAINTENANCE_BASE}/staff/register`, null, {
-        params: { staff_id: staffId, name, role: role.toLowerCase(), current_location: location },
+      const normalizedRole = role.toLowerCase();
+      const currentLocation =
+        location ??
+        (normalizedRole.includes('clean') ? '70' : normalizedRole.includes('medic') ? '1' : '66');
+      // ✅ CHANGED: Use authAxios instead of axios
+      await authAxios.post(`${MAINTENANCE_BASE}/staff/register`, null, {
+        params: { staff_id: staffId, name, role: normalizedRole, current_location: currentLocation },
         timeout: 5000,
-        headers: { ...bearerHeader() },
       });
       // Ensure staff is marked available after registration
-      await axios.patch(`${MAINTENANCE_BASE}/staff/${staffId}/availability`, null, {
+      await authAxios.patch(`${MAINTENANCE_BASE}/staff/${staffId}/availability`, null, {
         params: { is_available: true },
         timeout: 5000,
-        headers: { ...bearerHeader() },
       });
     } catch { /* non-critical */ }
   },
+
   getRoute: async (fromNode: string, toNode: string): Promise<{ path: string[]; waypoints: { node_id: string; x: number; y: number }[]; eta_seconds: number; distance: number }> => {
-    const response = await axios.get(`${ROUTING_BASE}/route`, {
+    // ✅ CHANGED: Use authAxios instead of axios
+    const response = await authAxios.get(`${ROUTING_BASE}/route`, {
       params: { from_node: fromNode, to_node: toNode },
       timeout: 8000,
-      headers: { ...bearerHeader() },
     });
     return response.data;
   },
@@ -310,90 +401,98 @@ export const api = {
     const statuses = ['pending', 'assigned', 'in_progress'];
     const results = await Promise.all(
       statuses.map((status) =>
-        axios.get(`${MAINTENANCE_BASE}/tasks`, {
+        // ✅ CHANGED: Use authAxios instead of axios
+        authAxios.get(`${MAINTENANCE_BASE}/tasks`, {
           params: { assigned_to: staffId, status },
           timeout: 6000,
-          headers: { ...bearerHeader() },
         }).then(r => r.data?.tasks ?? []).catch(() => [])
       )
     );
     return results.flat();
   },
 
-  completeTask: async (taskId: string) => {
-    const response = await axios.post(`${MAINTENANCE_BASE}/tasks/${taskId}/complete`, {}, {
+  completeTask: async (taskId: string, notes?: string) => {
+    // ✅ CHANGED: Use authAxios instead of axios
+    const response = await authAxios.post(`${MAINTENANCE_BASE}/tasks/${taskId}/complete`, {}, {
+      params: notes ? { notes } : undefined,
       timeout: 6000,
-      headers: { ...bearerHeader() },
     });
     return response.data;
   },
 
   startTask: async (taskId: string) => {
-    const response = await axios.post(`${MAINTENANCE_BASE}/tasks/${taskId}/start`, {}, {
+    // ✅ CHANGED: Use authAxios instead of axios
+    const response = await authAxios.post(`${MAINTENANCE_BASE}/tasks/${taskId}/start`, {}, {
       timeout: 6000,
-      headers: { ...bearerHeader() },
     });
     return response.data;
   },
-  getProfileStats: async (userId: number) => {
-    return axios.get(`${AUTH_SERVICE}/users/${userId}/stats`, {
-      headers: { ...bearerHeader() },
-      timeout: 5000,
-    });
+
+  refuseTask: async (taskId: string) => {
+    return api.updateTaskStatus(taskId, "cancelled");
   },
 
-  getRecentActivity: async (userId: number) => {
-    return axios.get(`${AUTH_SERVICE}/users/${userId}/activity`, {
-      headers: { ...bearerHeader() },
-      timeout: 5000,
+  acceptDispatch: async (dispatchId: string) => {
+    const response = await authAxios.post(`${EMERGENCY_BASE}/dispatch/${dispatchId}/accept`, {}, {
+      timeout: 6000,
     });
+    return response.data;
   },
 
-  updateUserPreferences: async (userId: number, preferences: any) => {
-    return axios.put(`${AUTH_SERVICE}/users/${userId}/preferences`, preferences, {
-      headers: { ...bearerHeader() },
-      timeout: 5000,
+  refuseDispatch: async (dispatchId: string) => {
+    const response = await authAxios.post(`${EMERGENCY_BASE}/dispatch/${dispatchId}/refuse`, {}, {
+      timeout: 6000,
     });
+    return response.data;
   },
 
-  updateDutyStatus: async (userId: number, status: boolean) => {
-    return axios.put(
-      `${AUTH_SERVICE}/users/${userId}/duty`,
-      { onDuty: status },
-      { headers: { ...bearerHeader() }, timeout: 5000 }
-    );
+  completeDispatch: async (dispatchId: string, notes: string) => {
+    const response = await authAxios.post(`${EMERGENCY_BASE}/dispatch/${dispatchId}/complete`, {}, {
+      params: { notes },
+      timeout: 6000,
+    });
+    return response.data;
   },
 
   // ---- CROWD & QUEUE ----
   getCrowdSummary: async () => {
-    const r = await axios.get(`${CONGESTION_BASE}/congestion/summary`, { timeout: 5000, headers: { ...bearerHeader() } });
+    // ✅ CHANGED: Use authAxios instead of axios
+    const r = await authAxios.get(`${CONGESTION_BASE}/congestion/summary`, { timeout: 5000 });
     return r.data;
   },
 
   getCrowdAreas: async () => {
-    const r = await axios.get(`${CONGESTION_BASE}/heatmap`, { timeout: 5000, headers: { ...bearerHeader() } });
+    // ✅ CHANGED: Use authAxios instead of axios
+    const r = await authAxios.get(`${CONGESTION_BASE}/heatmap`, { timeout: 5000 });
     return (r.data.areas ?? []) as any[];
   },
 
   getQueueStatus: async () => {
-    const r = await axios.get(`${QUEUEING_BASE}/status`, { timeout: 5000, headers: { ...bearerHeader() } });
+    // ✅ CHANGED: Use authAxios instead of axios
+    const r = await authAxios.get(`${QUEUEING_BASE}/status`, { timeout: 5000 });
     return (r.data.queues ?? []) as any[];
   },
 
   getStaffPositions: async (staffIds: string[]): Promise<StaffPosition[]> => {
-    const results = await Promise.allSettled(
-      staffIds.map((id) =>
-        axios.get<StaffPosition>(`${POSITIONING_BASE}/position/${id}`, { timeout: 3000 })
-          .then((r) => r.data)
-      )
-    );
-    return results
-      .filter((r): r is PromiseFulfilledResult<StaffPosition> => r.status === "fulfilled")
-      .map((r) => r.value);
+    if (staffIds.length === 0) return [];
+
+    try {
+      const response = await authAxios.get<StaffPosition[]>(`${POSITIONING_BASE}/positions`, { timeout: 3000 });
+      const requestedIds = new Set(staffIds.map(String));
+      return response.data.filter((position) => requestedIds.has(String(position.staff_id)));
+    } catch {
+      // Missing positioning data is expected before Wi-Fi or simulated updates arrive.
+      return [];
+    }
   },
 
-  getGates: async (): Promise<{ id: string; gate_number: string; x: number; y: number }[]> => {
-    const r = await axios.get(`${MAP_BASE}/gates`, { timeout: 5000, headers: { ...bearerHeader() } });
-    return r.data ?? [];
+  getAllStaffPositions: async (): Promise<StaffPosition[]> => {
+    try {
+      const response = await authAxios.get<StaffPosition[]>(`${POSITIONING_BASE}/positions`, { timeout: 4000 });
+      return response.data;
+    } catch {
+      return [];
+    }
   },
+
 };

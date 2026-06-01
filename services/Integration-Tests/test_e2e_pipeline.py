@@ -36,7 +36,7 @@ class TestEndToEndEventPipeline:
         # Step 1: Create incident
         print("Step 1: Creating incident...")
         payload = {
-            "incident_type": "medical",
+            "incident_type": "medic",
             "location_node": incident_data["location"],
             "severity": "high",
             "description": "E2E Test Incident",
@@ -68,7 +68,7 @@ class TestEndToEndEventPipeline:
         dispatch_data = {
             "incident_id": incident_id,
             "responder_id": "staff_001",
-            "responder_role": "medical",
+            "responder_role": "medic",
             "current_position": start,
         }
         dispatch_response = await http_client.post(
@@ -299,7 +299,7 @@ class TestServiceInterconnectivity:
         # Step 3: Use Emergency Service (uses Routing)
         print("Step 3: Use Emergency Service...")
         incident_payload = {
-            "incident_type": "other",
+            "incident_type": "security",
             "location_node": end,
             "severity": "low",
             "description": "Chain Test",

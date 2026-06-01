@@ -3,8 +3,10 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuthStore } from '@/lib/stores/useAuthStore';
-import { useNavigationStore } from '@/lib/stores/useNavigationStore';
-import { api } from '@/lib/services/api';
+import { RouteWaypoint, useNavigationStore } from '@/lib/stores/useNavigationStore';
+import { api, EMERGENCY_EVENTS_URL, EMERGENCY_SERVICE, MAINTENANCE_SERVICE } from '@/lib/services/api';
+import { IndoorGisMap } from '@/components/map/IndoorGisMap';
+import { indoorRoutingService, type IndoorRouteGeoJsonResponse } from '@/lib/services/indoorRouting';
 import axios from 'axios';
 import { 
   Heart, 
@@ -32,12 +34,6 @@ import {
   Compass,
   Stethoscope,
   Ambulance,
-  Bandage,
-  Pill,
-  Syringe,
-  Brain,
-  Bone,
-  Thermometer,
   HeartPulse
 } from 'lucide-react';
 
@@ -61,7 +57,7 @@ interface MyDispatch {
   incident_id: string;
   responder_id: string;
   responder_role: string;
-  status: 'dispatched' | 'en_route' | 'arrived' | 'completed';
+  status: 'dispatched' | 'en_route' | 'arrived' | 'completed' | 'declined' | 'false_alarm';
   eta_seconds?: number;
   route_nodes?: string[];
   dispatched_at: string;
@@ -97,7 +93,40 @@ const STATUS_BADGES: Record<string, { label: string; color: string; icon: React.
   en_route: { label: 'A caminho', color: 'bg-yellow-100 text-yellow-700', icon: <Navigation size={14} /> },
   arrived: { label: 'Chegou', color: 'bg-green-100 text-green-700', icon: <CheckCircle size={14} /> },
   completed: { label: 'Concluído', color: 'bg-gray-100 text-gray-700', icon: <Flag size={14} /> },
+  declined: { label: 'Recusado', color: 'bg-red-100 text-red-700', icon: <XCircle size={14} /> },
+  false_alarm: { label: 'Falso alarme', color: 'bg-slate-100 text-slate-700', icon: <XCircle size={14} /> },
 };
+
+function getDispatchGuidance(status?: MyDispatch['status']) {
+  switch (status) {
+    case 'dispatched':
+      return {
+        title: 'Incidente atribuído',
+        description: 'Aceita o pedido para assumir o atendimento. A rota até ao local será iniciada automaticamente.',
+        className: 'border-blue-100 bg-blue-50 text-blue-800',
+      };
+    case 'en_route':
+      return {
+        title: 'A caminho do local',
+        description: 'Quando chegares ao nó do incidente, marca chegada para poderes concluir o atendimento.',
+        className: 'border-amber-100 bg-amber-50 text-amber-800',
+      };
+    case 'arrived':
+      return {
+        title: 'Pronto para concluir',
+        description: 'Depois de prestares assistência, carrega em Concluir Atendimento e escreve um pequeno relatório do que foi feito.',
+        className: 'border-emerald-100 bg-emerald-50 text-emerald-800',
+      };
+    case 'false_alarm':
+      return {
+        title: 'Falso alarme',
+        description: 'O supervisor cancelou este incidente. Não é necessária intervenção.',
+        className: 'border-slate-200 bg-slate-50 text-slate-700',
+      };
+    default:
+      return null;
+  }
+}
 
 export default function MedicalIncidentsPage() {
   const { user } = useAuthStore();
@@ -111,16 +140,21 @@ export default function MedicalIncidentsPage() {
   const [selectedIncident, setSelectedIncident] = useState<MedicalIncident | null>(null);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [showMap, setShowMap] = useState(false);
-  const [routeInfo, setRouteInfo] = useState<{ distance: number; eta_seconds: number; waypoints: any[] } | null>(null);
-  const [currentLocation, setCurrentLocation] = useState<string>('N1'); // ✅ Estado para localização atual
+  const [routeInfo, setRouteInfo] = useState<{ distance: number; eta_seconds: number; waypoints: RouteWaypoint[] } | null>(null);
+  const [routeModalIncident, setRouteModalIncident] = useState<MedicalIncident | null>(null);
+  const [routeModalGeoJson, setRouteModalGeoJson] = useState<IndoorRouteGeoJsonResponse | null>(null);
+  const [routeModalFloor, setRouteModalFloor] = useState<'0' | '1' | '2'>('1');
+  const [routeModalLoading, setRouteModalLoading] = useState(false);
+  const [routeModalError, setRouteModalError] = useState<string | null>(null);
+  const [currentLocation, setCurrentLocation] = useState<string>('1'); // Estado para localização atual no grafo pgRouting
 
   // ✅ Função para buscar a localização atual do médico
   const fetchCurrentLocation = useCallback(async () => {
-    if (!user?.id) return 'N1';
+    if (!user?.id) return '1';
     
     try {
       // Tentar buscar do Maintenance Service (staff coordinator)
-      const response = await axios.get<StaffLocation[]>(`http://localhost:8007/api/maintenance/staff`, {
+      const response = await axios.get<StaffLocation[]>(`${MAINTENANCE_SERVICE}/staff`, {
         timeout: 3000,
       });
       
@@ -130,25 +164,27 @@ export default function MedicalIncidentsPage() {
         return staffMember.current_location;
       }
     } catch (error) {
-      console.log('Maintenance Service não disponível, tentando Auth Service...');
+      console.warn('[Medical Incidents] Maintenance service unavailable; trying Auth service');
     }
     
     try {
-      // Fallback: tentar buscar do Auth Service
-      const response = await axios.get(`http://localhost:8081/auth/staff/${user.id}`, {
+      // Fallback: usar a lista autenticada do Auth Service.
+      const response = await axios.get<Array<{ id: number | string; location?: string; current_location?: string }>>(`/api/auth/staff`, {
         timeout: 3000,
+        withCredentials: true,
       });
       
-      const location = response.data?.current_location || response.data?.location;
+      const staffMember = response.data.find((member) => String(member.id) === String(user.id));
+      const location = staffMember?.current_location || staffMember?.location;
       if (location) {
         setCurrentLocation(location);
         return location;
       }
     } catch (error) {
-      console.log('Auth Service não disponível, usando localização padrão');
+      console.warn('[Medical Incidents] Auth service unavailable; using default location');
     }
     
-    return 'N1';
+    return '1';
   }, [user?.id]);
 
   const fetchData = useCallback(async () => {
@@ -159,27 +195,42 @@ export default function MedicalIncidentsPage() {
       // ✅ Buscar localização atual do médico
       await fetchCurrentLocation();
       
-      // Buscar incidentes médicos ativos
-      const incidentsRes = await axios.get('http://localhost:8006/api/emergency/incidents', {
-        params: { incident_type: 'medical', status: 'active' },
+      // Buscar incidentes médicos operacionais. Depois da atribuição, o backend
+      // pode mudar o estado para "responding", por isso não podemos pedir só
+      // status=active ou o incidente desaparece da vista do médico.
+      const incidentsRes = await axios.get(`${EMERGENCY_SERVICE}/incidents`, {
+        params: { incident_type: 'medic' },
         timeout: 5000,
       });
       
       // Buscar meus despachos ativos
-      const dispatchesRes = await axios.get('http://localhost:8006/api/emergency/dispatch/active', {
+      const dispatchesRes = await axios.get(`${EMERGENCY_SERVICE}/dispatch/active`, {
         timeout: 5000,
       });
       
-      // Filtrar despachos do médico atual
-      const myActiveDispatches = (dispatchesRes.data || []).filter(
-        (d: any) => d.responder_id === String(user.id) && d.status !== 'completed'
+      // Filtrar despachos do médico atual. Alguns dispatches automáticos usam
+      // o formato STAFF_MEDICAL_001; os manuais usam o id real do utilizador.
+      const myId = String(user.id);
+      const syntheticMedicalId = `STAFF_MEDICAL_${myId.padStart(3, '0')}`;
+      const myActiveDispatches = ((dispatchesRes.data || []) as MyDispatch[]).filter(
+        (d) =>
+          (d.responder_id === myId || d.responder_id === syntheticMedicalId) &&
+          !['completed', 'declined'].includes(d.status)
       );
-      
-      setIncidents(incidentsRes.data?.incidents || []);
+
+      const myIncidentIds = new Set(myActiveDispatches.map((dispatch) => dispatch.incident_id));
+      const visibleIncidents = ((incidentsRes.data?.incidents || []) as MedicalIncident[]).filter((incident) => {
+        const status = String(incident.status || '').toLowerCase();
+        if (status === 'resolved') return false;
+        if (status === 'false_alarm') return myIncidentIds.has(incident.id);
+        return true;
+      });
+
+      setIncidents(visibleIncidents);
       setMyDispatches(myActiveDispatches);
       
     } catch (error) {
-      console.error('Erro ao carregar dados:', error);
+      console.error('[Medical Incidents] Failed to load data:', error);
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -188,62 +239,76 @@ export default function MedicalIncidentsPage() {
 
   useEffect(() => {
     fetchData();
+    const eventSource =
+      typeof window !== 'undefined'
+        ? new EventSource(EMERGENCY_EVENTS_URL, { withCredentials: true })
+        : null;
+
+    const handleRealtimeUpdate = (event: MessageEvent) => {
+      try {
+        const parsed = JSON.parse(event.data) as { type?: string };
+        console.debug('[Medical Incidents SSE] Received update:', parsed.type || 'unknown');
+      } catch {
+        console.debug('[Medical Incidents SSE] Received update');
+      }
+      void fetchData();
+    };
+
+    [
+      'incident.created',
+      'incident.updated',
+      'incident.escalated',
+      'incident.resolved',
+      'sensor.alert',
+      'dispatch.created',
+      'dispatch.accepted',
+      'dispatch.declined',
+      'dispatch.completed',
+      'dispatch.arrived',
+      'evacuation.created',
+      'evacuation.safe',
+      'evacuation.completed',
+    ].forEach((eventType) => {
+      eventSource?.addEventListener(eventType, handleRealtimeUpdate);
+    });
+
+    eventSource?.addEventListener('connected', () => {
+      console.info('[Medical Incidents SSE] Connected');
+    });
+
+    eventSource?.addEventListener('error', () => {
+      console.warn('[Medical Incidents SSE] Disconnected; the browser will retry automatically');
+    });
+
     const interval = setInterval(fetchData, 15000);
-    return () => clearInterval(interval);
+    return () => {
+      eventSource?.close();
+      clearInterval(interval);
+    };
   }, [fetchData]);
 
 const handleAcceptIncident = async (incident: MedicalIncident) => {
   setActionLoading(`accept-${incident.id}`);
   
   try {
-    // 1. Despachar médico para o incidente
-    const dispatchRes = await axios.post('http://localhost:8006/api/emergency/dispatch', {
+    const dispatchRes = await axios.post(`${EMERGENCY_SERVICE}/dispatch/manual`, {
       incident_id: incident.id,
-      responder_role: 'medical',
-      num_responders: 1
+      responder_id: String(user?.id),
+      responder_role: 'medic',
+      current_position: currentLocation,
+      responder_name: user?.email?.split('@')[0] || 'Médico',
+    }, {
+      withCredentials: true,
     });
-    
-    // Guardar o ID do despacho criado
-    const dispatchId = dispatchRes.data?.[0]?.id || dispatchRes.data?.id;
-    
-    // 2. Buscar localização atual
-    const fromNode = currentLocation;
-    const toNode = incident.location_node;
-    
-    // 3. Verificar se já está no local
-    if (isSameLocation(fromNode, toNode)) {
-      // Se já está no local, marcar como arrived
-      if (dispatchId) {
-        await axios.post(`http://localhost:8006/api/emergency/dispatch/${dispatchId}/arrived`);
-      }
-      await fetchData();
-      alert(`Você já está no local do incidente em ${toNode}!`);
-      return;
+
+    const dispatchId = dispatchRes.data?.id;
+    if (dispatchId) {
+      await api.acceptDispatch(dispatchId);
     }
-    
-    // 4. Calcular rota (apenas se estiver em local diferente)
-    console.log(`📍 Calculando rota de ${fromNode} para ${toNode}`);
-    const route = await api.getRoute(fromNode, toNode);
-    
-    // 5. Iniciar navegação
-    setNavigation({
-      taskId: incident.id,
-      binId: incident.id,
-      binName: incident.description || 'Incidente Médico',
-      targetNode: toNode,
-      fromNode,
-      waypoints: route.waypoints,
-      etaSeconds: route.eta_seconds,
-    });
-    
-    // 6. Recarregar dados
+
     await fetchData();
-    
-    // 7. Redirecionar para o mapa
-    router.push('/app-routes/map');
-    
   } catch (error) {
-    console.error('Erro ao aceitar incidente:', error);
+    console.error('[Medical Incidents] Failed to accept incident:', error);
     alert('Erro ao aceitar incidente. Tente novamente.');
   } finally {
     setActionLoading(null);
@@ -254,35 +319,55 @@ const isSameLocation = (fromNode: string, toNode: string): boolean => {
   return fromNode === toNode;
 };
 
+const handleAcceptAssignedDispatch = async (dispatch: MyDispatch) => {
+  setActionLoading(`accept-dispatch-${dispatch.id}`);
+
+  try {
+    await api.acceptDispatch(dispatch.id);
+    await fetchData();
+  } catch (error) {
+    console.error('[Medical Incidents] Failed to accept medical request:', error);
+    alert('❌ Não foi possível aceitar este pedido.');
+  } finally {
+    setActionLoading(null);
+  }
+};
+
 
 const handleNavigate = async (incident: MedicalIncident) => {
   setActionLoading(`nav-${incident.id}`);
   setRouteInfo(null);
+  setRouteModalIncident(incident);
+  setRouteModalGeoJson(null);
+  setRouteModalError(null);
+  setRouteModalLoading(true);
   
   try {
     const fromNode = currentLocation;
     const toNode = incident.location_node;
     
-    // Verificar se já está no local
     if (isSameLocation(fromNode, toNode)) {
-      alert(`Você já está no local do incidente em ${toNode}!`);
-      setSelectedIncident(incident);
+      setRouteModalError(`Já estás no local do incidente (${toNode}).`);
       return;
     }
     
-    console.log(`📍 Calculando rota de ${fromNode} para ${toNode}`);
-    const route = await api.getRoute(fromNode, toNode);
+    const [route, geoJsonRoute] = await Promise.all([
+      api.getRoute(fromNode, toNode),
+      indoorRoutingService.getRouteGeoJson(Number(fromNode), Number(toNode)),
+    ]);
     
     setRouteInfo({
       distance: route.distance,
       eta_seconds: route.eta_seconds,
       waypoints: route.waypoints,
     });
-    
-    setShowMap(true);
-    setSelectedIncident(incident);
-    
-    // Iniciar navegação
+
+    setRouteModalGeoJson(geoJsonRoute);
+    const firstFloor = geoJsonRoute.summary.floors[0];
+    if (firstFloor != null) {
+      setRouteModalFloor(String(firstFloor) as '0' | '1' | '2');
+    }
+
     setNavigation({
       taskId: incident.id,
       binId: incident.id,
@@ -292,14 +377,12 @@ const handleNavigate = async (incident: MedicalIncident) => {
       waypoints: route.waypoints,
       etaSeconds: route.eta_seconds,
     });
-    
-    router.push('/app-routes/map');
-    
   } catch (error) {
-    console.error('Erro ao calcular rota:', error);
-    alert('❌ Não foi possível calcular a rota.');
+    console.error('[Medical Incidents] Failed to calculate route:', error);
+    setRouteModalError('Não foi possível calcular a rota.');
   } finally {
     setActionLoading(null);
+    setRouteModalLoading(false);
   }
 };
 
@@ -307,7 +390,7 @@ const handleArrive = async (dispatch: MyDispatch) => {
   setActionLoading(`arrive-${dispatch.id}`);
   try {
     // Marcar chegada no backend
-    await axios.post(`http://localhost:8006/api/emergency/dispatch/${dispatch.id}/arrived`);
+    await axios.post(`${EMERGENCY_SERVICE}/dispatch/${dispatch.id}/arrived`);
     
     // Encontrar o incidente correspondente
     const incident = incidents.find(i => i.id === dispatch.incident_id);
@@ -315,12 +398,12 @@ const handleArrive = async (dispatch: MyDispatch) => {
     if (incident) {
       // Atualizar localização do médico
       try {
-        await axios.patch(`http://localhost:8007/api/maintenance/staff/${user?.id}/location`, null, {
+        await axios.patch(`${MAINTENANCE_SERVICE}/staff/${user?.id}/location`, null, {
           params: { location: incident.location_node }
         });
         setCurrentLocation(incident.location_node);
       } catch (e) {
-        console.log('Maintenance Service não disponível');
+        console.warn('[Medical Incidents] Maintenance service unavailable');
       }
     }
     
@@ -328,27 +411,46 @@ const handleArrive = async (dispatch: MyDispatch) => {
     alert(`✅ Chegou ao local do incidente!`);
     
   } catch (error) {
-    console.error('Erro ao marcar chegada:', error);
+    console.error('[Medical Incidents] Failed to mark arrival:', error);
     alert('❌ Erro ao marcar chegada.');
   } finally {
     setActionLoading(null);
   }
 };
 
-  const handleResolve = async (incident: MedicalIncident) => {
-    setActionLoading(`resolve-${incident.id}`);
+  const handleRefuseDispatch = async (dispatch: MyDispatch) => {
+    if (!confirm('Queres recusar este incidente médico?')) return;
+
+    setActionLoading(`refuse-${dispatch.id}`);
     try {
-      await axios.patch(`http://localhost:8006/api/emergency/incidents/${incident.id}`, {
-        status: 'resolved',
-        notes: 'Atendimento médico concluído'
-      });
-      
+      await api.refuseDispatch(dispatch.id);
       await fetchData();
-      alert(`✅ Incidente ${incident.id} resolvido com sucesso!`);
+      alert('Incidente recusado.');
+    } catch (error) {
+      console.error('[Medical Incidents] Failed to decline incident:', error);
+      alert('❌ Não foi possível recusar este incidente.');
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handleCompleteDispatch = async (dispatch: MyDispatch, incident: MedicalIncident) => {
+    const notes = window.prompt(
+      'Descreve brevemente o atendimento realizado:',
+      'Atendimento médico concluído.'
+    );
+
+    if (!notes || notes.trim().length < 3) return;
+
+    setActionLoading(`complete-${dispatch.id}`);
+    try {
+      await api.completeDispatch(dispatch.id, notes.trim());
+      await fetchData();
+      alert(`✅ Atendimento do incidente ${incident.id} concluído. O supervisor já pode fechar o incidente.`);
       setSelectedIncident(null);
     } catch (error) {
-      console.error('Erro ao resolver incidente:', error);
-      alert('❌ Erro ao resolver incidente.');
+      console.error('[Medical Incidents] Failed to complete incident response:', error);
+      alert('❌ Não foi possível concluir o atendimento.');
     } finally {
       setActionLoading(null);
     }
@@ -370,9 +472,14 @@ const handleArrive = async (dispatch: MyDispatch) => {
     !myDispatches.some(d => d.incident_id === incident.id)
   );
 
-  // Meus incidentes em andamento
+  // Pedidos atribuídos pelo supervisor, mas ainda não aceites pelo médico
+  const assignedIncidents = incidents.filter(incident =>
+    myDispatches.some(d => d.incident_id === incident.id && d.status === 'dispatched')
+  );
+
+  // Meus incidentes já aceites/em atendimento
   const myActiveIncidents = incidents.filter(incident =>
-    myDispatches.some(d => d.incident_id === incident.id)
+    myDispatches.some(d => d.incident_id === incident.id && d.status !== 'dispatched')
   );
 
   if (loading) {
@@ -398,7 +505,7 @@ const handleArrive = async (dispatch: MyDispatch) => {
             <div>
               <h1 className="text-2xl font-bold text-gray-900">Incidentes Médicos</h1>
               <p className="text-gray-500 mt-1">
-                {pendingIncidents.length} pendentes • {myActiveIncidents.length} em andamento
+                {pendingIncidents.length + assignedIncidents.length} por aceitar • {myActiveIncidents.length} em andamento
               </p>
               <p className="text-xs text-gray-400 mt-1">
                 📍 Localização atual: {currentLocation}
@@ -417,6 +524,90 @@ const handleArrive = async (dispatch: MyDispatch) => {
         </button>
       </div>
 
+      {/* Pedidos atribuídos ao médico, mas ainda pendentes de aceitação */}
+      {assignedIncidents.length > 0 && (
+        <div className="mb-8">
+          <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+            <Clock size={20} className="text-blue-500" />
+            Pedidos por aceitar ({assignedIncidents.length})
+          </h2>
+          <div className="space-y-4">
+            {assignedIncidents.map((incident) => {
+              const dispatch = myDispatches.find(d => d.incident_id === incident.id);
+
+              return (
+                <div key={incident.id} className="bg-white rounded-xl border border-blue-200 shadow-sm overflow-hidden">
+                  <div className="p-5">
+                    <div className="flex items-start justify-between mb-4">
+                      <div className="flex items-center gap-3">
+                        {SEVERITY_ICONS[incident.severity]}
+                        <div>
+                          <h3 className="font-semibold text-gray-900">
+                            {incident.description || 'Emergência Médica'}
+                          </h3>
+                          <div className="flex items-center gap-2 mt-1">
+                            <span className={`text-xs px-2 py-1 rounded-full ${SEVERITY_COLORS[incident.severity]}`}>
+                              {incident.severity.toUpperCase()}
+                            </span>
+                            <div className="flex items-center gap-1">
+                              <MapPin size={12} className="text-gray-400" />
+                              <span className="text-xs text-gray-500">{incident.location_node}</span>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1 px-2 py-1 rounded-full bg-blue-100 text-blue-700 text-xs">
+                        <Clock size={14} />
+                        <span>A aguardar aceitação</span>
+                      </div>
+                    </div>
+
+                    <div className="mb-4 rounded-xl border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-800">
+                      <p className="font-semibold">Pedido atribuído pelo supervisor</p>
+                      <p className="mt-1 leading-relaxed">
+                        Aceita o pedido para ficares responsável por este atendimento. Só depois aparecem as ações de rota, chegada e conclusão.
+                      </p>
+                    </div>
+
+                    <div className="flex gap-3">
+                      {dispatch && (
+                        <button
+                          onClick={() => handleAcceptAssignedDispatch(dispatch)}
+                          disabled={!!actionLoading}
+                          className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+                        >
+                          <CheckCircle size={18} />
+                          Aceitar Pedido
+                        </button>
+                      )}
+
+                      {dispatch && (
+                        <button
+                          onClick={() => handleRefuseDispatch(dispatch)}
+                          disabled={!!actionLoading}
+                          className="flex items-center justify-center gap-2 px-4 py-2 border border-red-200 bg-white text-red-700 rounded-lg hover:bg-red-50 disabled:opacity-50"
+                        >
+                          <XCircle size={18} />
+                          Recusar
+                        </button>
+                      )}
+
+                      <button
+                        onClick={() => router.push(`/app-routes/chat?incident=${incident.id}`)}
+                        className="flex items-center justify-center gap-2 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200"
+                      >
+                        <MessageCircle size={18} />
+                        Conversa
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       {/* Meus Incidentes em Andamento */}
       {myActiveIncidents.length > 0 && (
         <div className="mb-8">
@@ -428,6 +619,7 @@ const handleArrive = async (dispatch: MyDispatch) => {
             {myActiveIncidents.map((incident) => {
               const dispatch = myDispatches.find(d => d.incident_id === incident.id);
               const statusInfo = dispatch ? STATUS_BADGES[dispatch.status] : STATUS_BADGES.dispatched;
+              const guidance = getDispatchGuidance(dispatch?.status);
               
               return (
                 <div key={incident.id} className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
@@ -467,37 +659,54 @@ const handleArrive = async (dispatch: MyDispatch) => {
                       </div>
                     </div>
 
+                    {guidance && (
+                      <div className={`mb-4 rounded-xl border px-4 py-3 text-sm ${guidance.className}`}>
+                        <p className="font-semibold">{guidance.title}</p>
+                        <p className="mt-1 leading-relaxed">{guidance.description}</p>
+                      </div>
+                    )}
+
                     <div className="flex gap-3">
-                      {dispatch?.status === 'dispatched' && (
-                        <button
-                          onClick={() => handleNavigate(incident)}
-                          disabled={!!actionLoading}
-                          className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
-                        >
-                          <Navigation size={18} />
-                          Iniciar Rota
-                        </button>
-                      )}
-                      
                       {dispatch?.status === 'en_route' && (
-                        <button
-                          onClick={() => dispatch && handleArrive(dispatch)}
-                          disabled={!!actionLoading}
-                          className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50"
-                        >
-                          <Flag size={18} />
-                          Cheguei ao Local
-                        </button>
+                        <>
+                          <button
+                            onClick={() => handleNavigate(incident)}
+                            disabled={!!actionLoading}
+                            className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+                          >
+                            <Navigation size={18} />
+                            Ver Rota
+                          </button>
+                          <button
+                            onClick={() => dispatch && handleArrive(dispatch)}
+                            disabled={!!actionLoading}
+                            className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50"
+                          >
+                            <Flag size={18} />
+                            Cheguei ao Local
+                          </button>
+                        </>
                       )}
                       
                       {dispatch?.status === 'arrived' && (
                         <button
-                          onClick={() => handleResolve(incident)}
+                          onClick={() => dispatch && handleCompleteDispatch(dispatch, incident)}
                           disabled={!!actionLoading}
                           className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 disabled:opacity-50"
                         >
                           <CheckCircle size={18} />
-                          Resolver Incidente
+                          Concluir Atendimento
+                        </button>
+                      )}
+
+                      {dispatch && ['en_route', 'arrived'].includes(dispatch.status) && (
+                        <button
+                          onClick={() => handleRefuseDispatch(dispatch)}
+                          disabled={!!actionLoading}
+                          className="flex items-center justify-center gap-2 px-4 py-2 border border-red-200 bg-white text-red-700 rounded-lg hover:bg-red-50 disabled:opacity-50"
+                        >
+                          <XCircle size={18} />
+                          Recusar
                         </button>
                       )}
                       
@@ -506,7 +715,7 @@ const handleArrive = async (dispatch: MyDispatch) => {
                         className="flex items-center justify-center gap-2 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200"
                       >
                         <MessageCircle size={18} />
-                        Chat
+                        Conversa
                       </button>
                     </div>
                   </div>
@@ -592,13 +801,86 @@ const handleArrive = async (dispatch: MyDispatch) => {
       )}
 
       {/* Sem incidentes */}
-      {pendingIncidents.length === 0 && myActiveIncidents.length === 0 && (
+      {pendingIncidents.length === 0 && assignedIncidents.length === 0 && myActiveIncidents.length === 0 && (
         <div className="bg-white rounded-xl border border-gray-200 p-12 text-center">
           <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
             <CheckCircle size={40} className="text-green-600" />
           </div>
           <h3 className="text-lg font-semibold text-gray-900 mb-2">Nenhum incidente ativo</h3>
           <p className="text-gray-500">Não há incidentes médicos pendentes no momento.</p>
+        </div>
+      )}
+
+      {/* Modal de rota inline */}
+      {routeModalIncident && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-white/45 p-4 backdrop-blur-md">
+          <div className="w-full max-w-5xl overflow-hidden rounded-3xl border border-white/70 bg-white/95 shadow-2xl">
+            <div className="flex flex-wrap items-start justify-between gap-4 border-b border-slate-100 px-5 py-4">
+              <div>
+                <p className="text-xs font-bold uppercase tracking-[0.2em] text-blue-600">Rota do atendimento</p>
+                <h2 className="mt-1 text-xl font-black text-slate-950">
+                  {routeModalIncident.description || 'Emergência Médica'}
+                </h2>
+                <p className="mt-1 text-sm text-slate-500">
+                  De {currentLocation} até nó {routeModalIncident.location_node}
+                  {routeModalGeoJson
+                    ? ` · ${Math.round(routeModalGeoJson.summary.distance)}m · ${Math.max(1, Math.round(routeModalGeoJson.summary.eta_seconds / 60))} min`
+                    : ''}
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2">
+                {routeModalGeoJson && routeModalGeoJson.summary.floors.length > 1 && (
+                  <div className="flex rounded-2xl bg-slate-100 p-1">
+                    {routeModalGeoJson.summary.floors.map((floor) => (
+                      <button
+                        key={floor}
+                        onClick={() => setRouteModalFloor(String(floor) as '0' | '1' | '2')}
+                        className={`rounded-xl px-3 py-2 text-xs font-bold transition ${
+                          routeModalFloor === String(floor)
+                            ? 'bg-white text-blue-700 shadow-sm'
+                            : 'text-slate-500 hover:text-slate-900'
+                        }`}
+                      >
+                        Piso {floor}
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                <button
+                  onClick={() => {
+                    setRouteModalIncident(null);
+                    setRouteModalGeoJson(null);
+                    setRouteModalError(null);
+                  }}
+                  className="rounded-full p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                  aria-label="Fechar rota"
+                >
+                  <XCircle size={22} />
+                </button>
+              </div>
+            </div>
+
+            <div className="p-5">
+              {routeModalLoading ? (
+                <div className="flex h-[32rem] items-center justify-center rounded-3xl border border-dashed border-slate-200 bg-slate-50 text-sm font-semibold text-slate-500">
+                  <Loader2 size={18} className="mr-2 animate-spin" />
+                  A calcular rota...
+                </div>
+              ) : routeModalError ? (
+                <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-800">
+                  {routeModalError}
+                </div>
+              ) : (
+                <IndoorGisMap
+                  floorId={Number(routeModalFloor)}
+                  routeGeoJson={routeModalGeoJson?.route ?? null}
+                  routeAffected={Boolean(routeModalGeoJson?.summary.impacted_edge_count)}
+                />
+              )}
+            </div>
+          </div>
         </div>
       )}
 

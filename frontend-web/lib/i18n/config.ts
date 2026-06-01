@@ -15,6 +15,7 @@ i18n
     resources: RESOURCES,
     lng: 'pt',
     fallbackLng: 'pt',
+    showSupportNotice: false,
     interpolation: {
       escapeValue: false,
     },

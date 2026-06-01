@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
+import { createJSONStorage, persist } from 'zustand/middleware';
 import i18n from '@/lib/i18n';
 
 interface LangStore {
@@ -19,6 +19,12 @@ export const useLangStore = create<LangStore>()(
         set({ lang: next });
       },
     }),
-    { name: 'lang-storage' }
+    {
+      name: 'lang-storage',
+      storage: createJSONStorage(() => localStorage),
+      onRehydrateStorage: () => (state) => {
+        if (state) i18n.changeLanguage(state.lang);
+      },
+    }
   )
 );
