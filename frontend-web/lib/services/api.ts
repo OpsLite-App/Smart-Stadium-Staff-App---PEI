@@ -24,20 +24,22 @@ export const CHAT_SERVICE = CHAT_BASE;
 function resolveWsGateway() {
   const configured =
     process.env.NEXT_PUBLIC_WS_GATEWAY ||
-    process.env.NEXT_PUBLIC_WS_URL ||
-    "ws://localhost:8080/ws";
+    process.env.NEXT_PUBLIC_WS_URL;
 
-  if (typeof window === "undefined") return configured;
+  if (typeof window === "undefined") return configured || "ws://localhost:8080/ws";
 
-  // When the app is opened from a phone, localhost points to the phone itself.
-  // Keep local desktop behaviour, but rewrite localhost WS URLs to the current host.
-  if (configured.includes("localhost") || configured.includes("127.0.0.1")) {
-    const protocol = window.location.protocol === "https:" ? "wss" : "ws";
-    const configuredUrl = new URL(configured);
-    return `${protocol}://${window.location.hostname}:${configuredUrl.port}${configuredUrl.pathname}`;
+  if (configured && !configured.includes("localhost") && !configured.includes("127.0.0.1")) {
+    return configured;
   }
 
-  return configured;
+  const protocol = window.location.protocol === "https:" ? "wss" : "ws";
+  const gatewayHost =
+    window.location.port === "3000"
+      ? `${window.location.hostname}:8080`
+      : window.location.host;
+
+  // Use the same public gateway origin on phones and deployed environments.
+  return `${protocol}://${gatewayHost}/ws`;
 }
 
 // WebSocket traffic reaches Traefik directly because Next rewrites do not

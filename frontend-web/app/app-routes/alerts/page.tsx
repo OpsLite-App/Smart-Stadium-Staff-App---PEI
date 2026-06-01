@@ -134,7 +134,7 @@ interface StaffCandidate {
   name: string;
   role: string;
   location: string;
-  availability: 'available' | 'busy';
+  availability: 'available' | 'busy' | 'assigned';
   etaSeconds: number | null;
   distance: number | null;
 }
@@ -888,9 +888,10 @@ export default function AlertsPage() {
       setCandidateLoading(true);
       setCandidateError('');
 
-      const [staffResponse, activeDispatchesResponse] = await Promise.all([
+      const [staffResponse, activeDispatchesResponse, incidentDispatchesResponse] = await Promise.all([
         axios.get<StaffApiEntry[]>(`/api/auth/staff`, { timeout: 4000, withCredentials: true }),
         axios.get<ActiveDispatchEntry[]>(`${EMERGENCY_SERVICE}/dispatch/active`, { timeout: 4000 }).catch(() => ({ data: [] })),
+        axios.get<ActiveDispatchEntry[]>(`${EMERGENCY_SERVICE}/dispatch/incident/${incident.id}`, { timeout: 4000 }).catch(() => ({ data: [] })),
       ]);
 
       const roleMatchers: Record<IncidentCategory, string[]> = {
@@ -903,6 +904,11 @@ export default function AlertsPage() {
       const busyIds = new Set(
         (activeDispatchesResponse.data || [])
           .filter((item) => busyStatuses.has(String(item.status ?? '').toLowerCase()))
+          .map((item) => String(item.responder_id))
+      );
+      const assignedIds = new Set(
+        (incidentDispatchesResponse.data || [])
+          .filter((item) => String(item.status ?? '').toLowerCase() !== 'declined')
           .map((item) => String(item.responder_id))
       );
 
@@ -928,7 +934,9 @@ export default function AlertsPage() {
               name: member.name || `Staff ${member.id}`,
               role: member.role || department,
               location,
-              availability: busyIds.has(String(member.id)) ? 'busy' : 'available',
+              availability: assignedIds.has(String(member.id))
+                ? 'assigned'
+                : busyIds.has(String(member.id)) ? 'busy' : 'available',
               etaSeconds: routeResponse.data?.eta_seconds ?? null,
               distance: routeResponse.data?.distance ?? null,
             } satisfies StaffCandidate;
@@ -938,7 +946,9 @@ export default function AlertsPage() {
               name: member.name || `Staff ${member.id}`,
               role: member.role || department,
               location,
-              availability: busyIds.has(String(member.id)) ? 'busy' : 'available',
+              availability: assignedIds.has(String(member.id))
+                ? 'assigned'
+                : busyIds.has(String(member.id)) ? 'busy' : 'available',
               etaSeconds: null,
               distance: null,
             } satisfies StaffCandidate;
@@ -1205,6 +1215,8 @@ export default function AlertsPage() {
     const active = dispatches.filter((dispatch) =>
       ['dispatched', 'en_route', 'arrived'].includes(String(dispatch.status).toLowerCase())
     ).length;
+    const assignedResponders = new Set(dispatches.map((dispatch) => String(dispatch.responder_id))).size;
+    const historyLabel = assignedResponders === dispatches.length ? '' : ` · ${dispatches.length} registos`;
 
     if (dispatches.length === 1) {
       const dispatch = dispatches[0];
@@ -1222,7 +1234,7 @@ export default function AlertsPage() {
     }
 
     return {
-      label: `${dispatches.length} elementos atribuídos · ${active} ativos · ${completed} concluídos`,
+      label: `${assignedResponders} elementos atribuídos · ${active} ativos · ${completed} concluídos${historyLabel}`,
       className: completed > 0 ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-blue-200 bg-blue-50 text-blue-800',
     };
   };
@@ -2032,7 +2044,9 @@ export default function AlertsPage() {
                                   : 'bg-red-100 text-red-700'
                               }`}
                             >
-                              {candidate.availability === 'available' ? 'Disponível' : 'Ocupado'}
+                              {candidate.availability === 'available'
+                                ? 'Disponível'
+                                : candidate.availability === 'assigned' ? 'Já atribuído' : 'Ocupado'}
                             </span>
                             <span className="rounded-full bg-gray-100 px-2 py-1 text-gray-700">
                               ETA: {candidate.etaSeconds !== null ? `${Math.ceil(candidate.etaSeconds / 60)} min` : 'N/A'}
