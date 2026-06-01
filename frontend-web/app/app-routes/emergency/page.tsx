@@ -6,6 +6,7 @@ import { api, EMERGENCY_EVENTS_URL, type GlobalEvacuation } from '@/lib/services
 import { useAuthStore } from '@/lib/stores/useAuthStore';
 import { IndoorGisMap } from '@/components/map/IndoorGisMap';
 import type { GisFeatureCollection, RouteEdgeProperties } from '@/lib/services/gisApi';
+import { getRouteStartFloor } from '@/lib/services/indoorRouting';
 
 const EXIT_NODE = '65';
 const EVACUATION_SAFE_STORAGE_KEY = 'opslite-safe-evacuations';
@@ -95,6 +96,7 @@ export default function EmergencyPage() {
   const [message, setMessage] = useState<string | null>(null);
   const [nodePickMode, setNodePickMode] = useState<'source' | 'blocked'>('source');
   const [routeFloorId, setRouteFloorId] = useState(1);
+  const [totalStaffCount, setTotalStaffCount] = useState(0);
   const [locallyConfirmedToken, setLocallyConfirmedToken] = useState<string | null>(null);
   const [form, setForm] = useState({
     title: '',
@@ -139,6 +141,7 @@ export default function EmergencyPage() {
       const myPos = positions.find((p) => Number(p.staff_id) === Number(user?.id));
       const location = myPos?.location_id ? String(myPos.location_id) : (me?.location ? String(me.location) : '');
       setCurrentLocation(location);
+      setTotalStaffCount(staff.length);
       setEvacuation(active);
 
       if (active.active) {
@@ -147,6 +150,10 @@ export default function EmergencyPage() {
         if (startNode) {
           const route = await api.getEvacuationRouteGeoJson(startNode).catch(() => null);
           setRouteGeoJson(route);
+          const startFloor = getRouteStartFloor(route, startNode);
+          if (startFloor != null) {
+            setRouteFloorId(startFloor);
+          }
         } else {
           setRouteGeoJson(null);
         }
@@ -393,7 +400,7 @@ export default function EmergencyPage() {
                     <div className="flex items-center gap-2 text-xs font-bold uppercase text-emerald-700">
                       <Users size={14} /> Seguros
                     </div>
-                    <p className="mt-2 text-xl font-black text-emerald-900">{confirmedCount}</p>
+                    <p className="mt-2 text-xl font-black text-emerald-900">{confirmedCount}/{totalStaffCount}</p>
                   </div>
                   <div className="rounded-2xl border border-slate-100 bg-slate-50 p-3">
                     <div className="flex items-center gap-2 text-xs font-bold uppercase text-slate-500">
@@ -598,7 +605,7 @@ export default function EmergencyPage() {
                       </div>
                       <div className="rounded-xl bg-white px-3 py-2 text-red-800">
                         <p className="text-red-500">Confirmados</p>
-                        <p className="mt-0.5">{evacuation.evacuated_count ?? 0}</p>
+                        <p className="mt-0.5">{confirmedCount}/{totalStaffCount}</p>
                       </div>
                     </div>
                   </div>

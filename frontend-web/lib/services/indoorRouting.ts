@@ -38,6 +38,29 @@ export interface IndoorRouteGeoJsonResponse {
   };
 }
 
+export function getRouteStartFloor(
+  route: IndoorRouteGeoJsonResponse | GisFeatureCollection<RouteEdgeProperties> | null | undefined,
+  fromNode?: number | string,
+): number | undefined {
+  if (!route) return undefined;
+
+  const featureCollection = 'route' in route ? route.route : route;
+  const numericFromNode = Number(fromNode ?? ('summary' in route ? route.summary.start_node : undefined));
+  const startFeature = Number.isFinite(numericFromNode)
+    ? featureCollection.features.find((feature) => (
+        feature.properties.from_node === numericFromNode ||
+        feature.properties.to_node === numericFromNode
+      ))
+    : undefined;
+  const firstFeature = startFeature ?? featureCollection.features[0];
+
+  return (
+    firstFeature?.properties.current_floor_id ??
+    firstFeature?.properties.floor_id ??
+    ('summary' in route ? route.summary.floors[0] : undefined)
+  );
+}
+
 export interface GraphStatus {
   status: 'healthy' | 'degraded' | 'critical' | string;
   nodes: number;

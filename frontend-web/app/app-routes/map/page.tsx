@@ -18,6 +18,7 @@ import { Badge } from '@/components/ui/Badge';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { Surface } from '@/components/ui/Surface';
 import {
+  getRouteStartFloor,
   indoorRoutingService,
   type GraphStatus,
   type IndoorRouteGeoJsonResponse,
@@ -245,7 +246,7 @@ export default function MapPage() {
         if (cancelled) return;
 
         setRouteGeoJson(geoJsonRoute);
-        const firstFloor = geoJsonRoute.summary.floors[0];
+        const firstFloor = getRouteStartFloor(geoJsonRoute, fromNode);
         if (firstFloor != null) {
           setSelectedFloor(String(firstFloor) as FloorId);
         }

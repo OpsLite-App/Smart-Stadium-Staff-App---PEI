@@ -991,7 +991,12 @@ export default function AlertsPage() {
 
     try {
       setIncidentActionLoading(`dispatch-${incident.id}-${candidate.id}`);
-      const route = await api.getRoute(candidate.location, incident.location_node);
+      const route = await api.getRoute(candidate.location, incident.location_node).catch(() => ({
+        path: [candidate.location],
+        waypoints: [],
+        eta_seconds: 0,
+        distance: 0,
+      }));
 
       await axios.post(`${EMERGENCY_SERVICE}/dispatch/manual`, {
         incident_id: incident.id,

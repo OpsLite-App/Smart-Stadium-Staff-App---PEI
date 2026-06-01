@@ -288,6 +288,7 @@ export function IndoorGisMap({
   const mapRef = useRef<import('leaflet').Map | null>(null);
   const layerGroupRef = useRef<import('leaflet').LayerGroup | null>(null);
   const lastFloorIdRef = useRef<number | null>(null);
+  const loadedFloorIdRef = useRef<number | null>(null);
   const lastRouteGeoJsonRef = useRef<any>(null);
   const hasFittedRef = useRef<boolean>(false);
   const [mapReady, setMapReady] = useState(false);
@@ -410,7 +411,8 @@ export function IndoorGisMap({
     async function renderLayers() {
       if (!mapReady) return;
 
-      setLoading(true);
+      const shouldBlockMap = loadedFloorIdRef.current !== floorId;
+      if (shouldBlockMap) setLoading(true);
       setError(null);
 
       try {
@@ -881,7 +883,9 @@ export function IndoorGisMap({
           }
         }
 
+        loadedFloorIdRef.current = floorId;
       } catch {
+        loadedFloorIdRef.current = floorId;
         setError('As camadas GIS não estão disponíveis. A apresentar a alternativa operacional abaixo.');
       } finally {
         if (!cancelled) setLoading(false);

@@ -51,15 +51,6 @@ interface EmergencyStats {
   external_alerts_sent: number;
 }
 
-interface TimelineEntry {
-  incident_id: string;
-  incident_type: string;
-  severity: string;
-  status: string;
-  timestamp: string;
-  location: string;
-}
-
 interface MaintenanceStaffStats {
   staff_id: string;
   tasks_completed: number;
@@ -89,11 +80,22 @@ interface PendingDispatch {
   id: string;
   incident_id: string;
   responder_id: string;
+  status?: string;
+  dispatched_at?: string;
   route_nodes?: string[];
   eta_seconds?: number;
   incident_type?: string;
   incident_location?: string;
   incident_severity?: string;
+}
+
+interface AssignedMaintenanceTask {
+  id: string;
+  task_type: string;
+  status: string;
+  location_node: string;
+  location_description?: string | null;
+  assigned_at?: string | null;
 }
 
 interface IncidentSummary {
@@ -103,8 +105,10 @@ interface IncidentSummary {
   severity?: string;
 }
 
-function relativeTime(iso: string): string {
+function relativeTime(iso?: string | null): string {
+  if (!iso) return 'agora';
   const diffMs = Date.now() - new Date(iso).getTime();
+  if (!Number.isFinite(diffMs) || diffMs <= 0) return 'agora';
   const min = Math.floor(diffMs / 60000);
   if (min < 1) return 'agora';
   if (min < 60) return `há ${min} min`;
@@ -185,13 +189,9 @@ export default function ProfilePage() {
       const requestConfig = { withCredentials: true, timeout: 6000 };
 
       try {
-        const [staffRes, emergencyStatsRes, timelineRes, maintenanceStatsRes] = await Promise.allSettled([
+        const [staffRes, emergencyStatsRes, maintenanceStatsRes] = await Promise.allSettled([
           axios.get<StaffApiItem[]>(`${AUTH_SERVICE}/staff`, requestConfig),
           axios.get<EmergencyStats>(`${EMERGENCY_SERVICE}/stats`, requestConfig),
-          axios.get<TimelineEntry[]>(`${EMERGENCY_SERVICE}/stats/timeline`, {
-            params: { hours: 24 },
-            ...requestConfig,
-          }),
           axios.get<MaintenanceStaffStats>(`${MAINTENANCE_SERVICE}/stats/staff/${user.id ?? ''}`, {
             ...requestConfig,
           }),
@@ -273,31 +273,59 @@ export default function ProfilePage() {
           badges,
         });
 
-        const timeline = timelineRes.status === 'fulfilled' ? timelineRes.value.data : [];
-        const activities: RecentActivity[] = timeline.slice(0, 8).map((item) => ({
-          id: item.incident_id,
-          type: 'incident',
-          title: `${item.incident_type.toUpperCase()} - ${item.location}`,
-          time: relativeTime(item.timestamp),
-          status:
-            item.status === 'resolved' || item.status === 'contained'
-              ? 'completed'
-              : item.status === 'active' || item.status === 'responding'
-              ? 'in-progress'
-              : 'pending',
-        }));
+        const myId = String(user.id ?? '');
+        const responderAlias = `STAFF_${user.role?.toUpperCase()}_${myId.padStart(3, '0')}`;
 
-        if (maintenanceStats.tasks_in_progress > 0) {
-          activities.unshift({
-            id: 'maintenance-progress',
-            type: 'task',
-            title: `${maintenanceStats.tasks_in_progress} tarefa(s) de manutenção em progresso`,
-            time: 'agora',
-            status: 'in-progress',
+        try {
+          const [dispatchHistoryRes, maintenanceTasksRes, incidentRes] = await Promise.all([
+            axios.get<PendingDispatch[]>(`${EMERGENCY_SERVICE}/dispatch/responder/${myId}`, {
+              params: { responder_alias: responderAlias, limit: 10 },
+              ...requestConfig,
+            }),
+            axios.get<{ tasks?: AssignedMaintenanceTask[] }>(`${MAINTENANCE_SERVICE}/staff/${myId}/tasks`, requestConfig),
+            axios.get(`${EMERGENCY_SERVICE}/incidents`, requestConfig),
+          ]);
+          const incidents: IncidentSummary[] = incidentRes.data?.incidents ?? incidentRes.data ?? [];
+          const dispatchActivities = dispatchHistoryRes.data.map((dispatch) => {
+            const incident = incidents.find((item) => item.id === dispatch.incident_id);
+            return {
+              id: dispatch.id,
+              type: 'incident' as const,
+              title: `${incident?.incident_type?.toUpperCase() || 'INCIDENTE'} - Nó ${incident?.location_node || '?'}`,
+              timestamp: dispatch.dispatched_at,
+              time: relativeTime(dispatch.dispatched_at),
+              status:
+                ['completed', 'declined', 'cancelled', 'resolved', 'false_alarm'].includes(dispatch.status ?? '')
+                  ? 'completed' as const
+                  : ['en_route', 'arrived'].includes(dispatch.status ?? '')
+                  ? 'in-progress' as const
+                  : 'pending' as const,
+            };
           });
-        }
+          const taskActivities = (maintenanceTasksRes.data.tasks ?? [])
+            .filter((task) => Boolean(task.assigned_at))
+            .map((task) => ({
+              id: task.id,
+              type: 'task' as const,
+              title: `${task.task_type.replaceAll('_', ' ')} - ${task.location_description || `Nó ${task.location_node}`}`,
+              timestamp: task.assigned_at,
+              time: relativeTime(task.assigned_at),
+              status:
+                ['completed', 'cancelled'].includes(task.status)
+                  ? 'completed' as const
+                  : task.status === 'in_progress'
+                  ? 'in-progress' as const
+                  : 'pending' as const,
+            }));
 
-        setRecentActivity(activities);
+          const activities = [...dispatchActivities, ...taskActivities]
+            .sort((a, b) => new Date(b.timestamp ?? 0).getTime() - new Date(a.timestamp ?? 0).getTime())
+            .slice(0, 5)
+            .map(({ timestamp: _timestamp, ...activity }) => activity);
+          setRecentActivity(activities);
+        } catch {
+          setRecentActivity([]);
+        }
 
         // Fetch pending dispatches for this user
         if (user.role !== 'Supervisor') {
@@ -314,7 +342,6 @@ export default function ProfilePage() {
             ]);
             const allDispatches: PendingDispatch[] = dispatchRes.data ?? [];
             const allIncidents: IncidentSummary[] = incidentRes.data?.incidents ?? incidentRes.data ?? [];
-            const myId = String(user.id);
             const mine = allDispatches.filter(
               d => d.responder_id === myId ||
                    d.responder_id === `STAFF_${user.role?.toUpperCase()}_${myId.padStart(3,'0')}`
@@ -329,7 +356,6 @@ export default function ProfilePage() {
         if (
           staffRes.status === 'rejected' &&
           emergencyStatsRes.status === 'rejected' &&
-          timelineRes.status === 'rejected' &&
           maintenanceStatsRes.status === 'rejected'
         ) {
           setError('Não foi possível carregar dados do perfil a partir dos serviços.');
