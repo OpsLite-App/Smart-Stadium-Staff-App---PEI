@@ -15,7 +15,8 @@ class StaffRole(Enum):
     SECURITY = "security"
     CLEANING = "cleaning"
     SUPERVISOR = "supervisor"
-    MEDICAL = "medical"
+    MEDIC = "medic"
+    MEDICAL = "medical"  # legacy compatibility
 
 
 class StaffStatus(Enum):
@@ -50,7 +51,7 @@ class IncidentRequest:
     """
     id: str
     location: str  # Node ID
-    type: str  # "medical", "fire", "fight", "injury", etc.
+    type: str  # "security", "medic", "cleaning"
     priority: str  # "low", "medium", "high", "critical"
     required_role: StaffRole
     timestamp: str
@@ -152,7 +153,7 @@ async def find_nearest_responder(
     available_staff = staff_tracker.get_available_by_role(incident.required_role)
     
     if not available_staff:
-        print(f"❌ No available {incident.required_role.value} staff found")
+        print(f"[WARNING] No staff available: role={incident.required_role.value}")
         return None
     
     # Priority weight for ETA calculation
@@ -182,7 +183,7 @@ async def find_nearest_responder(
                 )
                 
                 if response.status_code != 200:
-                    print(f"⚠️  Failed to get route for {staff.id}")
+                    print(f"[WARNING] Route unavailable: staff_id={staff.id}")
                     continue
                 
                 route_data = response.json()
@@ -209,13 +210,13 @@ async def find_nearest_responder(
                     )
                     
             except httpx.RequestError as e:
-                print(f"❌ Routing Service error for {staff.id}: {e}")
+                print(f"[ERROR] Routing Service request failed: staff_id={staff.id} error={e}")
                 continue
     
     if best_assignment:
-        print(f"✅ Found responder: {best_assignment.staff_id} (ETA: {best_assignment.eta_seconds}s)")
+        print(f"[INFO] Responder selected: staff_id={best_assignment.staff_id} eta_seconds={best_assignment.eta_seconds}")
     else:
-        print(f"❌ No reachable responder found")
+        print("[WARNING] No reachable responder found")
     
     return best_assignment
 
@@ -267,7 +268,7 @@ async def find_multiple_responders(
                 ))
                 
             except httpx.RequestError as e:
-                print(f"❌ Routing error for {staff.id}: {e}")
+                print(f"[ERROR] Routing failed: staff_id={staff.id} error={e}")
                 continue
     
     # Sort by ETA and return top N
@@ -296,7 +297,7 @@ async def assign_responder_to_incident(
     if assignment:
         # Update staff status to RESPONDING
         staff_tracker.update_status(assignment.staff_id, StaffStatus.RESPONDING)
-        print(f"📍 {assignment.staff_id} dispatched to {incident.location}")
+        print(f"[INFO] Responder dispatched: staff_id={assignment.staff_id} location={incident.location}")
     
     return assignment
 
@@ -365,11 +366,11 @@ def create_mock_staff_tracker(num_per_role: int = 3) -> StaffTracker:
     tracker = StaffTracker()
     
     # Mock entrance positions
-    entrance_nodes = ["N1", "N5", "N10", "N15", "N20", "N21"]
+    entrance_nodes = ["1", "5", "10", "15", "20", "21"]
     
     staff_id = 1
     
-    for role in StaffRole:
+    for role in (StaffRole.SECURITY, StaffRole.CLEANING, StaffRole.SUPERVISOR, StaffRole.MEDIC):
         for i in range(num_per_role):
             # Distribute staff across different positions
             position_idx = (staff_id - 1) % len(entrance_nodes)
@@ -401,8 +402,8 @@ async def example_usage():
     # Create incident REQUEST (not the DB model!)
     incident = IncidentRequest(
         id="inc-001",
-        location="N42",
-        type="medical",
+        location="62",
+        type="medic",
         priority="high",
         required_role=StaffRole.SECURITY,
         timestamp="2025-10-06T19:22:00Z"
@@ -416,14 +417,14 @@ async def example_usage():
     )
     
     if assignment:
-        print(f"\n✅ Responder assigned:")
+        print("\n[INFO] Responder assigned:")
         print(f"   Staff: {assignment.staff_id}")
         print(f"   Role: {assignment.staff_role.value}")
         print(f"   Distance: {assignment.distance:.1f}m")
         print(f"   ETA: {assignment.eta_seconds}s")
         print(f"   Path: {' → '.join(assignment.path)}")
     else:
-        print("\n❌ No responder available")
+        print("\n[WARNING] No responder available")
 
 
 if __name__ == "__main__":

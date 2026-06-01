@@ -4,43 +4,14 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import { api } from '../services/api'; // REMOVED: setAuthToken
-
-type Role = 'Security' | 'Cleaning' | 'Supervisor' | 'Medical';
-
-function toRole(value: string | undefined): Role {
-  const normalized = String(value ?? '').toLowerCase();
-  if (normalized === 'cleaning') return 'Cleaning';
-  if (normalized === 'supervisor') return 'Supervisor';
-  if (normalized === 'medical') return 'Medical';
-  return 'Security';
-}
-
-function permissionsForRole(role: Role) {
-  return {
-    canViewHeatmap: role === 'Security' || role === 'Supervisor' || role === 'Medical',
-    canViewBins: role === 'Cleaning' || role === 'Supervisor',
-    canViewAlerts: true,
-    canCreateIncidents: role === 'Supervisor',
-    canManageIncidents: role === 'Supervisor',
-    canDispatchIncidents: role === 'Supervisor',
-    canResolveIncidents: role === 'Supervisor' || role === 'Medical',
-  };
-}
+import { mergePermissions, normalizeRole, type PermissionSet, type Role } from '@/lib/auth/rbac';
 
 interface User {
   email: string;
   role: Role;
   // REMOVED: token?: string; - Token is now in HttpOnly cookie only
   id?: number;
-  permissions: {
-    canViewHeatmap: boolean;
-    canViewBins: boolean;
-    canViewAlerts: boolean;
-    canCreateIncidents: boolean;
-    canManageIncidents: boolean;
-    canDispatchIncidents: boolean;
-    canResolveIncidents: boolean;
-  };
+  permissions: PermissionSet;
 }
 
 interface AuthState {
@@ -49,7 +20,7 @@ interface AuthState {
   hydrated: boolean;
   error: string | null;
 
-  login: (email: string, password: string, role: Role) => Promise<boolean>;
+  login: (email: string, password: string) => Promise<boolean>;
   logout: () => Promise<void>;
   restoreUser: (user: User) => void;
   checkStorage: () => void;
@@ -69,7 +40,7 @@ export const useAuthStore = create<AuthState>()(
       clearError: () => set({ error: null }),
 
       syncRoleFromServer: (role) => {
-        const serverRole = toRole(role);
+        const serverRole = normalizeRole(role);
         const currentUser = get().user;
         if (!currentUser || currentUser.role === serverRole) return;
 
@@ -77,30 +48,29 @@ export const useAuthStore = create<AuthState>()(
           user: {
             ...currentUser,
             role: serverRole,
-            permissions: permissionsForRole(serverRole),
+            permissions: mergePermissions(serverRole),
           },
         });
       },
 
       setHydrated: () => {
         set({ hydrated: true });
-        const state = get();
-        console.log('Store hidratado:', state.user ? 'User existe' : 'Sem user');
+        console.debug('[Auth Store] Hydration completed');
       },
 
-      login: async (email, password, role) => {
+      login: async (email, password) => {
         set({ isLoading: true, error: null });
 
         try {
-          const data = await api.login(email, password, role);
-          const serverRole = toRole(data.role);
+          const data = await api.login(email, password);
+          const serverRole = normalizeRole(data.role);
 
           // ✅ REMOVED: token from userData (no longer stored)
           const userData = {
             email,
             role: serverRole,
             id: data.user_id,
-            permissions: permissionsForRole(serverRole),
+            permissions: mergePermissions(serverRole, data.permissions),
           };
 
           // ✅ REMOVED: setAuthToken(data.token); - Token is in cookie, not in JS memory
@@ -143,11 +113,11 @@ export const useAuthStore = create<AuthState>()(
       },
 
       logout: async () => {
-        console.log('A fazer logout');
+        console.debug('[Auth Store] Signing out');
         try {
           await api.logout();
         } catch (error) {
-          console.warn('Falha ao limpar sessão no servidor', error);
+          console.warn('[Auth Store] Server-side session cleanup failed:', error);
         } finally {
           // ✅ REMOVED: setAuthToken(''); - No longer needed
           set({ user: null, error: null });
@@ -160,25 +130,19 @@ export const useAuthStore = create<AuthState>()(
       },
 
       checkStorage: () => {
-        const state = get();
         const storage = localStorage.getItem('auth-storage');
-        console.log('Estado atual da store:', state.user ? 'Logado' : 'Não logado');
-        console.log('LocalStorage tem dados:', storage ? 'Sim' : 'Não');
 
         if (storage) {
           try {
             const parsed = JSON.parse(storage);
-            console.log('Dados no localStorage:', parsed);
 
             // ✅ Check if user exists (token no longer stored)
-            if (parsed.state?.user?.email) {
-              console.log('Email no storage:', parsed.state.user.email);
-            } else {
-              console.log('Storage corrompido - a limpar...');
+            if (!parsed.state?.user?.email) {
+              console.warn('[Auth Store] Invalid persisted state detected; clearing local data');
               localStorage.removeItem('auth-storage');
             }
           } catch (e) {
-            console.error('Erro ao parsear storage:', e);
+            console.warn('[Auth Store] Persisted state could not be parsed; clearing local data:', e);
             localStorage.removeItem('auth-storage');
           }
         }
@@ -199,7 +163,7 @@ export const useAuthStore = create<AuthState>()(
           : null,
       }),
       onRehydrateStorage: () => (state) => {
-        console.log('A hidratar store...');
+        console.debug('[Auth Store] Restoring persisted state');
         if (state) setTimeout(() => state.setHydrated(), 0);
       },
     }

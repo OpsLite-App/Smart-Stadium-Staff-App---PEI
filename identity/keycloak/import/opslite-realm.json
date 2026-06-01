@@ -1,0 +1,104 @@
+{
+  "realm": "opslite",
+  "enabled": true,
+  "displayName": "OpsLite Stadium Operations",
+  "registrationAllowed": false,
+  "resetPasswordAllowed": true,
+  "roles": {
+    "realm": [
+      { "name": "security" },
+      { "name": "cleaning" },
+      { "name": "medical" },
+      { "name": "supervisor" }
+    ]
+  },
+  "clients": [
+    {
+      "clientId": "opslite-auth-service",
+      "name": "OpsLite Auth Compatibility Service",
+      "enabled": true,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "opslite-dev-secret",
+      "publicClient": false,
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": true,
+      "serviceAccountsEnabled": false
+    },
+    {
+      "clientId": "opslite-web",
+      "name": "OpsLite Web Frontend",
+      "enabled": true,
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "redirectUris": [
+        "http://localhost:3000/*"
+      ],
+      "webOrigins": [
+        "http://localhost:3000"
+      ]
+    }
+  ],
+  "users": [
+    {
+      "username": "john.doe@example.com",
+      "email": "john.doe@example.com",
+      "firstName": "John",
+      "lastName": "Doe",
+      "enabled": true,
+      "emailVerified": true,
+      "realmRoles": ["security"],
+      "credentials": [
+        { "type": "password", "value": "password", "temporary": false }
+      ]
+    },
+    {
+      "username": "bruno@test.com",
+      "email": "bruno@test.com",
+      "firstName": "Bruno",
+      "lastName": "Limpeza",
+      "enabled": true,
+      "emailVerified": true,
+      "realmRoles": ["cleaning"],
+      "credentials": [
+        { "type": "password", "value": "password", "temporary": false }
+      ]
+    },
+    {
+      "username": "alice@test.com",
+      "email": "alice@test.com",
+      "firstName": "Alice",
+      "lastName": "Seguranca",
+      "enabled": true,
+      "emailVerified": true,
+      "realmRoles": ["security"],
+      "credentials": [
+        { "type": "password", "value": "password", "temporary": false }
+      ]
+    },
+    {
+      "username": "eu@test.com",
+      "email": "eu@test.com",
+      "firstName": "Supervisor",
+      "lastName": "Ops",
+      "enabled": true,
+      "emailVerified": true,
+      "realmRoles": ["supervisor"],
+      "credentials": [
+        { "type": "password", "value": "password", "temporary": false }
+      ]
+    },
+    {
+      "username": "medico@test.com",
+      "email": "medico@test.com",
+      "firstName": "Medico",
+      "lastName": "Servico",
+      "enabled": true,
+      "emailVerified": true,
+      "realmRoles": ["medical"],
+      "credentials": [
+        { "type": "password", "value": "password", "temporary": false }
+      ]
+    }
+  ]
+}

@@ -9,7 +9,7 @@ def test_incident_escalation_logic():
     # Create an old incident with medium severity
     old_incident = EmergencyIncident(
         id="inc-old",
-        incident_type="smoke",
+        incident_type="security",
         severity=IncidentSeverity.MEDIUM,
         status=IncidentStatus.ACTIVE,
         created_at=datetime.now() - timedelta(minutes=20) # Created 20 minutes ago

@@ -9,6 +9,8 @@ import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 import com.stadium.auth_service.dto.LoginRequest;
 import com.stadium.auth_service.dto.LoginResponse;
+import com.stadium.auth_service.security.RoleAccess;
+import com.stadium.auth_service.service.KeycloakAuthClient;
 import com.stadium.auth_service.service.UserService;
 import com.stadium.auth_service.util.JwtUtil;
 
@@ -21,27 +23,50 @@ public class AuthController {
 
   private final UserService userService;
   private final JwtUtil jwtUtil;
+  private final KeycloakAuthClient keycloakAuthClient;
 
-  public AuthController(UserService userService, JwtUtil jwtUtil) {
+  public AuthController(UserService userService, JwtUtil jwtUtil, KeycloakAuthClient keycloakAuthClient) {
     this.userService = userService;
     this.jwtUtil = jwtUtil;
+    this.keycloakAuthClient = keycloakAuthClient;
   }
 
   @PostMapping("/login")
   public ResponseEntity<?> login(@Valid @RequestBody LoginRequest request, HttpServletRequest servletRequest) {
     return userService.findByUsername(request.getUsername())
-        .filter(user -> userService.checkPassword(user, request.getPassword()))
         .map(user -> {
+          String normalizedRole;
+          try {
+            normalizedRole = keycloakAuthClient.isEnabled()
+                ? keycloakAuthClient.authenticate(request.getUsername(), request.getPassword()).role()
+                : authenticateLocally(user, request.getPassword());
+          } catch (KeycloakAuthClient.KeycloakAuthenticationException exception) {
+            return ResponseEntity.status(401).body(Map.of("error", "invalid_credentials"));
+          }
           if (!"active".equalsIgnoreCase(user.getStatus())) {
             return ResponseEntity.status(403).body(Map.of("error", "user_not_active"));
           }
-          String token = jwtUtil.generateToken(user.getId(), user.getUsername(), user.getRole());
+          String token = jwtUtil.generateToken(user.getId(), user.getUsername(), normalizedRole);
           ResponseCookie cookie = createAuthCookie(servletRequest, token);
           return ResponseEntity.ok()
               .header(HttpHeaders.SET_COOKIE, cookie.toString())
-              .body(new LoginResponse(token, user.getId(), user.getRole()));
+              .body(new LoginResponse(
+                  token,
+                  user.getId(),
+                  user.getUsername(),
+                  user.getUsername(),
+                  normalizedRole,
+                  RoleAccess.permissionsForRole(normalizedRole)
+              ));
         })
         .orElseGet(() -> ResponseEntity.status(401).body(Map.of("error", "invalid_credentials")));
+  }
+
+  private String authenticateLocally(com.stadium.auth_service.entity.User user, String password) {
+    if (!userService.checkPassword(user, password)) {
+      throw new KeycloakAuthClient.KeycloakAuthenticationException("invalid_credentials");
+    }
+    return RoleAccess.normalizeRole(user.getRole());
   }
 
   @PostMapping("/validate")
@@ -52,10 +77,14 @@ public class AuthController {
     String token = authHeader.substring(7);
     try {
       var claims = jwtUtil.getClaims(token);
+      String username = (String) claims.get("username");
+      String role = RoleAccess.normalizeRole((String) claims.get("role"));
       return ResponseEntity.ok(Map.of(
           "user_id", Long.parseLong(claims.getSubject()),
-          "username", claims.get("username"),
-          "role", claims.get("role"),
+          "username", username != null ? username : "",
+          "email", username != null ? username : "",
+          "role", role,
+          "permissions", RoleAccess.permissionsForRole(role),
           "exp", claims.getExpiration().getTime()
       ));
     } catch (Exception e) {
@@ -71,10 +100,11 @@ public class AuthController {
     String userId = authentication.getName();
     var details = authentication.getDetails();
     String username = details instanceof Map ? (String) ((Map<?, ?>) details).get("username") : null;
-    String role = details instanceof Map ? (String) ((Map<?, ?>) details).get("role") : null;
-    if (userId == null || role == null) {
+    String rawRole = details instanceof Map ? (String) ((Map<?, ?>) details).get("role") : null;
+    if (userId == null || username == null || rawRole == null) {
       return ResponseEntity.status(401).body(Map.of("error", "unauthenticated"));
     }
+    String role = RoleAccess.normalizeRole(rawRole);
     String token = jwtUtil.generateToken(Integer.parseInt(userId), username, role);
     ResponseCookie cookie = createAuthCookie(servletRequest, token);
     return ResponseEntity.ok()
@@ -83,7 +113,9 @@ public class AuthController {
             "token", token,
             "user_id", Long.parseLong(userId),
             "username", username,
-            "role", role
+            "email", username,
+            "role", role,
+            "permissions", RoleAccess.permissionsForRole(role)
         ));
   }
 
@@ -107,7 +139,7 @@ public class AuthController {
           .map(u -> java.util.Map.of(
               "id", u.getId(),
               "name", u.getName(),
-              "role", u.getRole(),
+              "role", RoleAccess.normalizeRole(u.getRole()),
               "location", u.getCurrentLocation() != null ? u.getCurrentLocation() : "Unknown"
           ))
           .collect(java.util.stream.Collectors.toList());

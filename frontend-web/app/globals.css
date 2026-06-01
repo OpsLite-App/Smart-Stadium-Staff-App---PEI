@@ -25,6 +25,42 @@ body {
   font-family: Arial, Helvetica, sans-serif;
 }
 
+html,
+body {
+  min-height: 100%;
+  overflow-x: hidden;
+}
+
+/* Keep the native Android status and navigation bars clear in Capacitor. */
+@media (max-width: 1023px) {
+  .mobile-safe-header {
+    padding-top: max(0.75rem, env(safe-area-inset-top));
+  }
+
+  .mobile-safe-content {
+    padding-top: calc(3.5rem + env(safe-area-inset-top));
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+
+  .mobile-safe-sidebar {
+    padding-top: env(safe-area-inset-top);
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+
+  .mobile-safe-login {
+    padding-top: max(1rem, env(safe-area-inset-top));
+    padding-bottom: max(1.75rem, env(safe-area-inset-bottom));
+  }
+
+  .mobile-page-shell {
+    padding: 1.25rem 1rem;
+  }
+
+  .mobile-chat-height {
+    height: calc(100dvh - 3.5rem - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+  }
+}
+
 /* Leaflet custom styles */
 .leaflet-container {
   font-family: inherit;
@@ -109,3 +145,11 @@ body {
   to   { opacity: 1; transform: translateX(-50%) translateY(0); }
 }
 .animate-fade-in { animation: fade-in 0.25s ease; }
+
+@keyframes pulse-red {
+  0% { transform: scale(1); box-shadow: 0 4px 12px rgba(239, 68, 68, 0.25); }
+  100% { transform: scale(1.12); box-shadow: 0 4px 18px rgba(239, 68, 68, 0.55), 0 0 0 4px rgba(239, 68, 68, 0.25); }
+}
+.gis-bin-full {
+  animation: pulse-red 1.2s infinite alternate ease-in-out;
+}

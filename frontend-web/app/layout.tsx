@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import "leaflet/dist/leaflet.css";
 import "./globals.css";
 import { AuthProvider } from "@/components/providers/AuthProvider";
@@ -7,6 +7,12 @@ import { I18nProvider } from "@/components/providers/I18nProvider";
 export const metadata: Metadata = {
   title: "OpsLite - Stadium Staff App",
   description: "Sistema de gestão para staff do estádio",
+};
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
 };
 
 export default function RootLayout({

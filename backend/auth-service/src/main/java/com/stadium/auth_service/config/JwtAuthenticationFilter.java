@@ -12,6 +12,7 @@ import org.springframework.security.authentication.UsernamePasswordAuthenticatio
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
+import com.stadium.auth_service.security.RoleAccess;
 import com.stadium.auth_service.util.JwtUtil;
 
 import java.io.IOException;
@@ -55,11 +56,11 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                 Claims claims = jwtUtil.getClaims(token);
                 String userId = claims.getSubject();
                 String username = (String) claims.get("username");
-                String role = (String) claims.get("role");
+                String role = RoleAccess.normalizeRole((String) claims.get("role"));
 
                 UsernamePasswordAuthenticationToken auth = new UsernamePasswordAuthenticationToken(
                         userId, null, Collections.emptyList());
-                auth.setDetails(Map.of("username", username, "role", role));
+                auth.setDetails(Map.of("username", username != null ? username : "", "role", role));
                 SecurityContextHolder.getContext().setAuthentication(auth);
 
             } catch (JwtException ex) {

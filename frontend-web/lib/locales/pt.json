@@ -3,7 +3,6 @@
     "title": "Entrar no Sistema",
     "email_label": "Nome de Utilizador",
     "pass_label": "Palavra-passe",
-    "role_select": "SELECIONE A SUA FUNÇÃO",
     "button": "ENTRAR"
   },
   "tab": {
@@ -31,21 +30,21 @@
     "complete_error": "Erro ao marcar como concluído."
   },
   "dashboard": {
-    "title_security": "Dashboard de Segurança",
-    "title_cleaning": "Dashboard de Limpeza",
-    "title_supervisor": "Dashboard de Supervisão",
-    "title_default": "Dashboard Operacional",
+    "title_security": "Painel de Segurança",
+    "title_cleaning": "Painel de Limpeza",
+    "title_supervisor": "Painel de Supervisão",
+    "title_default": "Painel Operacional",
     "subtitle": "Dados reais dos serviços em tempo quase real",
     "error": "Não foi possível carregar dados dos serviços.",
     "stats": {
-      "active_staff": "Staff ativo",
+      "active_staff": "Equipa ativa",
       "total_registered": "Total registado",
       "open_incidents": "Incidentes abertos",
       "critical": "Críticos",
       "congestion": "Congestionamento",
-      "risk_zones": "Zonas risco (heatmap)",
+      "risk_zones": "Zonas de risco (mapa de calor)",
       "pending_ops": "Operações pendentes",
-      "bins": "Lixeiras",
+      "bins": "Caixotes do lixo",
       "queues": "Filas"
     },
     "feed": {
@@ -56,13 +55,13 @@
     "team": {
       "title": "Estado da equipa",
       "loading": "A carregar equipa...",
-      "empty": "Sem staff disponível."
+      "empty": "Sem elementos disponíveis."
     },
     "timeline": {
       "incident": "Incidente {{type}}",
       "location": "Local",
       "congestion": "Congestionamento elevado",
-      "bin": "Lixeira por recolher",
+      "bin": "Caixote do lixo por recolher",
       "queue": "Fila longa"
     },
     "roles": {
@@ -71,7 +70,7 @@
       "supervisor": "Supervisão",
       "medical": "Médica",
       "maintenance": "Manutenção",
-      "staff": "Staff"
+      "staff": "Equipa"
     }
   },
   "tasks": {
@@ -95,22 +94,22 @@
     "mode_title": "MODO DE EMERGÊNCIA",
     "mode_subtitle": "SIGA O PROTOCOLO DE EVACUAÇÃO",
     "instructions_title": "INSTRUÇÕES (SEGURANÇA)",
-    "instruction_gates": "Abrir Portões de Emergência N1 e N2",
+    "instruction_gates": "Abrir Portões de Emergência 1 e 2",
     "instruction_megaphone": "Usar megafone para guiar multidão",
     "instruction_radio": "Manter canal 1 livre para Coordenação",
     "location_sharing": "A sua localização está a ser partilhada.",
     "safe": "ESTOU EM SEGURANÇA",
     "report_danger": "REPORTAR PERIGO",
-    "safe_alert": "Status enviado: SEGURO",
+    "safe_alert": "Estado enviado: SEGURO",
     "danger_alert": "Perigo reportado! A equipa de emergência foi notificada."
   },
   "analytics": {
-    "title": "Analytics Dashboard",
+    "title": "Painel analítico",
     "subtitle": "Visão geral do desempenho operacional",
     "tabs": {
       "overview": "Visão Geral",
       "alerts": "Alertas",
-      "performance": "Performance"
+      "performance": "Desempenho"
     },
     "time": {
       "today": "Hoje",
@@ -121,7 +120,7 @@
       "avg_response": "Tempo Médio Resposta",
       "resolved": "Alertas Resolvidos",
       "efficiency": "Eficiência Equipa",
-      "active_staff": "Staff Ativo",
+      "active_staff": "Equipa Ativa",
       "goal_reached": "Meta Atingida"
     },
     "charts": {
@@ -129,7 +128,7 @@
       "response_time": "Tempo de Resposta (min)",
       "alerts_by_zone": "Alertas por Zona",
       "peak_hours": "Horários de Pico",
-      "team_performance": "Performance das Equipas",
+      "team_performance": "Desempenho das Equipas",
       "recent_events": "Eventos Recentes",
       "alerts_label": "Alertas",
       "resolved_label": "Resolvidos",
@@ -158,7 +157,7 @@
     },
     "events": {
       "sos_medical": "SOS Médico",
-      "bin_full": "Lixeira Cheia",
+      "bin_full": "Caixote do Lixo Cheio",
       "gate_blocked": "Portão Bloqueado",
       "conflict": "Conflito"
     }

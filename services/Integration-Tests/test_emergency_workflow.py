@@ -26,7 +26,7 @@ class TestEmergencyIncidentWorkflow:
         """
         # Map incident_data to IncidentCreate schema
         payload = {
-            "incident_type": "medical",
+            "incident_type": "medic",
             "location_node": incident_data["location"],
             "severity": incident_data["severity"],
             "description": incident_data["description"],
@@ -65,7 +65,7 @@ class TestEmergencyIncidentWorkflow:
         """
         # Create incident
         payload = {
-            "incident_type": "medical",
+            "incident_type": "medic",
             "location_node": incident_data["location"],
             "severity": incident_data["severity"],
         }
@@ -101,7 +101,7 @@ class TestEmergencyIncidentWorkflow:
         # Create 5 concurrent incidents
         for i in range(5):
             payload = {
-                "incident_type": "other",
+                "incident_type": "security",
                 "location_node": "gate_1",
                 "severity": "low",
                 "description": f"Incident {i+1}",
@@ -175,7 +175,7 @@ class TestEmergencyServiceIntegration:
         """
         # First create an incident
         payload = {
-            "incident_type": "medical",
+            "incident_type": "medic",
             "location_node": incident_data["location"],
             "severity": "high",
         }
@@ -190,7 +190,7 @@ class TestEmergencyServiceIntegration:
         dispatch_data = {
             "incident_id": incident_id,
             "responder_id": "staff_001",
-            "responder_role": "medical",
+            "responder_role": "medic",
             "current_position": "gate_1",
         }
         

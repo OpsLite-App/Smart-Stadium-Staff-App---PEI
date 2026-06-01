@@ -9,6 +9,7 @@ from pydantic import BaseModel
 
 from astar import calculate_eta
 from db import get_connection
+from runtime_checks import ensure_active_indoor_dataset
 
 
 class PgRoutingRouteResponse(BaseModel):
@@ -64,6 +65,16 @@ class EdgeOverrideCreate(EdgeOverrideBase):
     pass
 
 
+class NodeClosureCreate(BaseModel):
+    node_id: int
+    reason: Optional[str] = None
+    source: str = "manual"
+    severity: float = 1.0
+    starts_at: Optional[str] = None
+    ends_at: Optional[str] = None
+    is_active: bool = True
+
+
 class EdgeOverrideResponse(EdgeOverrideBase):
     id: int
 
@@ -89,6 +100,9 @@ class OperationalEventResponse(OperationalEventCreate):
 
 class PgRoutingService:
     """Compute routes directly in PostgreSQL using pgRouting."""
+
+    def __init__(self) -> None:
+        self._runtime_tables_ready = False
 
     CREATE_PGROUTING_EXTENSION_SQL = """
         CREATE EXTENSION IF NOT EXISTS pgrouting
@@ -589,6 +603,11 @@ class PgRoutingService:
 
     def initialize_runtime_tables(self) -> None:
         """Create runtime, outdoor, and combined routing objects if they do not exist yet."""
+        if self._runtime_tables_ready:
+            return
+
+        ensure_active_indoor_dataset()
+
         with get_connection() as conn:
             conn.execute(self.CREATE_PGROUTING_EXTENSION_SQL)
             conn.execute(self.CREATE_EDGE_OVERRIDES_SQL)
@@ -607,11 +626,12 @@ class PgRoutingService:
             conn.execute(self.CREATE_ROUTING_NODES_VIEW_SQL)
             conn.execute(self.CREATE_ROUTING_EDGES_VIEW_SQL)
             conn.commit()
+        self._runtime_tables_ready = True
 
-    def get_route(self, from_node: int, to_node: int) -> PgRoutingRouteResponse:
+    def get_route(self, from_node: int, to_node: int, allow_blocked: bool = False) -> PgRoutingRouteResponse:
         """Calculate a route and generate simple human-readable instructions."""
         with get_connection() as conn:
-            return self._build_route_response(conn, from_node, to_node)
+            return self._build_route_response(conn, from_node, to_node, allow_blocked=allow_blocked)
 
     def get_combined_route(self, from_node: int, to_node: int) -> PgRoutingRouteResponse:
         """Calculate a route across the combined outdoor-indoor graph."""
@@ -624,6 +644,35 @@ class PgRoutingService:
                 node_sql=self.COMBINED_NODE_SQL,
                 instruction_mode="combined",
             )
+
+    def get_route_geojson(
+        self,
+        from_node: int,
+        to_node: int,
+        output_srid: int = 4326,
+        allow_blocked: bool = False,
+    ) -> PgRoutingRouteGeoJsonResponse:
+        """Return route edges as GeoJSON for two real pgRouting node IDs."""
+        with get_connection() as conn:
+            node_metadata = self._fetch_node_metadata(conn, [from_node, to_node], self.NODE_SQL)
+            self._validate_nodes(from_node, to_node, node_metadata)
+            
+            sql = self.ROUTE_GEOJSON_SQL
+            if allow_blocked:
+                # Disable filtering of blocked edges
+                sql = sql.replace("COALESCE(ao.is_blocked, FALSE) = FALSE", "TRUE")
+                # Multiply cost of blocked edges by 10000.0
+                sql = sql.replace(
+                    "COALESCE(ao.cost_multiplier, 1.0)",
+                    "CASE WHEN COALESCE(ao.is_blocked, FALSE) = TRUE THEN 10000.0 ELSE COALESCE(ao.cost_multiplier, 1.0) END"
+                )
+                
+            rows = conn.execute(sql, (from_node, to_node, output_srid)).fetchall()
+
+        if not rows:
+            raise HTTPException(status_code=404, detail="No path found between the selected nodes")
+
+        return self._build_geojson_response(from_node, to_node, rows)
 
     def get_route_by_poi(self, from_poi_id: int, to_poi_id: int) -> PgRoutingRouteResponse:
         """Resolve POIs to graph nodes and calculate a route between them."""
@@ -666,6 +715,14 @@ class PgRoutingService:
         if not rows:
             raise HTTPException(status_code=404, detail="No path found between the selected POIs")
 
+        return self._build_geojson_response(from_node, to_node, rows)
+
+    def _build_geojson_response(
+        self,
+        from_node: int,
+        to_node: int,
+        rows: List[Dict],
+    ) -> PgRoutingRouteGeoJsonResponse:
         features = [self._route_row_to_feature(row) for row in rows]
         floors = sorted({int(row["floor_id"]) for row in rows if row.get("floor_id") is not None})
         distance = round(sum(float(row["length"] or 0.0) for row in rows), 2)
@@ -780,6 +837,81 @@ class PgRoutingService:
             rows = conn.execute(self.LIST_EDGE_OVERRIDES_SQL).fetchall()
         return [self._to_edge_override_response(row) for row in rows]
 
+    def create_node_closure(self, payload: NodeClosureCreate) -> List[EdgeOverrideResponse]:
+        """Block every edge connected to a graph node."""
+        with get_connection() as conn:
+            rows = conn.execute(
+                """
+                SELECT edge_id
+                FROM edges
+                WHERE from_node = %s OR to_node = %s
+                ORDER BY edge_id
+                """,
+                (payload.node_id, payload.node_id),
+            ).fetchall()
+
+            if not rows:
+                raise HTTPException(status_code=404, detail=f"Node {payload.node_id} has no connected edges")
+
+            inserted = []
+            for row in rows:
+                inserted.append(
+                    conn.execute(
+                        self.INSERT_EDGE_OVERRIDE_SQL,
+                        (
+                            int(row["edge_id"]),
+                            True,
+                            99.0,
+                            payload.reason,
+                            payload.source,
+                            payload.severity,
+                            payload.starts_at,
+                            payload.ends_at,
+                            payload.is_active,
+                        ),
+                    ).fetchone()
+                )
+            conn.commit()
+
+        return [self._to_edge_override_response(row) for row in inserted]
+
+    def deactivate_edge_overrides_by_source(self, source: str) -> Dict:
+        """Deactivate live edge overrides created by a specific subsystem/source."""
+        with get_connection() as conn:
+            row = conn.execute(
+                """
+                UPDATE graph_edge_overrides
+                SET is_active = FALSE, updated_at = NOW()
+                WHERE source = %s AND is_active = TRUE
+                RETURNING id
+                """,
+                (source,),
+            ).fetchall()
+            conn.commit()
+
+        return {"source": source, "deactivated": len(row)}
+
+    def deactivate_operational_events_by_source(self, source: str) -> Dict:
+        """Deactivate live operational events created by a specific subsystem/source."""
+        with get_connection() as conn:
+            rows = conn.execute(
+                """
+                UPDATE operational_events
+                SET is_active = FALSE,
+                    status = 'resolved',
+                    ends_at = COALESCE(ends_at, NOW()),
+                    updated_at = NOW()
+                WHERE source = %s
+                  AND is_active = TRUE
+                  AND status = 'active'
+                RETURNING id
+                """,
+                (source,),
+            ).fetchall()
+            conn.commit()
+
+        return {"source": source, "deactivated": len(rows)}
+
     def create_operational_event(self, payload: OperationalEventCreate) -> OperationalEventResponse:
         """Create a minimal operational event for monitoring."""
         with get_connection() as conn:
@@ -817,11 +949,20 @@ class PgRoutingService:
         route_sql: str | None = None,
         node_sql: str | None = None,
         instruction_mode: str = "indoor",
+        allow_blocked: bool = False,
     ) -> PgRoutingRouteResponse:
         node_metadata = self._fetch_node_metadata(conn, [from_node, to_node], node_sql or self.NODE_SQL)
         self._validate_nodes(from_node, to_node, node_metadata)
 
-        route_rows = conn.execute(route_sql or self.ROUTE_SQL, (from_node, to_node)).fetchall()
+        sql = route_sql or self.ROUTE_SQL
+        if allow_blocked:
+            sql = sql.replace("COALESCE(ao.is_blocked, FALSE) = FALSE", "TRUE")
+            sql = sql.replace(
+                "COALESCE(ao.cost_multiplier, 1.0)",
+                "CASE WHEN COALESCE(ao.is_blocked, FALSE) = TRUE THEN 10000.0 ELSE COALESCE(ao.cost_multiplier, 1.0) END"
+            )
+
+        route_rows = conn.execute(sql, (from_node, to_node)).fetchall()
 
         if not route_rows:
             raise HTTPException(status_code=404, detail="No path found between the selected nodes")

@@ -4,6 +4,7 @@ import { ReactNode, useEffect } from 'react';
 import { useAuthStore } from '@/lib/stores/useAuthStore';
 import { usePathname, useRouter } from 'next/navigation';
 import { LangToggle } from '@/components/ui/LangToggle';
+import { GlobalEvacuationNotice } from '@/components/emergency/GlobalEvacuationNotice';
 import { 
   HeartPulse,
   Map, 
@@ -22,7 +23,9 @@ import {
   LayoutDashboard,
   ClipboardList
 } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 import { useState } from 'react';
+import { canAccessRoute, defaultRouteForRole, NAV_ITEMS } from '@/lib/auth/rbac';
 
 interface MainLayoutProps {
   children: ReactNode;
@@ -34,14 +37,6 @@ export function MainLayout({ children }: MainLayoutProps) {
   const router = useRouter();
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
-  const getDefaultRoute = (role?: string) => {
-    if (role === 'Supervisor') {
-      return '/app-routes/dashboard';
-    }
-
-    return '/app-routes/map';
-  };
-
   useEffect(() => {
     if (!user && pathname !== '/auth-routes/login') {
       router.replace('/auth-routes/login');
@@ -51,17 +46,8 @@ export function MainLayout({ children }: MainLayoutProps) {
   useEffect(() => {
     if (!user) return;
 
-    if (user.role === 'Supervisor') {
-      const blockedMobileOpsRoutes = ['/app-routes/chat', '/app-routes/emergency'];
-      if (blockedMobileOpsRoutes.includes(pathname)) {
-        router.replace('/app-routes/dashboard');
-      }
-      return;
-    }
-
-    const webOnlySupervisorRoutes = ['/app-routes/analytics', '/app-routes/team'];
-    if (webOnlySupervisorRoutes.includes(pathname)) {
-      router.replace(getDefaultRoute(user.role));
+    if (!canAccessRoute(pathname, user.role, user.permissions)) {
+      router.replace(defaultRouteForRole(user.role));
     }
   }, [user, pathname, router]);
 
@@ -69,62 +55,28 @@ export function MainLayout({ children }: MainLayoutProps) {
     return null;
   }
 
-  // Navegação baseada no role
-  const getNavigation = () => {
-    const baseNav = [
-      { name: 'Mapa', href: '/app-routes/map', icon: Map, current: pathname === '/app-routes/map' },
-      { name: 'Navegação', href: '/app-routes/navigation', icon: Navigation, current: pathname === '/app-routes/navigation' },
-      { name: 'Dashboard', href: '/app-routes/dashboard', icon: BarChart3, current: pathname === '/app-routes/dashboard' },
-    ];
-
-    switch (user.role) {
-      case 'Security':
-        return [
-          ...baseNav,
-          { name: 'Tarefas', href: '/app-routes/tasks', icon: ClipboardList, current: pathname === '/app-routes/tasks' },
-          { name: 'Alertas', href: '/app-routes/alerts', icon: Bell, current: pathname === '/app-routes/alerts' },
-          { name: 'Chat', href: '/app-routes/chat', icon: MessageCircle, current: pathname === '/app-routes/chat' },
-          { name: 'Emergência', href: '/app-routes/emergency', icon: AlertOctagon, current: pathname === '/app-routes/emergency' },
-          { name: 'Perfil', href: '/app-routes/profile', icon: User, current: pathname === '/app-routes/profile' },
-        ];
-      
-      case 'Cleaning':
-        return [
-          ...baseNav,
-          { name: 'Tarefas', href: '/app-routes/tasks', icon: ClipboardList, current: pathname === '/app-routes/tasks' },
-          { name: 'Alertas', href: '/app-routes/alerts', icon: Bell, current: pathname === '/app-routes/alerts' },
-          { name: 'Chat', href: '/app-routes/chat', icon: MessageCircle, current: pathname === '/app-routes/chat' },
-          { name: 'Perfil', href: '/app-routes/profile', icon: User, current: pathname === '/app-routes/profile' },
-        ];
-      
-      case 'Supervisor':
-        return [
-          { name: 'Dashboard', href: '/app-routes/dashboard', icon: LayoutDashboard, current: pathname === '/app-routes/dashboard' },
-          { name: 'Analytics', href: '/app-routes/analytics', icon: BarChart3, current: pathname === '/app-routes/analytics' },
-          { name: 'Equipa', href: '/app-routes/team', icon: Users, current: pathname === '/app-routes/team' },
-          { name: 'Tarefas', href: '/app-routes/tasks', icon: ClipboardList, current: pathname === '/app-routes/tasks' },
-          { name: 'Alertas', href: '/app-routes/alerts', icon: Bell, current: pathname === '/app-routes/alerts' },
-          { name: 'Mapa', href: '/app-routes/map', icon: Map, current: pathname === '/app-routes/map' },
-          { name: 'Perfil', href: '/app-routes/profile', icon: User, current: pathname === '/app-routes/profile' },
-        ];
-
-    case 'Medical':
-    return [
-      { name: 'Dashboard', href: '/app-routes/dashboard', icon: LayoutDashboard, current: pathname === '/app-routes/dashboard' },
-      { name: 'Tarefas', href: '/app-routes/tasks', icon: ClipboardList, current: pathname === '/app-routes/tasks' },
-      { name: 'Incidentes', href: '/app-routes/medical/incidents', icon: HeartPulse, current: pathname.includes('/medical/incidents') },
-      { name: 'Alertas', href: '/app-routes/alerts', icon: Bell, current: pathname === '/app-routes/alerts' },
-      { name: 'Mapa', href: '/app-routes/map', icon: Map, current: pathname === '/app-routes/map' },
-      { name: 'Chat', href: '/app-routes/chat', icon: MessageCircle, current: pathname === '/app-routes/chat' },
-      { name: 'Perfil', href: '/app-routes/profile', icon: User, current: pathname === '/app-routes/profile' },
-    ];
-      
-      default:
-        return baseNav;
-    }
+  const iconByHref: Record<string, LucideIcon> = {
+    '/app-routes/dashboard': LayoutDashboard,
+    '/app-routes/analytics': BarChart3,
+    '/app-routes/team': Users,
+    '/app-routes/map': Map,
+    '/app-routes/navigation': Navigation,
+    '/app-routes/tasks': ClipboardList,
+    '/app-routes/medical/incidents': HeartPulse,
+    '/app-routes/alerts': Bell,
+    '/app-routes/chat': MessageCircle,
+    '/app-routes/emergency': AlertOctagon,
+    '/app-routes/profile': User,
   };
 
-  const navigation = getNavigation();
+  const navigation = NAV_ITEMS
+    .filter((item) => user.permissions[item.permission])
+    .filter((item) => !item.roles || item.roles.includes(user.role))
+    .map((item) => ({
+      ...item,
+      icon: iconByHref[item.href] ?? Map,
+      current: pathname === item.href || pathname.startsWith(`${item.href}/`),
+    }));
   const isSupervisorWeb = user.role === 'Supervisor';
 
   const handleNavigation = (href: string) => {
@@ -140,13 +92,14 @@ export function MainLayout({ children }: MainLayoutProps) {
             <div className="w-12 h-12 rounded-2xl bg-amber-100 text-amber-700 flex items-center justify-center mb-4">
               <Monitor size={24} />
             </div>
-            <h1 className="text-2xl font-bold text-gray-900">Workspace de Supervisão</h1>
+            <h1 className="text-2xl font-bold text-gray-900">Área web de supervisão</h1>
             <p className="mt-3 text-sm leading-6 text-gray-600">
-              A experiência de `Supervisor` foi pensada para desktop, com dashboards, analytics e gestão de equipa.
+              A experiência de `Supervisor` foi pensada para computador, com painéis analíticos e gestão de equipa.
             </p>
             <div className="mt-6 rounded-2xl bg-gray-50 px-4 py-3 text-sm text-gray-700">
               Abre esta conta num ecrã maior para usar a versão web completa.
             </div>
+            <LangToggle className="mt-5 w-full justify-center" />
             <button
               onClick={() => router.push('/app-routes/profile')}
               className="mt-6 w-full inline-flex items-center justify-center gap-2 rounded-xl bg-gray-900 px-4 py-3 text-sm font-medium text-white hover:bg-gray-800"
@@ -166,37 +119,37 @@ export function MainLayout({ children }: MainLayoutProps) {
           </div>
         </div>
 
-        <div className="hidden lg:grid lg:grid-cols-[280px_1fr] min-h-screen">
-          <aside className="border-r border-gray-200 bg-white">
+        <div className="hidden lg:grid lg:grid-cols-[300px_minmax(0,1fr)] h-screen overflow-hidden">
+          <aside className="h-screen overflow-hidden border-r border-gray-200 bg-white">
             <div className="flex h-full flex-col">
-              <div className="border-b border-gray-100 px-6 py-6">
+              <div className="border-b border-gray-100 px-6 py-5">
                 <div className="flex items-center gap-3">
-                  <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-amber-500 text-sm font-bold text-white shadow-sm">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-500 text-sm font-bold text-white shadow-sm">
                     O
                   </div>
                   <div>
-                    <p className="text-lg font-semibold text-gray-900">OpsLite</p>
+                    <p className="text-base font-semibold text-gray-900">OpsLite</p>
                     <p className="text-xs uppercase tracking-[0.18em] text-amber-600">Supervisor Web</p>
                   </div>
                 </div>
               </div>
 
-              <div className="px-4 py-5">
-                <div className="rounded-2xl bg-[linear-gradient(135deg,#111827,#1f2937)] px-4 py-4 text-white">
+              <div className="px-5 py-5">
+                <div className="rounded-xl bg-[linear-gradient(135deg,#111827,#1f2937)] px-5 py-5 text-white">
                   <p className="text-xs uppercase tracking-[0.18em] text-gray-300">Operações</p>
-                  <p className="mt-2 text-2xl font-semibold">Controlo central</p>
-                  <p className="mt-2 text-sm text-gray-300">
+                  <p className="mt-2 text-xl font-semibold">Controlo central</p>
+                  <p className="mt-2 text-sm leading-5 text-gray-300">
                     Monitorização, equipa e decisões em tempo real.
                   </p>
                 </div>
               </div>
 
-              <nav className="flex-1 space-y-1 px-4">
+              <nav className="flex-1 space-y-1 px-5">
                 {navigation.map((item) => (
                   <button
                     key={item.name}
                     onClick={() => router.push(item.href)}
-                    className={`flex w-full items-center gap-3 rounded-2xl px-4 py-3 text-sm font-medium transition-colors ${
+                    className={`flex w-full items-center gap-3 rounded-xl px-4 py-3 text-sm font-medium transition-colors ${
                       item.current
                         ? 'bg-amber-50 text-amber-800'
                         : 'text-gray-700 hover:bg-gray-50'
@@ -208,8 +161,8 @@ export function MainLayout({ children }: MainLayoutProps) {
                 ))}
               </nav>
 
-              <div className="border-t border-gray-100 px-4 py-5">
-                <div className="mb-4 rounded-2xl bg-gray-50 px-4 py-3">
+              <div className="border-t border-gray-100 px-5 py-5">
+                <div className="mb-4 rounded-xl bg-gray-50 px-4 py-3">
                   <p className="truncate text-sm font-medium text-gray-900">{user.email || 'Utilizador'}</p>
                   <p className="text-xs text-gray-500">{user.role}</p>
                 </div>
@@ -218,7 +171,7 @@ export function MainLayout({ children }: MainLayoutProps) {
                     logout();
                     router.push('/auth-routes/login');
                   }}
-                  className="flex w-full items-center gap-3 rounded-2xl px-4 py-3 text-sm font-medium text-red-600 hover:bg-red-50"
+                  className="flex w-full items-center gap-3 rounded-xl px-4 py-3 text-sm font-medium text-red-600 hover:bg-red-50"
                 >
                   <LogOut size={18} />
                   Sair
@@ -227,20 +180,23 @@ export function MainLayout({ children }: MainLayoutProps) {
             </div>
           </aside>
 
-          <main className="min-w-0">
-            <div className="border-b border-gray-200 bg-white/80 px-8 py-5 backdrop-blur">
+          <main className="min-w-0 overflow-y-auto">
+            <div className="border-b border-gray-200 bg-white/80 px-8 py-5 backdrop-blur 2xl:px-10">
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-xs uppercase tracking-[0.18em] text-gray-500">Supervisão</p>
-                  <h1 className="mt-1 text-2xl font-semibold text-gray-900">Centro de operações</h1>
+                  <h1 className="mt-1 text-xl font-semibold text-gray-900">Centro de operações</h1>
                 </div>
-                <div className="rounded-full border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm font-medium text-emerald-700">
-                  Web workspace ativo
+                <div className="flex items-center gap-3">
+                  <LangToggle />
+                  <div className="rounded-full border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm font-medium text-emerald-700">
+                    Área web ativa
+                  </div>
                 </div>
               </div>
             </div>
 
-            <div className="px-8 py-8">{children}</div>
+            <div className="px-8 py-8 2xl:px-10">{children}</div>
           </main>
         </div>
       </div>
@@ -251,7 +207,7 @@ export function MainLayout({ children }: MainLayoutProps) {
     <div className="min-h-screen bg-gray-50">
       {/* Mobile sidebar */}
       <div className="lg:hidden">
-        <div className="fixed top-0 left-0 right-0 z-20 bg-white border-b border-gray-200 px-4 py-3 flex items-center justify-between">
+        <div className="mobile-safe-header fixed top-0 left-0 right-0 z-20 bg-white border-b border-gray-200 px-4 py-3 flex items-center justify-between">
           <button onClick={() => setSidebarOpen(!sidebarOpen)} className="p-2 rounded-md text-gray-400 hover:text-gray-500 hover:bg-gray-100">
             {sidebarOpen ? <X size={24} /> : <Menu size={24} />}
           </button>
@@ -267,7 +223,7 @@ export function MainLayout({ children }: MainLayoutProps) {
         )}
 
         <div
-          className={`fixed inset-y-0 left-0 z-40 w-64 bg-white transform transition-transform duration-300 ease-in-out ${
+          className={`mobile-safe-sidebar fixed inset-y-0 left-0 z-40 w-64 bg-white transform transition-transform duration-300 ease-in-out ${
             sidebarOpen ? 'translate-x-0' : '-translate-x-full'
           }`}
         >
@@ -382,10 +338,11 @@ export function MainLayout({ children }: MainLayoutProps) {
 
       {/* Main content */}
       <div className="lg:pl-64">
-        <main className="min-h-screen pt-14 lg:pt-0">
+        <main className="mobile-safe-content min-h-screen lg:pt-0">
           {children}
         </main>
       </div>
+      <GlobalEvacuationNotice />
     </div>
   );
 }

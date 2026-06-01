@@ -8,6 +8,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 from unittest.mock import patch, AsyncMock, MagicMock
 
+from runtime_checks import RuntimeReadinessError
+
 
 def test_root_endpoint(client):
     """Test the root health endpoint"""
@@ -38,16 +40,15 @@ def test_health_endpoint(client):
 
 
 def test_reload_endpoint(client):
-    """Test the reload endpoint"""
-    print("\nTesting reload endpoint...")
+    """The legacy reload route should stay disabled in the active runtime."""
+    print("\nTesting reload endpoint in active runtime mode...")
     
     response = client.post("/api/reload")
     data = response.json()
     
     print(f"Reload response: {data}")
-    assert response.status_code == 200
-    assert "status" in data
-    assert data["status"] == "success"
+    assert response.status_code == 410
+    assert data["detail"] == "Legacy Map Service graph is disabled"
     
     print("Reload endpoint test passed")
 
@@ -239,6 +240,28 @@ def test_graph_status_endpoint(client):
     mocked_service.get_graph_status.assert_called_once_with()
 
 
+def test_graph_status_endpoint_returns_503_when_runtime_is_unavailable(client):
+    """Surface actionable readiness errors instead of raw 500s."""
+    print("\nTesting graph status degraded runtime response...")
+
+    with patch(
+        "main.get_pgrouting_service",
+        side_effect=RuntimeReadinessError(
+            "Active indoor GIS dataset is unavailable.",
+            suggestion="Reset postgres_map and reload indoor_gis_backup.sql.",
+            details={"missing_tables": ["nodes", "edges"]},
+        ),
+    ):
+        response = client.get("/api/graph/status")
+
+    data = response.json()
+    print(f"Graph status degraded response: {data}")
+
+    assert response.status_code == 503
+    assert data["detail"]["message"] == "Active indoor GIS dataset is unavailable."
+    assert "suggestion" in data["detail"]
+
+
 def test_list_edge_overrides_endpoint(client):
     """Test listing edge overrides with a mocked service."""
     print("\nTesting edge overrides list endpoint...")
@@ -368,6 +391,27 @@ def test_create_operational_event_endpoint(client):
     mocked_service.create_operational_event.assert_called_once()
 
 
+def test_gis_rooms_endpoint_returns_503_when_runtime_is_unavailable(client):
+    """GIS endpoints should report readiness failures clearly."""
+    print("\nTesting GIS degraded runtime response...")
+
+    with patch(
+        "main.get_gis_layer_service",
+        side_effect=RuntimeReadinessError(
+            "Routing database search_path does not include the active 'indoor' GIS schema.",
+            suggestion="Set search_path to indoor,public.",
+            details={"active_schemas": ["public"]},
+        ),
+    ):
+        response = client.get("/api/gis/rooms", params={"floor_id": 1})
+
+    data = response.json()
+    print(f"GIS degraded response: {data}")
+
+    assert response.status_code == 503
+    assert data["detail"]["message"].startswith("Routing database search_path")
+
+
 def test_hazard_endpoints(client):
     """Test hazard management endpoints"""
     print("\nTesting hazard endpoints...")
@@ -409,17 +453,34 @@ def test_hazard_endpoints(client):
 
 
 def test_evacuation_endpoint(client):
-    """Test evacuation route endpoint"""
+    """Test evacuation route endpoint in the active pgRouting runtime."""
     print("\nTesting evacuation endpoint...")
-    
-    response = client.get("/api/route/evacuation", params={
-        "from_node": "N15"
-    })
-    
+
+    mocked_service = MagicMock()
+    mocked_service.get_route.return_value = MagicMock(
+        path=[15, 20, 65],
+        distance=42.0,
+        eta_seconds=28,
+        instructions=[
+            "Start on floor 1",
+            "Continue to the exit corridor",
+            "You have arrived at your destination",
+        ],
+    )
+
+    with patch("main.GRAPH", None):
+        with patch("main.get_pgrouting_service", return_value=mocked_service):
+            response = client.get("/api/route/evacuation", params={
+                "from_node": "N15"
+            })
+
     print(f"Evacuation endpoint status: {response.status_code}")
-    
+
     assert response.status_code == 200
     data = response.json()
     print(f"Evacuation response: {data}")
-    
+    assert data["route_type"] == "evacuation"
+    assert data["exit_node"] == "65"
+    mocked_service.get_route.assert_called_once_with(15, 65)
+
     print("Evacuation endpoint test completed")

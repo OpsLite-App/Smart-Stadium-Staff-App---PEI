@@ -1,0 +1,253 @@
+http:
+  routers:
+    auth-login:
+      rule: Path(`/api/auth/login`) && Method(`POST`)
+      priority: 100
+      entryPoints:
+        - web
+      middlewares:
+        - strip-api
+        - auth-login-protection
+      service: auth
+
+    auth:
+      rule: PathPrefix(`/api/auth`)
+      entryPoints:
+        - web
+      middlewares:
+        - strip-api
+        - api-protection
+      service: auth
+
+    routing:
+      rule: PathPrefix(`/api/routing`)
+      entryPoints:
+        - web
+      middlewares:
+        - strip-routing
+        - add-api
+        - routing-protection
+      service: routing
+
+    gis:
+      rule: PathPrefix(`/api/gis`)
+      entryPoints:
+        - web
+      middlewares:
+        - routing-protection
+      service: routing
+
+    congestion:
+      rule: PathPrefix(`/api/congestion`)
+      entryPoints:
+        - web
+      middlewares:
+        - strip-congestion
+        - add-api
+        - api-protection
+      service: congestion
+
+    emergency:
+      rule: PathPrefix(`/api/emergency`)
+      entryPoints:
+        - web
+      middlewares:
+        - emergency-protection
+      service: emergency
+
+    maintenance:
+      rule: PathPrefix(`/api/maintenance`)
+      entryPoints:
+        - web
+      middlewares:
+        - api-protection
+      service: maintenance
+
+    queueing:
+      rule: PathPrefix(`/api/queueing`)
+      entryPoints:
+        - web
+      middlewares:
+        - strip-queueing
+        - add-queue-api
+        - api-protection
+      service: queueing
+
+    positioning:
+      rule: PathPrefix(`/api/positioning`)
+      entryPoints:
+        - web
+      middlewares:
+        - strip-positioning
+        - api-protection
+      service: positioning
+
+    chat:
+      rule: PathPrefix(`/api/chat`)
+      entryPoints:
+        - web
+      middlewares:
+        - strip-chat
+        - api-protection
+      service: chat
+
+    websocket:
+      rule: PathPrefix(`/ws`)
+      entryPoints:
+        - web
+      middlewares:
+        - websocket-protection
+      service: websocket
+
+  middlewares:
+    security-headers:
+      headers:
+        contentTypeNosniff: true
+        frameDeny: true
+        referrerPolicy: no-referrer
+        customResponseHeaders:
+          Permissions-Policy: camera=(), microphone=(), geolocation=()
+
+    auth-login-rate-limit:
+      rateLimit:
+        average: 5
+        period: 1s
+        burst: 10
+
+    routing-rate-limit:
+      rateLimit:
+        average: 30
+        period: 1s
+        burst: 60
+
+    emergency-rate-limit:
+      rateLimit:
+        average: 20
+        period: 1s
+        burst: 40
+
+    api-rate-limit:
+      rateLimit:
+        average: 50
+        period: 1s
+        burst: 100
+
+    websocket-rate-limit:
+      rateLimit:
+        average: 20
+        period: 1s
+        burst: 40
+
+    auth-login-protection:
+      chain:
+        middlewares:
+          - security-headers
+          - auth-login-rate-limit
+
+    routing-protection:
+      chain:
+        middlewares:
+          - security-headers
+          - routing-rate-limit
+
+    emergency-protection:
+      chain:
+        middlewares:
+          - security-headers
+          - emergency-rate-limit
+
+    api-protection:
+      chain:
+        middlewares:
+          - security-headers
+          - api-rate-limit
+
+    websocket-protection:
+      chain:
+        middlewares:
+          - security-headers
+          - websocket-rate-limit
+
+    strip-api:
+      stripPrefix:
+        prefixes:
+          - /api
+
+    strip-routing:
+      stripPrefix:
+        prefixes:
+          - /api/routing
+
+    strip-congestion:
+      stripPrefix:
+        prefixes:
+          - /api/congestion
+
+    strip-queueing:
+      stripPrefix:
+        prefixes:
+          - /api/queueing
+
+    strip-positioning:
+      stripPrefix:
+        prefixes:
+          - /api/positioning
+
+    strip-chat:
+      stripPrefix:
+        prefixes:
+          - /api/chat
+
+    add-api:
+      addPrefix:
+        prefix: /api
+
+    add-queue-api:
+      addPrefix:
+        prefix: /api/queue
+
+  services:
+    auth:
+      loadBalancer:
+        servers:
+          - url: http://auth-service:8081
+
+    routing:
+      loadBalancer:
+        servers:
+          - url: http://routing-service:8002
+
+    congestion:
+      loadBalancer:
+        servers:
+          - url: http://congestion-service:8005
+
+    emergency:
+      loadBalancer:
+        servers:
+          - url: http://emergency-service:8006
+
+    maintenance:
+      loadBalancer:
+        servers:
+          - url: http://maintenance-service:8007
+
+    queueing:
+      loadBalancer:
+        servers:
+          - url: http://queueing-service:8003
+
+    positioning:
+      loadBalancer:
+        servers:
+          - url: http://positioning-service:8004
+
+    chat:
+      loadBalancer:
+        servers:
+          - url: http://chat-service:8000
+
+    websocket:
+      loadBalancer:
+        servers:
+          - url: http://ws-gateway:8089

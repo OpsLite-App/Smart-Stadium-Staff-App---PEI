@@ -75,6 +75,7 @@ class JwtAuthenticationFilterTest {
         when(request.getHeader("Authorization")).thenReturn("Bearer " + token);
         when(jwtUtil.getClaims(token)).thenReturn(claims);
         when(claims.getSubject()).thenReturn("123");
+        when(claims.get("username")).thenReturn("test@example.com");
         when(claims.get("role")).thenReturn("security");
         
         // Act

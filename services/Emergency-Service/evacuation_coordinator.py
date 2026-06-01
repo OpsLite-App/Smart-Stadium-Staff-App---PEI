@@ -16,9 +16,8 @@ from schemas import EvacuationRequest, EvacuationResponse
 class EvacuationCoordinator:
     """Coordinates evacuation procedures"""
     
-    def __init__(self, routing_service_url: str, map_service_url: str, congestion_service_url: str):
+    def __init__(self, routing_service_url: str, congestion_service_url: str):
         self.routing_service_url = routing_service_url
-        self.map_service_url = map_service_url
         self.congestion_service_url = congestion_service_url
     
     async def initiate_evacuation(
@@ -46,7 +45,7 @@ class EvacuationCoordinator:
         db.commit()
         db.refresh(evacuation)
         
-        print(f"🚨 EVACUATION INITIATED: {evacuation.id} ({request.evacuation_type})")
+        print(f"[WARNING] Evacuation initiated: evacuation_id={evacuation.id} type={request.evacuation_type}")
         print(f"   Affected zones: {', '.join(request.affected_zones)}")
         
         return self._evacuation_to_response(evacuation)
@@ -63,7 +62,7 @@ class EvacuationCoordinator:
                 if response.status_code == 200:
                     return response.json()
         except Exception as e:
-            print(f"❌ Route calculation error: {e}")
+            print(f"[ERROR] Route calculation failed: {e}")
         
         return None
     
@@ -74,8 +73,8 @@ class EvacuationCoordinator:
         # Simplified: return empty dict, would calculate per zone
         for zone in zones:
             routes[zone] = {
-                "primary_exit": "N21",
-                "alternative_exits": ["N1", "N20"],
+                "primary_exit": "21",
+                "alternative_exits": ["1", "20"],
                 "status": "calculated"
             }
         
@@ -125,7 +124,7 @@ class EvacuationCoordinator:
             closure.reopened_at = datetime.now()
             db.commit()
             
-            print(f"✅ Corridor reopened: {from_node} → {to_node}")
+            print(f"[INFO] Corridor reopened: from_node={from_node} to_node={to_node}")
             
             return {"status": "reopened", "from_node": from_node, "to_node": to_node}
         
@@ -168,7 +167,7 @@ class EvacuationCoordinator:
             db.commit()
             db.refresh(evac)
             
-            print(f"✅ Evacuation completed: {evacuation_id}")
+            print(f"[INFO] Evacuation completed: evacuation_id={evacuation_id}")
             
             return self._evacuation_to_response(evac)
         

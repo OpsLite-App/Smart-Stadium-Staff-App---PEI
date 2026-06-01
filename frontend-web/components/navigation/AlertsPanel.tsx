@@ -29,8 +29,8 @@ export function AlertsPanel({ events, loading = false }: AlertsPanelProps) {
           <AlertTriangle size={18} />
         </div>
         <div>
-          <h3 className="text-lg font-semibold text-gray-900">Operational Alerts</h3>
-          <p className="text-sm text-gray-500">Live events currently affecting indoor operations.</p>
+          <h3 className="text-lg font-semibold text-gray-900">Alertas operacionais</h3>
+          <p className="text-sm text-gray-500">Eventos em tempo real com impacto nas operações indoor.</p>
         </div>
       </div>
 

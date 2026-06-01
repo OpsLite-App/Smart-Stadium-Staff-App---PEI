@@ -3,6 +3,7 @@ package com.stadium.auth_service.controller;
 import com.stadium.auth_service.dto.LoginRequest;
 import com.stadium.auth_service.dto.LoginResponse;
 import com.stadium.auth_service.entity.User;
+import com.stadium.auth_service.service.KeycloakAuthClient;
 import com.stadium.auth_service.service.UserService;
 import com.stadium.auth_service.util.JwtUtil;
 import org.junit.jupiter.api.BeforeEach;
@@ -13,7 +14,9 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
+import io.jsonwebtoken.Claims;
 
+import java.util.Date;
 import java.util.Map;
 import java.util.Optional;
 
@@ -29,6 +32,9 @@ class AuthControllerTest {
     
     @Mock
     private JwtUtil jwtUtil;
+
+    @Mock
+    private KeycloakAuthClient keycloakAuthClient;
     
     @Mock
     private Authentication authentication;
@@ -37,7 +43,7 @@ class AuthControllerTest {
     
     @BeforeEach
     void setUp() {
-        authController = new AuthController(userService, jwtUtil);
+        authController = new AuthController(userService, jwtUtil, keycloakAuthClient);
     }
     
     @Test
@@ -57,7 +63,7 @@ class AuthControllerTest {
         
         when(userService.findByUsername("test@example.com")).thenReturn(Optional.of(mockUser));
         when(userService.checkPassword(mockUser, "password123")).thenReturn(true);
-        when(jwtUtil.generateToken(1, "test@example.com", "security")).thenReturn("mock.jwt.token");
+        when(jwtUtil.generateToken(1, "test@example.com", "Security")).thenReturn("mock.jwt.token");
         
         // Act
         ResponseEntity<?> response = authController.login(request, null);
@@ -70,7 +76,8 @@ class AuthControllerTest {
             LoginResponse loginResponse = (LoginResponse) response.getBody();
             assertEquals("mock.jwt.token", loginResponse.getToken());
             assertEquals(1, loginResponse.getUser_id());
-            assertEquals("security", loginResponse.getRole());
+            assertEquals("Security", loginResponse.getRole());
+            assertTrue(loginResponse.getPermissions().get("canViewMap"));
         }
     }
     
@@ -127,6 +134,34 @@ class AuthControllerTest {
         Map<?, ?> body = (Map<?, ?>) response.getBody();
         assertEquals("user_not_active", body.get("error"));
     }
+
+    @Test
+    void login_shouldUseKeycloakRoleWhenIdentityProviderIsEnabled() {
+        LoginRequest request = new LoginRequest();
+        request.setUsername("test@example.com");
+        request.setPassword("password123");
+
+        User mockUser = User.builder()
+                .id(1)
+                .username("test@example.com")
+                .password("encodedPassword")
+                .role("security")
+                .status("active")
+                .build();
+
+        when(userService.findByUsername("test@example.com")).thenReturn(Optional.of(mockUser));
+        when(keycloakAuthClient.isEnabled()).thenReturn(true);
+        when(keycloakAuthClient.authenticate("test@example.com", "password123"))
+                .thenReturn(new KeycloakAuthClient.AuthenticationResult("keycloak.token", "Supervisor"));
+        when(jwtUtil.generateToken(1, "test@example.com", "Supervisor")).thenReturn("internal.jwt.token");
+
+        ResponseEntity<?> response = authController.login(request, null);
+
+        assertEquals(HttpStatus.OK, response.getStatusCode());
+        assertTrue(response.getBody() instanceof LoginResponse);
+        assertEquals("Supervisor", ((LoginResponse) response.getBody()).getRole());
+        verify(userService, never()).checkPassword(any(), any());
+    }
     
     @Test
     void validateToken_shouldReturnClaimsForValidToken() {
@@ -134,11 +169,12 @@ class AuthControllerTest {
         String token = "valid.jwt.token";
         String authHeader = "Bearer " + token;
         
-        when(jwtUtil.getClaims(token)).thenReturn(mock(io.jsonwebtoken.Claims.class));
-        when(jwtUtil.getClaims(token).getSubject()).thenReturn("123");
-        when(jwtUtil.getClaims(token).get("username")).thenReturn("test@example.com");
-        when(jwtUtil.getClaims(token).get("role")).thenReturn("security");
-        when(jwtUtil.getClaims(token).getExpiration()).thenReturn(new java.util.Date());
+        Claims claims = mock(Claims.class);
+        when(jwtUtil.getClaims(token)).thenReturn(claims);
+        when(claims.getSubject()).thenReturn("123");
+        when(claims.get("username")).thenReturn("test@example.com");
+        when(claims.get("role")).thenReturn("security");
+        when(claims.getExpiration()).thenReturn(new Date());
         
         // Act
         ResponseEntity<?> response = authController.validateToken(authHeader);
@@ -146,12 +182,18 @@ class AuthControllerTest {
         // Assert
         assertEquals(HttpStatus.OK, response.getStatusCode());
         assertTrue(response.getBody() instanceof Map);
+        Map<?, ?> body = (Map<?, ?>) response.getBody();
+        assertEquals("Security", body.get("role"));
+        assertTrue(body.containsKey("permissions"));
     }
     
     @Test
     void me_shouldReturnUserIdFromAuthentication() {
         // Arrange
-        when(authentication.getPrincipal()).thenReturn("123");
+        when(authentication.isAuthenticated()).thenReturn(true);
+        when(authentication.getName()).thenReturn("123");
+        when(authentication.getDetails()).thenReturn(Map.of("username", "test@example.com", "role", "security"));
+        when(jwtUtil.generateToken(123, "test@example.com", "Security")).thenReturn("new.jwt.token");
         
         // Act
         ResponseEntity<?> response = authController.me(authentication, null);
@@ -160,6 +202,8 @@ class AuthControllerTest {
         assertEquals(HttpStatus.OK, response.getStatusCode());
         assertTrue(response.getBody() instanceof Map);
         Map<?, ?> body = (Map<?, ?>) response.getBody();
-        assertEquals("123", body.get("userId"));
+        assertEquals(123L, body.get("user_id"));
+        assertEquals("Security", body.get("role"));
+        assertTrue(body.containsKey("permissions"));
     }
 }
