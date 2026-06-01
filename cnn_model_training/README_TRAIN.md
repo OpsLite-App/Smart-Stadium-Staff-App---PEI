@@ -22,7 +22,7 @@ This will create person_dataset/images/train, person_dataset/images/val and matc
   yolo export model=runs/detect/train/weights/best.pt format=onnx imgsz=320
 
 5) Generate STM32 artifacts
-- Move or copy the produced ONNX file into Model/ and rename it to my_cnn_model.onnx (or update the script variable).
+- Move or copy the produced ONNX file into STM32-ObjectDetection-GettingStarted/Model/ and rename it to cnn_model.onnx (or update the script variable).
 - Run the generator script (requires stedgeai and arm-none-eabi-objcopy in PATH):
   ./generate-n6-model_STM32N6570-DK-cnn.sh
 

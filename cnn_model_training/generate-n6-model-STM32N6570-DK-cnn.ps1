@@ -1,6 +1,6 @@
 # generate-n6-model-STM32N6570-DK-cnn.ps1
 
-$MODEL = "my_cnn_model.onnx"
+$MODEL = "cnn_model.onnx"
 
 if (!(Test-Path $MODEL)) {
     Write-Host "ONNX model not found"

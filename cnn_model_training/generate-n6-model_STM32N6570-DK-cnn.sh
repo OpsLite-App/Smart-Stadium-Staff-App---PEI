@@ -2,8 +2,7 @@
 
 set -eu # Exit on any error, Exit on unset variable
 
-# Replace "my_cnn_model.onnx" with your CNN ONNX model filename placed in this folder.
-MODEL_ONNX="my_cnn_model.onnx"
+MODEL_ONNX="cnn_model.onnx"
 
 if [ ! -f "$MODEL_ONNX" ]; then
   echo "ONNX model '$MODEL_ONNX' not found in Model/; please add it first."

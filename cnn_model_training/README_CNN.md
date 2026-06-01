@@ -2,7 +2,7 @@ This folder contains helper scripts and notes for generating STM32N6 runtime fil
 
 CNN/ONNX workflow (STM32N6570-DK)
 
-- Place your CNN model in ONNX format into this folder and name it `my_cnn_model.onnx` (or update the script variable).
+- Place your CNN model in ONNX format into this folder and name it `cnn_model.onnx` (or update the script variable).
 - If you have a TensorFlow/TFLite model and need ONNX, convert using `tf2onnx` or `onnx-tf`. Example (from a TensorFlow SavedModel):
 
 ```bash
@@ -10,12 +10,12 @@ CNN/ONNX workflow (STM32N6570-DK)
 pip install tf2onnx
 
 # convert SavedModel to ONNX
-python -m tf2onnx.convert --saved-model saved_model_dir --output my_cnn_model.onnx --opset 13
+python -m tf2onnx.convert --saved-model saved_model_dir --output cnn_model.onnx --opset 13
 
 # or convert from a TFLite model using tflite2onnx (third-party tool) or re-export from TF
 ```
 
-- After placing `my_cnn_model.onnx` here, run the generation script:
+- After placing `cnn_model.onnx` here, run the generation script:
 
 ```bash
 cd STM32N6-GettingStarted-ObjectDetection/Model
