@@ -5,13 +5,10 @@ import * as icons from 'simple-icons';
 const backgroundImage = "/Smart-Stadium-Staff-App---PEI/dragao.jpg";
 const logoImage = "/Smart-Stadium-Staff-App---PEI/logo.jpeg";
 
-// Função para obter o ícone com a sua cor original de marca
 const getIconWithColor = (iconName) => {
   const icon = icons[iconName];
   if (!icon) return null;
   
-  // Substituímos o fill padrão do SVG pela cor oficial hexagonal da marca
-  // Adicionamos também uma classe para o CSS global controlar o tamanho
   return icon.svg.replace('<svg', `<svg fill="#${icon.hex}" class="tech-svg-source"`);
 };
 
@@ -20,7 +17,7 @@ const techStack = [
     category: "Frontend", 
     items: [
       { name: "React + Next.js", type: "Framework", icon: "siReact" },
-      { name: "Riverpod", type: "State Management", icon: null }, // Fallback customizado no HTML
+      { name: "Riverpod", type: "State Management", icon: null }, 
       { name: "WebSocket", type: "Real-time", icon: "siSocketdotio" }
     ]
   },
@@ -50,12 +47,11 @@ const kpis = [
 		<title>Overview | OpsLite</title>
 		<link rel="icon" type="image/jpeg" href={logoImage} />
         <style is:global>
-            /* Garante que o ícone escala exatamente com o texto */
             .tech-svg-container svg {
-                width: 1.2em; /* Ligeiramente maior para compensar a cor */
+                width: 1.2em; 
                 height: 1.2em;
                 display: inline-block;
-                vertical-align: -0.2em; /* Ajuste fino de alinhamento vertical */
+                vertical-align: -0.2em; 
             }
         </style>
 	</head>
@@ -156,7 +152,7 @@ const kpis = [
 
 				<div class="grid grid-cols-1 lg:grid-cols-2 gap-12 mb-16">
 					
-					{/* SECÇÃO DE TECNOLOGIAS */}
+					{}
 					<div class="space-y-8">
 						<div>
 							<h2 class="text-[10px] font-bold tracking-[0.5em] text-slate-500 uppercase mb-6">Technology Stack</h2>
@@ -171,7 +167,7 @@ const kpis = [
                                                         {item.icon ? (
                                                             <span class="tech-svg-container block leading-none" set:html={getIconWithColor(item.icon)} />
                                                         ) : (
-                                                            /* Fallback visual para Riverpod */
+                                                            
                                                             <div class="w-4 h-4 rounded-full bg-blue-600/20 border-2 border-blue-600/40 flex items-center justify-center">
                                                                 <div class="w-1.5 h-1.5 rounded-full bg-blue-700"></div>
                                                             </div>
@@ -188,7 +184,7 @@ const kpis = [
 						</div>
 					</div>
 
-					{/* SECÇÃO DE KPIS */}
+					{}
 					<div class="space-y-8">
 						<div>
 							<h2 class="text-[10px] font-bold tracking-[0.5em] text-slate-500 uppercase mb-6">Success Metrics (KPIs)</h2>
