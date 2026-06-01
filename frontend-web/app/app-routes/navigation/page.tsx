@@ -207,7 +207,7 @@ export default function NavigationPage() {
   );
 
   return (
-    <div className="mx-auto max-w-5xl space-y-6">
+    <div className="mobile-page-shell mx-auto max-w-5xl space-y-6">
       <div className="rounded-3xl bg-[linear-gradient(135deg,#0f172a,#1d4ed8)] p-6 text-white shadow-lg">
         <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
           <div>

@@ -327,7 +327,7 @@ export default function EmergencyPage() {
   }, [nodePickMode]);
 
   return (
-    <div className="w-full space-y-6">
+    <div className="mobile-page-shell w-full space-y-6">
         <header className="rounded-xl border border-red-100 bg-white p-6 shadow-sm">
           <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
             <div>

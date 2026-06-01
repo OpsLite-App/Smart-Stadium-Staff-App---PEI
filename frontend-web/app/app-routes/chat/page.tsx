@@ -345,16 +345,16 @@ export default function ChatPage() {
   const lastMessageForRoom = (roomId: string) => messagesByRoom[roomId]?.at(-1);
   const chatHeightClass = user?.role === 'Supervisor'
     ? 'h-[calc(100dvh-10rem)]'
-    : 'h-[calc(100dvh-4rem)]';
+    : 'mobile-chat-height lg:h-screen';
 
   return (
     <div className={`grid ${chatHeightClass} overflow-hidden grid-cols-1 bg-slate-100 md:grid-cols-[30rem_minmax(0,1fr)]`}>
       <aside className={`${selectedRoom ? 'hidden md:flex' : 'flex'} min-h-0 min-w-0 flex-col border-r border-slate-200 bg-white`}>
-        <div className="border-b border-slate-200 p-7">
+        <div className="border-b border-slate-200 p-4 sm:p-7">
           <div className="flex items-start justify-between gap-3">
             <div>
               <p className="text-sm font-semibold uppercase tracking-[0.22em] text-slate-500">Comunicação</p>
-              <h1 className="mt-2 text-4xl font-black tracking-tight text-slate-950">Conversa operacional</h1>
+              <h1 className="mt-2 text-3xl font-black tracking-tight text-slate-950 sm:text-4xl">Conversa operacional</h1>
               <p className="mt-2 text-base text-slate-500">Mensagens reais persistidas no serviço de conversação.</p>
             </div>
             <button
@@ -367,7 +367,7 @@ export default function ChatPage() {
             </button>
           </div>
 
-          <div className="relative mt-7">
+          <div className="relative mt-4 sm:mt-7">
             <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={21} />
             <input
               value={searchTerm}
@@ -441,8 +441,8 @@ export default function ChatPage() {
       <main className={`${selectedRoom ? 'flex' : 'hidden md:flex'} min-h-0 min-w-0 flex-col bg-white`}>
         {selectedRoom ? (
           <>
-            <header className="flex items-center justify-between gap-4 border-b border-slate-200 px-8 py-6">
-              <div className="flex min-w-0 items-center gap-4">
+            <header className="flex items-center justify-between gap-3 border-b border-slate-200 px-4 py-4 sm:gap-4 sm:px-8 sm:py-6">
+              <div className="flex min-w-0 items-center gap-3 sm:gap-4">
                 <button
                   type="button"
                   onClick={() => setSelectedRoom(null)}
@@ -450,7 +450,7 @@ export default function ChatPage() {
                 >
                   Voltar
                 </button>
-                <div className={`flex h-16 w-16 shrink-0 items-center justify-center rounded-3xl border ${roomTone(selectedRoom)}`}>
+                <div className={`hidden h-16 w-16 shrink-0 items-center justify-center rounded-3xl border sm:flex ${roomTone(selectedRoom)}`}>
                   {selectedRoom.kind === 'direct' ? (
                     <span className="text-lg font-black">{initials(selectedRoom.name)}</span>
                   ) : (
@@ -472,12 +472,12 @@ export default function ChatPage() {
             </header>
 
             {error && (
-              <div className="mx-8 mt-5 rounded-2xl border border-red-200 bg-red-50 px-5 py-4 text-base text-red-700">
+              <div className="mx-4 mt-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 sm:mx-8 sm:mt-5 sm:px-5 sm:py-4 sm:text-base">
                 {error}
               </div>
             )}
 
-            <section className="flex-1 overflow-y-auto bg-[linear-gradient(180deg,#f8fafc,#eef2f7)] px-8 py-8">
+            <section className="flex-1 overflow-y-auto bg-[linear-gradient(180deg,#f8fafc,#eef2f7)] px-4 py-5 sm:px-8 sm:py-8">
               {loadingMessages ? (
                 <div className="flex h-full items-center justify-center text-base text-slate-500">A carregar mensagens...</div>
               ) : selectedMessages.length === 0 ? (
@@ -510,8 +510,8 @@ export default function ChatPage() {
               )}
             </section>
 
-            <form onSubmit={handleSend} className="border-t border-slate-200 bg-white p-6">
-              <div className="mx-auto flex max-w-6xl items-end gap-4">
+            <form onSubmit={handleSend} className="border-t border-slate-200 bg-white p-3 sm:p-6">
+              <div className="mx-auto flex max-w-6xl items-end gap-3 sm:gap-4">
                 <textarea
                   value={messageText}
                   onChange={(event) => setMessageText(event.target.value)}

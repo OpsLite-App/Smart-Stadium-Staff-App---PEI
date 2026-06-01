@@ -100,10 +100,10 @@ export default function AnalyticsPage() {
   };
 
   return (
-    <div className="min-h-screen bg-[#F3F4F6] p-6">
+    <div className="min-h-screen bg-[#F3F4F6] p-4 sm:p-6">
       {/* Header */}
       <div className="mb-8">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h1 className="text-2xl font-bold text-[#1F2937]">{t('analytics.title')}</h1>
             <p className="text-[#6B7280] mt-1">{t('analytics.subtitle')}</p>
@@ -121,7 +121,7 @@ export default function AnalyticsPage() {
         </div>
 
         {/* Tabs */}
-        <div className="flex gap-2 mt-6 border-b border-gray-200">
+        <div className="mt-6 flex gap-2 overflow-x-auto border-b border-gray-200">
           <button onClick={() => setActiveTab('overview')} className={`px-4 py-2 font-medium text-sm transition-colors relative ${activeTab === 'overview' ? 'text-[#4F46E5] border-b-2 border-[#4F46E5]' : 'text-[#6B7280] hover:text-[#1F2937]'}`}>
             {t('analytics.tabs.overview')}
           </button>

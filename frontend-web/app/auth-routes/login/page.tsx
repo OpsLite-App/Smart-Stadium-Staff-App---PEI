@@ -88,7 +88,7 @@ export default function LoginPage() {
   };
 
   return (
-    <main className="relative min-h-[100svh] overflow-hidden bg-[#F5F7F4] text-[#17313A]">
+    <main className="relative min-h-[100svh] overflow-x-hidden bg-[#F5F7F4] text-[#17313A]">
       <div className="absolute inset-0 opacity-50 [background-image:linear-gradient(rgba(73,111,119,0.07)_1px,transparent_1px),linear-gradient(90deg,rgba(73,111,119,0.07)_1px,transparent_1px)] [background-size:34px_34px]" />
       <div className="absolute -right-40 -top-28 h-96 w-96 rounded-full bg-[#DCEEEA] blur-3xl" />
       <div className="absolute -bottom-24 -left-44 h-80 w-80 rounded-full bg-[#FDE7C0]/70 blur-3xl" />
@@ -96,11 +96,11 @@ export default function LoginPage() {
       <section className="relative mx-auto flex min-h-[100svh] max-w-[1380px]">
         <SupervisorDesktopPanel />
 
-        <div className="flex min-h-[100svh] w-full flex-col px-5 pb-7 pt-6 sm:px-8 lg:w-[560px] lg:shrink-0 lg:basis-[560px] lg:justify-center lg:px-14 lg:py-12">
-          <header className="flex items-center justify-between lg:hidden">
+        <div className="mobile-safe-login flex min-h-[100svh] w-full flex-col px-5 pb-7 pt-6 sm:px-8 lg:w-[560px] lg:shrink-0 lg:basis-[560px] lg:justify-center lg:px-14 lg:py-12">
+          <header className="flex items-center justify-between gap-3 lg:hidden">
             <BrandLockup />
             <div className="flex items-center gap-2">
-              <StatusPill />
+              <StatusPill className="max-[370px]:hidden" />
               <LangToggle className="border-[#D5E8E4] bg-white/80 px-2.5 text-xs" />
             </div>
           </header>
@@ -223,19 +223,19 @@ function BrandMark({ size = 'regular' }: { size?: 'regular' | 'large' }) {
 
 function BrandLockup() {
   return (
-    <div className="flex items-center gap-3">
+    <div className="flex min-w-0 items-center gap-3">
       <BrandMark />
-      <div>
+      <div className="min-w-0">
         <p className="text-lg font-bold tracking-[-0.02em] text-[#17313A]">OpsLite</p>
-        <p className="text-[9px] font-bold tracking-[0.26em] text-[#F3A63A]">OPERAÇÕES NO TERRENO</p>
+        <p className="text-[8px] font-bold tracking-[0.2em] text-[#F3A63A] sm:text-[9px] sm:tracking-[0.26em]">OPERAÇÕES NO TERRENO</p>
       </div>
     </div>
   );
 }
 
-function StatusPill() {
+function StatusPill({ className = '' }: { className?: string }) {
   return (
-    <div className="flex items-center gap-1.5 rounded-full border border-[#D5E8E4] bg-white/80 px-2.5 py-1.5 text-[10px] font-semibold text-[#5C777E]">
+    <div className={`flex shrink-0 items-center gap-1.5 rounded-full border border-[#D5E8E4] bg-white/80 px-2.5 py-1.5 text-[10px] font-semibold text-[#5C777E] ${className}`}>
       <span className="h-1.5 w-1.5 rounded-full bg-[#1FB48E] shadow-[0_0_10px_#67D9BB]" />
       online
     </div>

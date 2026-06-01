@@ -1236,7 +1236,7 @@ export default function AlertsPage() {
   const completedCount = Math.max(0, stats.total - stats.unresolved);
 
   return (
-    <div className="w-full space-y-6">
+    <div className="mobile-page-shell w-full space-y-6">
       {/* Success toast */}
       {showSuccessToast && (
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[9999] flex items-center gap-3 bg-emerald-600 text-white px-5 py-3 rounded-xl shadow-xl animate-fade-in">

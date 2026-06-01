@@ -711,7 +711,7 @@ export default function TeamPage() {
   }
 
   return (
-    <div className="w-full space-y-6">
+    <div className="mobile-page-shell w-full space-y-6">
         {/* Header */}
         <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <div>

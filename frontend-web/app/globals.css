@@ -25,6 +25,42 @@ body {
   font-family: Arial, Helvetica, sans-serif;
 }
 
+html,
+body {
+  min-height: 100%;
+  overflow-x: hidden;
+}
+
+/* Keep the native Android status and navigation bars clear in Capacitor. */
+@media (max-width: 1023px) {
+  .mobile-safe-header {
+    padding-top: max(0.75rem, env(safe-area-inset-top));
+  }
+
+  .mobile-safe-content {
+    padding-top: calc(3.5rem + env(safe-area-inset-top));
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+
+  .mobile-safe-sidebar {
+    padding-top: env(safe-area-inset-top);
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+
+  .mobile-safe-login {
+    padding-top: max(1rem, env(safe-area-inset-top));
+    padding-bottom: max(1.75rem, env(safe-area-inset-bottom));
+  }
+
+  .mobile-page-shell {
+    padding: 1.25rem 1rem;
+  }
+
+  .mobile-chat-height {
+    height: calc(100dvh - 3.5rem - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+  }
+}
+
 /* Leaflet custom styles */
 .leaflet-container {
   font-family: inherit;

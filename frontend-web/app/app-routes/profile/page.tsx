@@ -477,8 +477,8 @@ export default function ProfilePage() {
         {/* Pending dispatches banner */}
         {pendingDispatches.length > 0 && (
           <div className="mb-4 rounded-xl border border-blue-200 bg-blue-50 p-4">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex min-w-0 items-center gap-2">
                 <AlertTriangle size={16} className="text-blue-500" />
                 <span className="font-semibold text-blue-700 text-sm">
                   {pendingDispatches.length} tarefa{pendingDispatches.length > 1 ? 's' : ''} atribuída{pendingDispatches.length > 1 ? 's' : ''} a ti
@@ -511,10 +511,10 @@ export default function ProfilePage() {
             {loading ? <span className="text-xs text-gray-500">A atualizar...</span> : null}
           </div>
 
-          <div className="grid grid-cols-2 gap-4 mt-4">
-            <div className="flex items-center gap-2 text-[#6B7280]">
+          <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div className="flex min-w-0 items-center gap-2 text-[#6B7280]">
               <Mail size={16} />
-              <span className="text-sm">{user.email}</span>
+              <span className="break-all text-sm">{user.email}</span>
             </div>
             <div className="flex items-center gap-2 text-[#6B7280]">
               <Phone size={16} />

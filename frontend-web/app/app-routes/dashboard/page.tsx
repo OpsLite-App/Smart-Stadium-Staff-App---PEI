@@ -371,14 +371,14 @@ export default function DashboardPage() {
   }, [dispatches, staff]);
 
   return (
-    <div className="w-full space-y-6">
+    <div className="w-full space-y-6 px-4 py-5 sm:px-6 lg:p-0">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <p className="text-xs font-bold uppercase tracking-[0.22em] text-orange-600">Supervisão</p>
           <h1 className="mt-1 text-3xl font-black text-gray-950">Painel de supervisão</h1>
           <p className="mt-1 text-sm text-gray-500">Dados reais dos serviços operacionais, incidentes e GIS.</p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           {lastUpdated && (
             <span className="text-xs text-gray-400">
               Atualizado às {lastUpdated.toLocaleTimeString('pt-PT')}
