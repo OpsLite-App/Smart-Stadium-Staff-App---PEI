@@ -8,7 +8,7 @@ import { RouteWaypoint, useNavigationStore } from '@/lib/stores/useNavigationSto
 import { api, EMERGENCY_EVENTS_URL, EMERGENCY_SERVICE } from '@/lib/services/api';
 import { gisApi } from '@/lib/services/gisApi';
 import { IndoorGisMap } from '@/components/map/IndoorGisMap';
-import { indoorRoutingService, type IndoorRouteGeoJsonResponse } from '@/lib/services/indoorRouting';
+import { getRouteStartFloor, indoorRoutingService, type IndoorRouteGeoJsonResponse } from '@/lib/services/indoorRouting';
 import axios from 'axios';
 import { Ban, CheckCircle, Clock, MapPin, RefreshCw, AlertTriangle, X, ThumbsUp, ClipboardList, Trash2, Search, Check } from 'lucide-react';
 
@@ -547,7 +547,7 @@ export default function TasksPage() {
         etaSeconds: route.eta_seconds,
       });
       setRouteModalGeoJson(geoJsonRoute);
-      const firstFloor = geoJsonRoute.summary.floors[0];
+      const firstFloor = getRouteStartFloor(geoJsonRoute, actualFromNode);
       if (firstFloor != null) {
         setRouteModalFloor(String(firstFloor) as '0' | '1' | '2');
       }
@@ -642,7 +642,7 @@ export default function TasksPage() {
         etaSeconds: route.eta_seconds,
       });
       setRouteModalGeoJson(geoJsonRoute);
-      const firstFloor = geoJsonRoute.summary.floors[0];
+      const firstFloor = getRouteStartFloor(geoJsonRoute, actualFromNode);
       if (firstFloor != null) {
         setRouteModalFloor(String(firstFloor) as '0' | '1' | '2');
       }
@@ -730,7 +730,7 @@ export default function TasksPage() {
         etaSeconds: route.eta_seconds || d.eta_seconds,
       });
       setRouteModalGeoJson(geoJsonRoute);
-      const firstFloor = geoJsonRoute.summary.floors[0];
+      const firstFloor = getRouteStartFloor(geoJsonRoute, actualFromNode);
       if (firstFloor != null) {
         setRouteModalFloor(String(firstFloor) as '0' | '1' | '2');
       }
@@ -900,7 +900,7 @@ export default function TasksPage() {
                   try {
                     const { geoJsonRoute } = await getRouteWithFallback(fNode, tNode);
                     setRouteModalGeoJson(geoJsonRoute);
-                    const startFloor = String(geoJsonRoute?.route?.features?.[0]?.properties?.floor_id ?? '1') as '0' | '1' | '2';
+                    const startFloor = String(getRouteStartFloor(geoJsonRoute, fNode) ?? '1') as '0' | '1' | '2';
                     setRouteModalFloor(startFloor);
                   } catch (err) {
                     setRouteModalError("Erro ao calcular rota.");
@@ -977,7 +977,7 @@ export default function TasksPage() {
                         try {
                           const { geoJsonRoute } = await getRouteWithFallback(fNode, t.node);
                           setRouteModalGeoJson(geoJsonRoute);
-                          const startFloor = String(geoJsonRoute?.route?.features?.[0]?.properties?.floor_id ?? '1') as '0' | '1' | '2';
+                          const startFloor = String(getRouteStartFloor(geoJsonRoute, fNode) ?? '1') as '0' | '1' | '2';
                           setRouteModalFloor(startFloor);
                         } catch (err) {
                           setRouteModalError("Erro ao calcular rota.");

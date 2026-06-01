@@ -305,6 +305,15 @@ const replacements = {
   en: [...UI_TEXT].sort((a, b) => b[0].length - a[0].length).map(([pt, en]) => [pt, en] as const),
 };
 
+const escapeRegExp = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const isWordCharacter = (value: string) => /[\p{L}\p{N}_]/u.test(value);
+
+function replaceUiFragment(value: string, source: string, target: string): string {
+  const prefix = isWordCharacter(source[0] ?? '') ? '(?<![\\p{L}\\p{N}_])' : '';
+  const suffix = isWordCharacter(source.at(-1) ?? '') ? '(?![\\p{L}\\p{N}_])' : '';
+  return value.replace(new RegExp(`${prefix}${escapeRegExp(source)}${suffix}`, 'gu'), target);
+}
+
 export function translateUiText(value: string, language: SupportedLanguage): string {
   if (!value.trim()) return value;
 
@@ -316,7 +325,7 @@ export function translateUiText(value: string, language: SupportedLanguage): str
 
   let translated = content;
   for (const [source, target] of replacements[language]) {
-    translated = translated.replaceAll(source, target);
+    translated = replaceUiFragment(translated, source, target);
   }
   return `${leading}${translated}${trailing}`;
 }

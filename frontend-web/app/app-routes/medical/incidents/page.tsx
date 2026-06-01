@@ -6,7 +6,7 @@ import { useAuthStore } from '@/lib/stores/useAuthStore';
 import { RouteWaypoint, useNavigationStore } from '@/lib/stores/useNavigationStore';
 import { api, EMERGENCY_EVENTS_URL, EMERGENCY_SERVICE, MAINTENANCE_SERVICE } from '@/lib/services/api';
 import { IndoorGisMap } from '@/components/map/IndoorGisMap';
-import { indoorRoutingService, type IndoorRouteGeoJsonResponse } from '@/lib/services/indoorRouting';
+import { getRouteStartFloor, indoorRoutingService, type IndoorRouteGeoJsonResponse } from '@/lib/services/indoorRouting';
 import axios from 'axios';
 import { 
   Heart, 
@@ -363,7 +363,7 @@ const handleNavigate = async (incident: MedicalIncident) => {
     });
 
     setRouteModalGeoJson(geoJsonRoute);
-    const firstFloor = geoJsonRoute.summary.floors[0];
+    const firstFloor = getRouteStartFloor(geoJsonRoute, fromNode);
     if (firstFloor != null) {
       setRouteModalFloor(String(firstFloor) as '0' | '1' | '2');
     }
@@ -569,7 +569,7 @@ const handleArrive = async (dispatch: MyDispatch) => {
                       </p>
                     </div>
 
-                    <div className="flex gap-3">
+                    <div className="grid grid-cols-2 gap-3 sm:flex">
                       {dispatch && (
                         <button
                           onClick={() => handleAcceptAssignedDispatch(dispatch)}
@@ -594,7 +594,7 @@ const handleArrive = async (dispatch: MyDispatch) => {
 
                       <button
                         onClick={() => router.push(`/app-routes/chat?incident=${incident.id}`)}
-                        className="flex items-center justify-center gap-2 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200"
+                        className="col-span-2 flex items-center justify-center gap-2 rounded-lg bg-gray-100 px-4 py-2 text-gray-700 hover:bg-gray-200 sm:col-span-1"
                       >
                         <MessageCircle size={18} />
                         Conversa
@@ -666,7 +666,7 @@ const handleArrive = async (dispatch: MyDispatch) => {
                       </div>
                     )}
 
-                    <div className="flex gap-3">
+                    <div className="grid grid-cols-1 gap-3 sm:flex">
                       {dispatch?.status === 'en_route' && (
                         <>
                           <button
@@ -699,20 +699,9 @@ const handleArrive = async (dispatch: MyDispatch) => {
                         </button>
                       )}
 
-                      {dispatch && ['en_route', 'arrived'].includes(dispatch.status) && (
-                        <button
-                          onClick={() => handleRefuseDispatch(dispatch)}
-                          disabled={!!actionLoading}
-                          className="flex items-center justify-center gap-2 px-4 py-2 border border-red-200 bg-white text-red-700 rounded-lg hover:bg-red-50 disabled:opacity-50"
-                        >
-                          <XCircle size={18} />
-                          Recusar
-                        </button>
-                      )}
-                      
                       <button
                         onClick={() => router.push(`/app-routes/chat?incident=${incident.id}`)}
-                        className="flex items-center justify-center gap-2 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200"
+                        className="flex items-center justify-center gap-2 rounded-lg bg-gray-100 px-4 py-2 text-gray-700 hover:bg-gray-200"
                       >
                         <MessageCircle size={18} />
                         Conversa
@@ -758,7 +747,7 @@ const handleArrive = async (dispatch: MyDispatch) => {
                     <span className="text-xs text-gray-400">{formatTime(incident.created_at)}</span>
                   </div>
 
-                  <div className="flex gap-3 mt-4">
+                  <div className="mt-4 grid grid-cols-2 gap-3 sm:flex">
 <button
   onClick={() => handleAcceptIncident(incident)}
   disabled={actionLoading === `accept-${incident.id}`}
@@ -791,6 +780,14 @@ const handleArrive = async (dispatch: MyDispatch) => {
                     >
                       <Eye size={18} />
                       Detalhes
+                    </button>
+
+                    <button
+                      onClick={() => router.push(`/app-routes/chat?incident=${incident.id}`)}
+                      className="col-span-2 flex items-center justify-center gap-2 rounded-lg bg-gray-100 px-4 py-2 text-gray-700 hover:bg-gray-200 sm:col-span-1"
+                    >
+                      <MessageCircle size={18} />
+                      Conversa
                     </button>
                   </div>
                 </div>

@@ -510,6 +510,19 @@ class IncidentManager:
         
         return [self._dispatch_to_response(d) for d in dispatches]
 
+    def get_dispatches_for_responder(
+        self,
+        db: Session,
+        responder_ids: List[str],
+        limit: int = 20
+    ) -> List[DispatchResponse]:
+        """Get the most recent dispatch assignments for one responder and its legacy aliases."""
+        dispatches = db.query(ResponderDispatch).filter(
+            ResponderDispatch.responder_id.in_(responder_ids)
+        ).order_by(ResponderDispatch.dispatched_at.desc()).limit(limit).all()
+
+        return [self._dispatch_to_response(d) for d in dispatches]
+
     def _get_dispatches_for_incident(self, db: Session, incident_id: str) -> List[ResponderDispatch]:
         return db.query(ResponderDispatch).filter(
             ResponderDispatch.incident_id == incident_id

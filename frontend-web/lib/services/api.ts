@@ -388,7 +388,15 @@ export const api = {
   },
 
   getRoute: async (fromNode: string, toNode: string): Promise<{ path: string[]; waypoints: { node_id: string; x: number; y: number }[]; eta_seconds: number; distance: number }> => {
-    // ✅ CHANGED: Use authAxios instead of axios
+    if (String(fromNode) === String(toNode)) {
+      return {
+        path: [String(fromNode)],
+        waypoints: [{ node_id: String(fromNode), x: 0, y: 0 }],
+        eta_seconds: 0,
+        distance: 0,
+      };
+    }
+
     const response = await authAxios.get(`${ROUTING_BASE}/route`, {
       params: { from_node: fromNode, to_node: toNode },
       timeout: 8000,
