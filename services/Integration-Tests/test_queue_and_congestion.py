@@ -61,6 +61,8 @@ class TestQueueingWorkflow:
                 "location_id": location_id,
                 "location_type": "gate",
                 "current_queue_length": length,
+                "arrivals_last_minute": 10,
+                "departures_last_minute": 5,
             }
             await http_client.post(
                 f"{service_urls['queueing']}/update",
@@ -162,6 +164,8 @@ class TestQueueCongestionIntegration:
                 "location_id": area_id,
                 "location_type": "gate",
                 "current_queue_length": 50,
+                "arrivals_last_minute": 25,
+                "departures_last_minute": 15,
             }
         )
         
