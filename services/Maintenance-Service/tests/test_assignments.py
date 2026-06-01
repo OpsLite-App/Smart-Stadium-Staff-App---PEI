@@ -4,8 +4,8 @@ from staff_coordinator import get_staff_coordinator
 from schemas import TaskCreate, TaskUpdate
 
 def test_full_assignment_flow(db_session):
-    # Setup
-    tm = TaskManager("http://routing", "http://map")
+    # Setup - Use fake URLs from environment
+    tm = TaskManager("http://fake-routing", "http://fake-map")
     sc = get_staff_coordinator()
     sc.clear_all()
     sc.register_staff("S1", "Diogo", "cleaning", "gate_A")

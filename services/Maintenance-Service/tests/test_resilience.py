@@ -4,11 +4,13 @@ import httpx
 from task_manager import TaskManager
 from schemas import BinAlertCreate
 
+# Fixtures are provided by conftest.py
+
 def test_task_creation_when_map_service_is_down(db_session):
     # Setup of the Manager pointing to 'dead' services
     tm = TaskManager(
-        routing_service_url="http://routing-error", 
-        map_service_url="http://map-error"
+        routing_service_url="http://fake-routing", 
+        map_service_url="http://fake-map"
     )
     
     alert = BinAlertCreate(
