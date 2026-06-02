@@ -1,0 +1,13 @@
+# Default text files
+* text=auto
+
+# Shell scripts must use LF
+*.sh text eol=lf
+
+# Docker-related files
+Dockerfile text eol=lf
+*.dockerfile text eol=lf
+
+# Windows scripts
+*.bat text eol=crlf
+*.cmd text eol=crlf
