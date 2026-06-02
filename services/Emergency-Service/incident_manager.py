@@ -47,8 +47,9 @@ class IncidentManager:
         "bin": "cleaning",
     }
     
-    def __init__(self, routing_service_url: str):
+    def __init__(self, routing_service_url: str, map_service_url: Optional[str] = None):
         self.routing_service_url = routing_service_url
+        self.map_service_url = map_service_url  # Optional parameter for compatibility with tests
         
         # Initialize staff tracker
         self.staff_tracker = create_mock_staff_tracker(num_per_role=3)
@@ -450,6 +451,14 @@ class IncidentManager:
         if incident_db.status in self.TERMINAL_INCIDENT_STATUSES:
             raise ValueError("Cannot dispatch responders to a closed incident")
 
+        existing_dispatch = db.query(ResponderDispatch).filter(
+            ResponderDispatch.incident_id == request.incident_id,
+            ResponderDispatch.responder_id == request.responder_id,
+            ResponderDispatch.status != "declined"
+        ).first()
+        if existing_dispatch:
+            raise ValueError("Responder has already been assigned to this incident")
+
         route_data = {"path": [], "distance": 0, "eta_seconds": 0}
         try:
             async with httpx.AsyncClient(timeout=5.0) as client:
@@ -508,6 +517,19 @@ class IncidentManager:
             ResponderDispatch.status.in_(["dispatched", "en_route", "arrived", "false_alarm"])
         ).all()
         
+        return [self._dispatch_to_response(d) for d in dispatches]
+
+    def get_dispatches_for_responder(
+        self,
+        db: Session,
+        responder_ids: List[str],
+        limit: int = 20
+    ) -> List[DispatchResponse]:
+        """Get the most recent dispatch assignments for one responder and its legacy aliases."""
+        dispatches = db.query(ResponderDispatch).filter(
+            ResponderDispatch.responder_id.in_(responder_ids)
+        ).order_by(ResponderDispatch.dispatched_at.desc()).limit(limit).all()
+
         return [self._dispatch_to_response(d) for d in dispatches]
 
     def _get_dispatches_for_incident(self, db: Session, incident_id: str) -> List[ResponderDispatch]:

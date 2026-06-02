@@ -9,6 +9,7 @@ import { RouteDetailsCard } from '@/components/navigation/RouteDetailsCard';
 import { AlertsPanel } from '@/components/navigation/AlertsPanel';
 import { IndoorGisMap } from '@/components/map/IndoorGisMap';
 import {
+  getRouteStartFloor,
   type EdgeOverride,
   indoorRoutingService,
   type GraphStatus,
@@ -165,8 +166,9 @@ export default function NavigationPage() {
 
         setRoute(response);
         setRouteGeoJson(geoJsonResponse);
-        if (geoJsonResponse.summary.floors.length > 0) {
-          setSelectedRouteFloor(geoJsonResponse.summary.floors[0]);
+        const startFloor = getRouteStartFloor(geoJsonResponse, selectedStartOption.node_id);
+        if (startFloor != null) {
+          setSelectedRouteFloor(startFloor);
         }
       }
 

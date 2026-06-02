@@ -656,6 +656,9 @@ class PgRoutingService:
         with get_connection() as conn:
             node_metadata = self._fetch_node_metadata(conn, [from_node, to_node], self.NODE_SQL)
             self._validate_nodes(from_node, to_node, node_metadata)
+
+            if from_node == to_node:
+                return self._build_geojson_response(from_node, to_node, [])
             
             sql = self.ROUTE_GEOJSON_SQL
             if allow_blocked:
@@ -709,6 +712,9 @@ class PgRoutingService:
             to_node = int(poi_lookup[to_poi_id]["node_id"])
             node_metadata = self._fetch_node_metadata(conn, [from_node, to_node], self.NODE_SQL)
             self._validate_nodes(from_node, to_node, node_metadata)
+
+            if from_node == to_node:
+                return self._build_geojson_response(from_node, to_node, [])
 
             rows = conn.execute(self.ROUTE_GEOJSON_SQL, (from_node, to_node, output_srid)).fetchall()
 
@@ -953,6 +959,16 @@ class PgRoutingService:
     ) -> PgRoutingRouteResponse:
         node_metadata = self._fetch_node_metadata(conn, [from_node, to_node], node_sql or self.NODE_SQL)
         self._validate_nodes(from_node, to_node, node_metadata)
+
+        if from_node == to_node:
+            return PgRoutingRouteResponse(
+                start_node=from_node,
+                end_node=to_node,
+                path=[from_node],
+                distance=0,
+                eta_seconds=0,
+                instructions=["You are already at your destination"],
+            )
 
         sql = route_sql or self.ROUTE_SQL
         if allow_blocked:

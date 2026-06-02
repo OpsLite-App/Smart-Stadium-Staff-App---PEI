@@ -2,48 +2,20 @@ import pytest
 import json
 from unittest.mock import MagicMock, patch
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
 
 from main import app, IncidentManager
 import main
 from mqtt_listener import on_message
-from database import Base, get_db
-
-# Shared in-memory database for all test connections
-SQLALCHEMY_DATABASE_URL = "sqlite:///file::memory:?cache=shared"
-engine = create_engine(
-    SQLALCHEMY_DATABASE_URL,
-    connect_args={"check_same_thread": False, "uri": True}
-)
-TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-
-def override_get_db():
-    db = TestingSessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
-
-app.dependency_overrides[get_db] = override_get_db
+# Fixtures are provided by conftest.py
 
 @pytest.fixture
-def e2e_setup():
-    # Create tables in the shared in-memory database
-    Base.metadata.create_all(bind=engine)
-
+def e2e_setup(client, db_session):
+    """Setup for e2e tests - initializes incident and evacuation managers with test URLs"""
     # Set fake URLs so managers don't attempt real HTTP calls
     main.incident_manager = IncidentManager("http://fake-routing", "http://fake-map")
     main.evacuation_coordinator = MagicMock()
-
-    # Patch the SessionLocal at its source so mqtt_listener uses the test database
-    mock_session = TestingSessionLocal()  # a single session instance for this test
-    with patch("database.SessionLocal", return_value=mock_session):
-        with TestClient(app) as client:
-            yield client
-
-    # Clean up
-    Base.metadata.drop_all(bind=engine)
+    
+    return client
 
 def test_full_fire_alarm_flow(e2e_setup):
     client = e2e_setup

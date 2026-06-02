@@ -6,7 +6,7 @@ import { useAuthStore } from '@/lib/stores/useAuthStore';
 import { RouteWaypoint, useNavigationStore } from '@/lib/stores/useNavigationStore';
 import { api, EMERGENCY_EVENTS_URL, EMERGENCY_SERVICE, MAINTENANCE_SERVICE } from '@/lib/services/api';
 import { IndoorGisMap } from '@/components/map/IndoorGisMap';
-import { indoorRoutingService, type IndoorRouteGeoJsonResponse } from '@/lib/services/indoorRouting';
+import { getRouteStartFloor, indoorRoutingService, type IndoorRouteGeoJsonResponse } from '@/lib/services/indoorRouting';
 import axios from 'axios';
 import { 
   Heart, 
@@ -203,15 +203,20 @@ export default function MedicalIncidentsPage() {
         timeout: 5000,
       });
       
-      // Buscar meus despachos ativos
-      const dispatchesRes = await axios.get(`${EMERGENCY_SERVICE}/dispatch/active`, {
-        timeout: 5000,
-      });
-      
       // Filtrar despachos do médico atual. Alguns dispatches automáticos usam
       // o formato STAFF_MEDICAL_001; os manuais usam o id real do utilizador.
       const myId = String(user.id);
       const syntheticMedicalId = `STAFF_MEDICAL_${myId.padStart(3, '0')}`;
+      const [dispatchesRes, dispatchHistoryRes] = await Promise.all([
+        axios.get(`${EMERGENCY_SERVICE}/dispatch/active`, {
+          timeout: 5000,
+        }),
+        axios.get(`${EMERGENCY_SERVICE}/dispatch/responder/${myId}`, {
+          params: { responder_alias: syntheticMedicalId, limit: 100 },
+          timeout: 5000,
+        }).catch(() => ({ data: [] })),
+      ]);
+
       const myActiveDispatches = ((dispatchesRes.data || []) as MyDispatch[]).filter(
         (d) =>
           (d.responder_id === myId || d.responder_id === syntheticMedicalId) &&
@@ -219,9 +224,15 @@ export default function MedicalIncidentsPage() {
       );
 
       const myIncidentIds = new Set(myActiveDispatches.map((dispatch) => dispatch.incident_id));
+      const myCompletedIncidentIds = new Set(
+        ((dispatchHistoryRes.data || []) as MyDispatch[])
+          .filter((dispatch) => dispatch.status === 'completed')
+          .map((dispatch) => dispatch.incident_id)
+      );
       const visibleIncidents = ((incidentsRes.data?.incidents || []) as MedicalIncident[]).filter((incident) => {
         const status = String(incident.status || '').toLowerCase();
         if (status === 'resolved') return false;
+        if (myCompletedIncidentIds.has(incident.id)) return false;
         if (status === 'false_alarm') return myIncidentIds.has(incident.id);
         return true;
       });
@@ -363,7 +374,7 @@ const handleNavigate = async (incident: MedicalIncident) => {
     });
 
     setRouteModalGeoJson(geoJsonRoute);
-    const firstFloor = geoJsonRoute.summary.floors[0];
+    const firstFloor = getRouteStartFloor(geoJsonRoute, fromNode);
     if (firstFloor != null) {
       setRouteModalFloor(String(firstFloor) as '0' | '1' | '2');
     }
@@ -569,7 +580,7 @@ const handleArrive = async (dispatch: MyDispatch) => {
                       </p>
                     </div>
 
-                    <div className="flex gap-3">
+                    <div className="grid grid-cols-2 gap-3 sm:flex">
                       {dispatch && (
                         <button
                           onClick={() => handleAcceptAssignedDispatch(dispatch)}
@@ -594,7 +605,7 @@ const handleArrive = async (dispatch: MyDispatch) => {
 
                       <button
                         onClick={() => router.push(`/app-routes/chat?incident=${incident.id}`)}
-                        className="flex items-center justify-center gap-2 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200"
+                        className="col-span-2 flex items-center justify-center gap-2 rounded-lg bg-gray-100 px-4 py-2 text-gray-700 hover:bg-gray-200 sm:col-span-1"
                       >
                         <MessageCircle size={18} />
                         Conversa
@@ -666,7 +677,7 @@ const handleArrive = async (dispatch: MyDispatch) => {
                       </div>
                     )}
 
-                    <div className="flex gap-3">
+                    <div className="grid grid-cols-1 gap-3 sm:flex">
                       {dispatch?.status === 'en_route' && (
                         <>
                           <button
@@ -699,20 +710,9 @@ const handleArrive = async (dispatch: MyDispatch) => {
                         </button>
                       )}
 
-                      {dispatch && ['en_route', 'arrived'].includes(dispatch.status) && (
-                        <button
-                          onClick={() => handleRefuseDispatch(dispatch)}
-                          disabled={!!actionLoading}
-                          className="flex items-center justify-center gap-2 px-4 py-2 border border-red-200 bg-white text-red-700 rounded-lg hover:bg-red-50 disabled:opacity-50"
-                        >
-                          <XCircle size={18} />
-                          Recusar
-                        </button>
-                      )}
-                      
                       <button
                         onClick={() => router.push(`/app-routes/chat?incident=${incident.id}`)}
-                        className="flex items-center justify-center gap-2 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200"
+                        className="flex items-center justify-center gap-2 rounded-lg bg-gray-100 px-4 py-2 text-gray-700 hover:bg-gray-200"
                       >
                         <MessageCircle size={18} />
                         Conversa
@@ -758,7 +758,7 @@ const handleArrive = async (dispatch: MyDispatch) => {
                     <span className="text-xs text-gray-400">{formatTime(incident.created_at)}</span>
                   </div>
 
-                  <div className="flex gap-3 mt-4">
+                  <div className="mt-4 grid grid-cols-2 gap-3 sm:flex">
 <button
   onClick={() => handleAcceptIncident(incident)}
   disabled={actionLoading === `accept-${incident.id}`}
@@ -791,6 +791,14 @@ const handleArrive = async (dispatch: MyDispatch) => {
                     >
                       <Eye size={18} />
                       Detalhes
+                    </button>
+
+                    <button
+                      onClick={() => router.push(`/app-routes/chat?incident=${incident.id}`)}
+                      className="col-span-2 flex items-center justify-center gap-2 rounded-lg bg-gray-100 px-4 py-2 text-gray-700 hover:bg-gray-200 sm:col-span-1"
+                    >
+                      <MessageCircle size={18} />
+                      Conversa
                     </button>
                   </div>
                 </div>

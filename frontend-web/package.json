@@ -8,6 +8,7 @@
     "start": "next start",
     "lint": "eslint",
     "android:add": "cap add android",
+    "android:icons": "python3 scripts/generate_android_icons.py",
     "android:sync": "cap sync android",
     "android:open": "cap open android",
     "android:run": "cap run android",

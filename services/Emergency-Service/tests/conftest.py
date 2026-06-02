@@ -1,9 +1,10 @@
 """
-Test configuration and shared fixtures for Maintenance Service tests
+Test configuration and shared fixtures for Emergency Service tests
 """
 
 import os
 import pytest
+from unittest.mock import patch
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from fastapi.testclient import TestClient
@@ -11,6 +12,7 @@ from fastapi.testclient import TestClient
 # Set fake service URLs and testing mode BEFORE importing main modules
 os.environ["ROUTING_SERVICE_URL"] = "http://fake-routing"
 os.environ["MAP_SERVICE_URL"] = "http://fake-map"
+os.environ["CONGESTION_SERVICE_URL"] = "http://fake-congestion"
 os.environ["AUTH_SERVICE_URL"] = "http://fake-auth"
 os.environ["TESTING"] = "true"
 
@@ -78,3 +80,8 @@ def db_session():
         yield session
     finally:
         session.close()
+
+
+
+
+

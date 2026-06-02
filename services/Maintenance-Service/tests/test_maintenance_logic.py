@@ -1,20 +1,10 @@
 import pytest
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
 from task_manager import TaskManager
 from staff_coordinator import StaffCoordinator, StaffInfo
 from models import Base, TaskPriority, TaskType, TaskStatus, MaintenanceTask
 from schemas import TaskCreate, BinAlertCreate
 
-# SQLite In-Memory Database Configuration
-@pytest.fixture
-def db_session():
-    engine = create_engine("sqlite:///:memory:", connect_args={"check_same_thread": False})
-    Base.metadata.create_all(engine)
-    Session = sessionmaker(bind=engine)
-    session = Session()
-    yield session
-    session.close()
+# Fixtures are provided by conftest.py
 
 @pytest.fixture
 def coordinator():
@@ -24,10 +14,10 @@ def coordinator():
 
 @pytest.fixture
 def task_manager():
-    # We use fake URLs for external services
+    # Use fake URLs for external services
     return TaskManager(
-        routing_service_url="http://test-routing",
-        map_service_url="http://test-map"
+        routing_service_url="http://fake-routing",
+        map_service_url="http://fake-map"
     )
 
 # --- StaffCoordinator Tests ---
