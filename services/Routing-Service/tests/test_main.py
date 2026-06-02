@@ -107,7 +107,7 @@ def test_pgrouting_route_endpoint(client):
     assert data["end_node"] == 71
     assert data["path"] == [63, 70, 71]
     assert "instructions" in data
-    mocked_service.get_route.assert_called_once_with(63, 71)
+    mocked_service.get_route.assert_called_once_with(63, 71, allow_blocked=False)
 
 
 def test_combined_pgrouting_route_endpoint(client):

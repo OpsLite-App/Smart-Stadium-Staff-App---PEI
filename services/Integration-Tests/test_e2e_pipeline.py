@@ -191,6 +191,8 @@ class TestEndToEndEventPipeline:
                 "location_id": location,
                 "location_type": "gate",
                 "current_queue_length": 150,
+                "arrivals_last_minute": 50,
+                "departures_last_minute": 30,
             }
             
             response = await http_client.post(

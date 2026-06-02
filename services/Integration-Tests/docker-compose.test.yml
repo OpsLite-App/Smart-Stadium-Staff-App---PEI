@@ -1,4 +1,3 @@
-version: '3.8'
 
 services:
   # Message broker for event streaming
@@ -68,8 +67,8 @@ services:
   # Routing Service - A* pathfinding
   routing-service:
     build:
-      context: ../Routing-Service
-      dockerfile: Dockerfile
+      context: ..
+      dockerfile: Routing-Service/Dockerfile
     container_name: routing-service-test
     environment:
       MAP_SERVICE_URL: http://map-service:8001
@@ -95,6 +94,7 @@ services:
     container_name: emergency-service-test
     command: ["sh", "-c", "python /wait-for-mqtt.py && uvicorn main:app --host 0.0.0.0 --port 8003"]
     environment:
+      TESTING: "true"
       DATABASE_URL: sqlite:///emergency.db
       MQTT_HOST: mosquitto
       MQTT_PORT: 1883
@@ -193,8 +193,8 @@ services:
   # Congestion Service - Crowd density monitoring
   congestion-service:
     build:
-      context: ../Congestion-Service
-      dockerfile: Dockerfile
+      context: ..
+      dockerfile: Congestion-Service/Dockerfile
     container_name: congestion-service-test
     command: ["sh", "-c", "python /wait-for-mqtt.py && uvicorn congestion_service:app --host 0.0.0.0 --port 8007"]
     environment:

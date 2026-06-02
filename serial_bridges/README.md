@@ -1,44 +1,15 @@
-Run Hardware input
+Before running this script, make sure board is flashable with the model, and run it.
 
-serial_to_gis_bridge.py accepts hardware input or mock values.
+serial_bridge will wait for connection from hardware broker and app services before doing anything.
 
-Get token from
-Windows (PowerShell):
-curl -X POST http://localhost:8081/auth/login ^
-  -H "Content-Type: application/json" ^
-  -d "{\"username\":\"<SUPERVISOR_USERNAME>\",\"password\":\"<PASSWORD>\"}"
+If no env variables are passed, it will run with default values, which are Windows variables.
 
-Linux/macOS (bash):
-curl -X POST http://localhost:8081/auth/login \
-  -H "Content-Type: application/json" \
-  -d '{"username":"<SUPERVISOR_USERNAME>","password":"<PASSWORD>"}'
+Windows:
+$env:SERIAL_PORT="COM4"
+$env:SERIAL_BAUD="115200"
+python .\serial_bridge.py
 
-for mock
-Windows (PowerShell):
-$env:SUPERVISOR_TOKEN = "<PASTE_TOKEN_HERE>"
-$env:MOCK_MODE = "1"
-$env:MOCK_COUNTS = "12,18,25,33,45,60,48,30"
-$env:MOCK_INTERVAL_SEC = "2"
-python .\serial_to_gis_bridge.py
-
-Linux/macOS (bash):
-export SUPERVISOR_TOKEN="<PASTE_TOKEN_HERE>"
-export MOCK_MODE="1"
-export MOCK_COUNTS="12,18,25,33,45,60,48,30"
-export MOCK_INTERVAL_SEC="2"
-python ./serial_to_gis_bridge.py
-
-for hardware:
-Windows (PowerShell):
-$env:SERIAL_PORT = "COM4"     # change if different
-$env:SERIAL_BAUD = "115200"
-$env:SUPERVISOR_TOKEN = "<PASTE_TOKEN_HERE>"
-$env:MOCK_MODE = "0"
-python .\serial_to_gis_bridge.py
-
-Linux/macOS (bash):
-export SERIAL_PORT="/dev/ttyUSB0"  # change if different
+Linux / macOS
+export SERIAL_PORT="/dev/ttyUSB0"
 export SERIAL_BAUD="115200"
-export SUPERVISOR_TOKEN="<PASTE_TOKEN_HERE>"
-export MOCK_MODE="0"
-python ./serial_to_gis_bridge.py
+python ./serial_bridge.py
