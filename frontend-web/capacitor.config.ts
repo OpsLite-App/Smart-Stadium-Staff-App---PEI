@@ -1,13 +1,13 @@
 import type { CapacitorConfig } from '@capacitor/cli';
 
-const serverUrl = process.env.CAPACITOR_SERVER_URL || 'http://opslite-server.local';
+const serverUrl = process.env.CAPACITOR_SERVER_URL || 'http://192.168.0.35';
 
 const config: CapacitorConfig = {
   appId: 'pt.opslite.staff',
   appName: 'OpsLite Staff',
   webDir: 'capacitor-web',
   server: {
-    // Local bridge: the phone reaches Traefik through the VM's mDNS hostname.
+    // Local bridge: the phone reaches Traefik through the VM's LAN address.
     // Override this with an HTTPS URL when deploying through a public domain.
     url: serverUrl,
     cleartext: serverUrl.startsWith('http://'),

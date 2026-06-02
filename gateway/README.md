@@ -11,11 +11,11 @@ Port `8080` remains available for debugging and load testing. The Docker
 frontend forwards its same-origin `/api/*` requests to Traefik through
 `API_GATEWAY_URL=http://traefik-gateway:8080`. Browser WebSocket traffic uses
 the same public host through `/ws`, including when the Android shell loads the
-app from `http://opslite-server.local`.
+app from `http://192.168.0.35`.
 
-For a local-router demonstration, advertise the VM hostname with Avahi and open
-`http://opslite-server.local` from the phone. For a public deployment, create a
-DNS record such as `opslite.nmiguelcosta.pt` and terminate TLS before Traefik.
+For a local-router demonstration, open `http://192.168.0.35` from the phone.
+For a public deployment, create a DNS record such as
+`opslite.nmiguelcosta.pt` and terminate TLS before Traefik.
 
 ## Public Routes
 

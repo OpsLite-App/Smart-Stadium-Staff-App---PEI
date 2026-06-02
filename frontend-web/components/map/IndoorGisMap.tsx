@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { useAuthStore } from '@/lib/stores/useAuthStore';
-import { api, mapCoordsToLatLng } from '@/lib/services/api';
+import { api, mapCoordsToLatLng, type HeatmapPoint, type StaffMember, type StaffPosition } from '@/lib/services/api';
 import {
   gisApi,
   type CameraCoverageProperties,
@@ -127,6 +127,14 @@ const coverageStyles: Record<CameraDensityLevel, { color: string; fillColor: str
 };
 
 const EMPTY_SELECTED_NODE_IDS: string[] = [];
+
+interface BinAlert {
+  id: string;
+  status?: string;
+  completed_at?: string | null;
+  location_node?: string | number | null;
+  fill_percentage?: number;
+}
 
 function buildCameraStatusLookup(statuses: CameraStatus[]) {
   return {
@@ -287,14 +295,17 @@ export function IndoorGisMap({
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<import('leaflet').Map | null>(null);
   const layerGroupRef = useRef<import('leaflet').LayerGroup | null>(null);
+  const staffLayerGroupRef = useRef<import('leaflet').LayerGroup | null>(null);
   const lastFloorIdRef = useRef<number | null>(null);
   const loadedFloorIdRef = useRef<number | null>(null);
-  const lastRouteGeoJsonRef = useRef<any>(null);
+  const lastRouteGeoJsonRef = useRef<GisFeatureCollection<RouteEdgeProperties> | null>(null);
+  const floorNodeIdsRef = useRef<Set<string>>(new Set());
   const hasFittedRef = useRef<boolean>(false);
   const [mapReady, setMapReady] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [refreshToken, setRefreshToken] = useState(0);
+  const [staffRefreshToken, setStaffRefreshToken] = useState(0);
   const canViewBins = Boolean(user?.permissions?.canViewBins || (user?.role && ['Cleaning', 'Supervisor'].includes(user.role)));
   void showCameraControls;
 
@@ -325,8 +336,10 @@ export function IndoorGisMap({
       }).addTo(map);
 
       const layers = L.layerGroup().addTo(map);
+      const staffLayers = L.layerGroup().addTo(map);
       mapRef.current = map;
       layerGroupRef.current = layers;
+      staffLayerGroupRef.current = staffLayers;
       setMapReady(true);
     }
 
@@ -338,13 +351,14 @@ export function IndoorGisMap({
         mapRef.current.remove();
         mapRef.current = null;
         layerGroupRef.current = null;
+        staffLayerGroupRef.current = null;
       }
     };
   }, []);
 
   useEffect(() => {
     const timer = setInterval(() => {
-      setRefreshToken((prev) => prev + 1);
+      setStaffRefreshToken((prev) => prev + 1);
     }, 6000); // refresh every 6s to keep positions active
     return () => clearInterval(timer);
   }, []);
@@ -368,12 +382,12 @@ export function IndoorGisMap({
   useEffect(() => {
     if (!mapReady || !mapRef.current) return;
 
-    const handlePopupOpen = (e: any) => {
+    const handlePopupOpen = (e: import('leaflet').PopupEvent) => {
       const popup = e.popup;
       const container = popup.getElement();
       if (!container) return;
 
-      const btn = container.querySelector('.gis-empty-bin-btn');
+      const btn = container.querySelector<HTMLElement>('.gis-empty-bin-btn');
       if (btn) {
         const taskId = btn.getAttribute('data-task-id');
         btn.addEventListener('click', async () => {
@@ -421,7 +435,7 @@ export function IndoorGisMap({
 
         if (!mapRef.current || !layerGroupRef.current) return;
 
-        const [rooms, corridors, nodes, cameras, coverage, transitions, cameraStatusResponse, impactedEdges, pois, binAlerts, heatmapPointsRes, staffMembers, staffPositions] = await Promise.all([
+        const [rooms, corridors, nodes, cameras, coverage, transitions, cameraStatusResponse, impactedEdges, pois, binAlerts, heatmapPointsRes] = await Promise.all([
           gisApi.getRooms({ floorId }),
           gisApi.getCorridors({ floorId }),
           gisApi.getNodes({ floorId }),
@@ -433,12 +447,14 @@ export function IndoorGisMap({
           gisApi.getPois({ floorId }),
           canViewBins ? api.getBinAlerts().catch(() => []) : Promise.resolve([]),
           showHeatmap ? api.getHeatmapPoints({ floorId }).catch(() => ({ points: [] })) : Promise.resolve({ points: [] }),
-          api.getStaff().catch(() => []),
-          api.getAllStaffPositions().catch(() => []),
         ]);
 
         if (cancelled) return;
 
+        floorNodeIdsRef.current = new Set(
+          (nodes.features || []).map((feature) => String(feature.properties.node_id || feature.properties.id))
+        );
+        setStaffRefreshToken((prev) => prev + 1);
         layerGroupRef.current.clearLayers();
 
         const corridorLayer = L.geoJSON(corridors as unknown as GeoJSON.GeoJsonObject, {
@@ -692,11 +708,11 @@ export function IndoorGisMap({
               };
 
               const poiNodeId = parseNodeId(properties.node_id);
-              const activeAlerts = (binAlerts || []).filter(
-                (alert: any) => alert.status !== 'completed' && alert.status !== 'cancelled' && !alert.completed_at
+              const activeAlerts = (binAlerts as BinAlert[] || []).filter(
+                (alert) => alert.status !== 'completed' && alert.status !== 'cancelled' && !alert.completed_at
               );
               const alertForPoi = activeAlerts.find(
-                (alert: any) => parseNodeId(alert.location_node) === poiNodeId
+                (alert) => parseNodeId(alert.location_node) === poiNodeId
               );
 
               const fillPct = alertForPoi ? (alertForPoi.fill_percentage ?? 0) : 0;
@@ -770,13 +786,13 @@ export function IndoorGisMap({
           }).addTo(layerGroupRef.current)
           : null;
 
-        let heatmapLayer = null;
         if (showHeatmap && heatmapPointsRes?.points && heatmapPointsRes.points.length > 0) {
           try {
             await import('leaflet.heat');
-            const points = heatmapPointsRes.points.map((p: any) => [p.latitude, p.longitude, p.weight]);
-            // @ts-ignore
-            heatmapLayer = L.heatLayer(points, {
+            const points = heatmapPointsRes.points.map(
+              (point: HeatmapPoint): [number, number, number] => [point.latitude, point.longitude, point.weight]
+            );
+            L.heatLayer(points, {
               radius: 28,
               blur: 18,
               maxZoom: 18,
@@ -815,54 +831,6 @@ export function IndoorGisMap({
           }).addTo(layerGroupRef.current)
           : null;
 
-        // Render staff member markers
-        if (showStaffMarkers && staffMembers && staffMembers.length > 0) {
-          const floorNodeIds = new Set(
-            (nodes?.features || []).map((f: any) => String(f.properties?.node_id || f.properties?.id))
-          );
-
-          staffMembers
-            .filter((member: any) => staffFilterId == null || String(member.id) === String(staffFilterId))
-            .forEach((member: any) => {
-            const pos = staffPositions.find((p: any) => String(p.staff_id) === String(member.id));
-            if (!pos) return;
-
-            const isCurrentFloor = floorNodeIds.has(String(pos.location_id)) ||
-              (pos.zone && pos.zone.toLowerCase().includes(`floor ${floorId}`));
-
-            if (isCurrentFloor && layerGroupRef.current) {
-              let lat = pos.y;
-              let lng = pos.x;
-              if (Math.abs(lng) > 10) {
-                const converted = mapCoordsToLatLng(pos.x, pos.y);
-                lat = converted[0];
-                lng = converted[1];
-              }
-
-              const statusEmoji = member.status === 'active' ? '🟢 Active' : member.status === 'patrol' ? '🔵 Patrol' : '⚪ Break';
-              const tooltipHtml = `
-                <div style="font-family:inherit;padding:2px;">
-                  <strong style="font-size:12px;color:#1e293b;">${member.name}</strong><br/>
-                  <span style="font-size:10.5px;color:#64748b;font-weight:600;">${member.role}</span><br/>
-                  <span style="font-size:10px;margin-top:2px;display:inline-block;">Estado: ${statusEmoji}</span>
-                </div>
-              `;
-
-              L.marker([lat, lng], {
-                icon: L.divIcon({
-                  className: 'gis-staff-marker',
-                  html: getStaffIconHtml(member.role, member.name, member.status),
-                  iconSize: [32, 32],
-                  iconAnchor: [16, 16],
-                }),
-                zIndexOffset: 850,
-              })
-              .bindTooltip(tooltipHtml, { sticky: true })
-              .addTo(layerGroupRef.current);
-            }
-          });
-        }
-
         const isNewFloor = lastFloorIdRef.current !== floorId;
         const isNewRoute = lastRouteGeoJsonRef.current !== routeGeoJson;
 
@@ -897,7 +865,81 @@ export function IndoorGisMap({
     return () => {
       cancelled = true;
     };
-  }, [floorId, canViewBins, showHeatmap, showStaffMarkers, staffFilterId, mapReady, refreshToken, routeAffected, routeGeoJson, nodeSelectionMode, onNodeSelect, selectedNodeIds]);
+  }, [floorId, canViewBins, showHeatmap, showStaffMarkers, staffFilterId, mapReady, refreshToken, routeAffected, routeGeoJson, nodeSelectionMode, onNodeSelect, selectedNodeIds, user]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function renderStaffMarkers() {
+      if (!mapReady || !staffLayerGroupRef.current) return;
+
+      const staffLayerGroup = staffLayerGroupRef.current;
+      if (!showStaffMarkers) {
+        staffLayerGroup.clearLayers();
+        return;
+      }
+
+      const [leafletModule, staffMembers, staffPositions] = await Promise.all([
+        import('leaflet'),
+        api.getStaff().catch(() => []),
+        api.getAllStaffPositions().catch(() => []),
+      ]);
+
+      if (cancelled || !staffLayerGroupRef.current) return;
+
+      const L = leafletModule.default;
+      const floorNodeIds = floorNodeIdsRef.current;
+
+      staffLayerGroup.clearLayers();
+      staffMembers
+        .filter((member: StaffMember) => staffFilterId == null || String(member.id) === String(staffFilterId))
+        .forEach((member: StaffMember) => {
+          const pos = staffPositions.find((position: StaffPosition) => String(position.staff_id) === String(member.id));
+          if (!pos) return;
+
+          const isCurrentFloor = floorNodeIds.has(String(pos.location_id)) ||
+            (pos.zone && pos.zone.toLowerCase().includes(`floor ${floorId}`));
+          if (!isCurrentFloor) return;
+
+          let lat = pos.y;
+          let lng = pos.x;
+          if (Math.abs(lng) > 10) {
+            [lat, lng] = mapCoordsToLatLng(pos.x, pos.y);
+          }
+
+          const statusLabel = member.status === 'active'
+            ? 'Ativo'
+            : member.status === 'patrol'
+              ? 'Em patrulha'
+              : 'Em pausa';
+          const tooltipHtml = `
+            <div style="font-family:inherit;padding:2px;">
+              <strong style="font-size:12px;color:#1e293b;">${member.name}</strong><br/>
+              <span style="font-size:10.5px;color:#64748b;font-weight:600;">${member.role}</span><br/>
+              <span style="font-size:10px;margin-top:2px;display:inline-block;">Estado: ${statusLabel}</span>
+            </div>
+          `;
+
+          L.marker([lat, lng], {
+            icon: L.divIcon({
+              className: 'gis-staff-marker',
+              html: getStaffIconHtml(member.role, member.name, member.status),
+              iconSize: [32, 32],
+              iconAnchor: [16, 16],
+            }),
+            zIndexOffset: 850,
+          })
+            .bindTooltip(tooltipHtml, { sticky: true })
+            .addTo(staffLayerGroup);
+        });
+    }
+
+    void renderStaffMarkers();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [floorId, mapReady, showStaffMarkers, staffFilterId, staffRefreshToken]);
 
   return (
     <div className="overflow-hidden rounded-[1.5rem] border border-slate-200 bg-slate-50">
