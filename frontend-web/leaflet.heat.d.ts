@@ -7,6 +7,7 @@ declare module 'leaflet' {
       radius?: number;
       blur?: number;
       maxZoom?: number;
+      max?: number;
       gradient?: Record<number, string>;
     }
   ): Layer;

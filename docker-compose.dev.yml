@@ -182,7 +182,7 @@ services:
     environment:
       NEXT_TELEMETRY_DISABLED: "1"
       WATCHPACK_POLLING: "true"
-      NEXT_ALLOWED_DEV_ORIGINS: ${NEXT_ALLOWED_DEV_ORIGINS:-opslite-server.local,opslite-server,192.168.0.*,192.168.1.*,10.0.*,localhost,127.0.0.1}
+      NEXT_ALLOWED_DEV_ORIGINS: ${NEXT_ALLOWED_DEV_ORIGINS:-192.168.0.35,localhost,127.0.0.1}
       API_GATEWAY_URL: http://traefik-gateway:8080
       AUTH_SERVICE_URL: http://auth-service:8081
       CONGESTION_SERVICE_URL: http://congestion-service:8005
@@ -583,6 +583,12 @@ services:
       REDIS_PORT: "6379"
     ports:
       - "8004:8004"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8004/health', timeout=2)"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
 
   event-processor:
     build:
