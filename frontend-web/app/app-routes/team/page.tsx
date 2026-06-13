@@ -136,11 +136,29 @@ interface ApiStaffMember {
   last_active?: string;
   tasks_completed?: number;
   tasks_pending?: number;
+  response_time?: number;
+  satisfaction?: number;
+  attendance?: number;
+  alerts_handled?: number;
+  device_type?: string;
+  battery?: number;
+  device_status?: string;
+  last_sync?: string;
 }
 
 function toTeamRole(role: string | undefined): TeamMember['role'] {
   const allowedRoles: TeamMember['role'][] = ['Security', 'Cleaning', 'Supervisor', 'Medical', 'Maintenance', 'Staff'];
   return allowedRoles.includes(role as TeamMember['role']) ? (role as TeamMember['role']) : 'Staff';
+}
+
+function toDeviceType(type: string | undefined): TeamMember['device']['type'] {
+  const allowedTypes: TeamMember['device']['type'][] = ['mobile', 'radio', 'tablet'];
+  return allowedTypes.includes(type as TeamMember['device']['type']) ? (type as TeamMember['device']['type']) : 'mobile';
+}
+
+function toDeviceStatus(status: string | undefined): TeamMember['device']['status'] {
+  const allowedStatuses: TeamMember['device']['status'][] = ['online', 'offline', 'charging'];
+  return allowedStatuses.includes(status as TeamMember['device']['status']) ? (status as TeamMember['device']['status']) : 'offline';
 }
 
 export default function TeamPage() {
@@ -274,31 +292,26 @@ export default function TeamPage() {
               type: 'morning'
             },
             metrics: {
-              tasks_completed: staff.tasks_completed || Math.floor(Math.random() * 20) + 10,
-              tasks_pending: staff.tasks_pending || Math.floor(Math.random() * 5),
-              response_time: Math.floor(Math.random() * 5) + 1,
-              satisfaction: Math.floor(Math.random() * 20) + 80,
-              attendance: Math.floor(Math.random() * 10) + 90,
-              alerts_handled: Math.floor(Math.random() * 15) + 5
+              tasks_completed: staff.tasks_completed ?? 0,
+              tasks_pending: staff.tasks_pending ?? 0,
+              response_time: staff.response_time ?? 0,
+              satisfaction: staff.satisfaction ?? 0,
+              attendance: staff.attendance ?? 0,
+              alerts_handled: staff.alerts_handled ?? 0
             },
             device: {
               id: `DEV-${staff.id ?? 10000 + index}`,
-              type: 'mobile',
-              battery: Math.floor(Math.random() * 100),
-              status: Math.random() > 0.2 ? 'online' : 'offline',
-              last_sync: new Date().toISOString()
+              type: toDeviceType(staff.device_type),
+              battery: staff.battery ?? 0,
+              status: toDeviceStatus(staff.device_status),
+              last_sync: staff.last_sync || new Date().toISOString()
             },
             skills: ['Primeiros Socorros', 'Comunicação'],
             certifications: ['Segurança Básica']
           }));
         }
       } catch (apiError) {
-        console.warn('[Team] Staff API unavailable; using fallback data');
-      }
-
-      // Se não conseguiu dados da API, usar dados mock
-      if (teamMembers.length === 0) {
-        teamMembers = generateMockTeam();
+        console.warn('[Team] Staff API unavailable; showing empty team state', apiError);
       }
 
       setMembers(teamMembers);
@@ -307,108 +320,13 @@ export default function TeamPage() {
       
     } catch (error) {
       console.error('[Team] Failed to fetch staff members:', error);
-      const mockMembers = generateMockTeam();
-      setMembers(mockMembers);
-      calculateStats(mockMembers);
-      generateGroups(mockMembers);
+      setMembers([]);
+      calculateStats([]);
+      generateGroups([]);
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  };
-
-  // Gerar dados mock para desenvolvimento
-  const generateMockTeam = (): TeamMember[] => {
-    const names = [
-      'Ana Silva', 'João Santos', 'Maria Oliveira', 'Pedro Costa', 
-      'Sofia Ferreira', 'Carlos Rodrigues', 'Inês Pereira', 'Rui Almeida',
-      'Catarina Gomes', 'Miguel Carvalho', 'Beatriz Sousa', 'Tiago Fernandes',
-      'Mariana Ribeiro', 'André Pinto', 'Joana Correia', 'Hugo Neves',
-      'Laura Monteiro', 'Filipe Mendes', 'Rita Nunes', 'Bruno Teixeira'
-    ];
-
-    const roles: Array<'Security' | 'Cleaning' | 'Supervisor' | 'Medical' | 'Maintenance' | 'Staff'> = [
-      'Security', 'Security', 'Security', 'Security',
-      'Cleaning', 'Cleaning', 'Cleaning',
-      'Supervisor', 'Supervisor',
-      'Medical',
-      'Maintenance', 'Maintenance',
-      'Staff', 'Staff'
-    ];
-
-    const locations = [
-      'Setor A - Entrada', 'Setor B - Bancada', 'Setor VIP - Camarotes',
-      'Corredor 1', 'Corredor 2', 'Zona Mista', 'Balneários',
-      'Sala de Controlo', 'Portão 1', 'Portão 2', 'Estacionamento'
-    ];
-
-    const statuses: Array<'active' | 'offline' | 'break' | 'busy' | 'training'> = [
-      'active', 'active', 'active', 'active', 'active',
-      'break', 'break',
-      'busy', 'busy',
-      'offline',
-      'training'
-    ];
-
-    return names.map((name, index) => {
-      const role = roles[index % roles.length];
-      const status = statuses[Math.floor(Math.random() * statuses.length)];
-      const location = locations[Math.floor(Math.random() * locations.length)];
-      const battery = Math.floor(Math.random() * 100);
-      
-      return {
-        id: index + 1,
-        name,
-        email: `${name.toLowerCase().replace(' ', '.')}@fcp.pt`,
-        role,
-        status,
-        location,
-        location_details: {
-          node_id: `NODE-${index + 1}`,
-          area: location.split(' - ')[0],
-          coordinates: {
-            lat: 41.161758 + (Math.random() * 0.01 - 0.005),
-            lng: -8.583933 + (Math.random() * 0.01 - 0.005)
-          }
-        },
-        last_active: new Date(Date.now() - Math.random() * 3600000).toISOString(),
-        shift: {
-          start: index % 3 === 0 ? '00:00' : index % 3 === 1 ? '08:00' : '16:00',
-          end: index % 3 === 0 ? '08:00' : index % 3 === 1 ? '16:00' : '00:00',
-          type: index % 3 === 0 ? 'night' : index % 3 === 1 ? 'morning' : 'afternoon'
-        },
-        metrics: {
-          tasks_completed: Math.floor(Math.random() * 50) + 20,
-          tasks_pending: Math.floor(Math.random() * 10),
-          response_time: Math.floor(Math.random() * 10) + 2,
-          satisfaction: Math.floor(Math.random() * 30) + 70,
-          attendance: Math.floor(Math.random() * 20) + 80,
-          alerts_handled: Math.floor(Math.random() * 30) + 10
-        },
-        device: {
-          id: `DEV-${index + 1000}`,
-          type: Math.random() > 0.7 ? 'radio' : 'mobile',
-          battery,
-          status: battery < 15 ? 'charging' : Math.random() > 0.2 ? 'online' : 'offline',
-          last_sync: new Date().toISOString()
-        },
-        skills: role === 'Security' 
-          ? ['Primeiros Socorros', 'Controlo de Multidões', 'Vigilância']
-          : role === 'Cleaning'
-          ? ['Limpeza Profissional', 'Gestão de Resíduos', 'Produtos Químicos']
-          : role === 'Supervisor'
-          ? ['Liderança', 'Gestão de Equipas', 'Comunicação']
-          : ['Atendimento', 'Apoio'],
-        certifications: role === 'Medical' 
-          ? ['Suporte Básico de Vida', 'Primeiros Socorros Avançados']
-          : ['Formação Inicial'],
-        emergency_contact: {
-          name: 'Contacto Emergência',
-          phone: '912345678',
-          relation: 'Familiar'
-        }
-      };
-    });
   };
 
   // Gerar grupos por role/localização

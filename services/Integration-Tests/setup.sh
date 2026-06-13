@@ -74,8 +74,8 @@ if [ "$SKIP_DOCKER" = false ]; then
         echo -e "${YELLOW}Waiting for services to be ready...${NC}"
         
         # Wait for services to be healthy
-        services=("map-service" "routing-service" "emergency-service" "maintenance-service" "positioning-service" "queueing-service" "congestion-service" "chat-service")
-        ports=(8001 8002 8003 8004 8005 8006 8007 8008)
+        services=("routing-service" "emergency-service" "maintenance-service" "positioning-service" "queueing-service" "congestion-service" "chat-service")
+        ports=(8002 8003 8004 8005 8006 8007 8008)
         
         max_attempts=30
         attempt=0

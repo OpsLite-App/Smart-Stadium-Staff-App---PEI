@@ -75,6 +75,17 @@ class NodeClosureCreate(BaseModel):
     is_active: bool = True
 
 
+class NodeImpactCreate(BaseModel):
+    node_id: int
+    cost_multiplier: float = 1.0
+    reason: Optional[str] = None
+    source: str = "manual"
+    severity: float = 0.5
+    starts_at: Optional[str] = None
+    ends_at: Optional[str] = None
+    is_active: bool = True
+
+
 class EdgeOverrideResponse(EdgeOverrideBase):
     id: int
 
@@ -868,6 +879,60 @@ class PgRoutingService:
                             int(row["edge_id"]),
                             True,
                             99.0,
+                            payload.reason,
+                            payload.source,
+                            payload.severity,
+                            payload.starts_at,
+                            payload.ends_at,
+                            payload.is_active,
+                        ),
+                    ).fetchone()
+                )
+            conn.commit()
+
+        return [self._to_edge_override_response(row) for row in inserted]
+
+    def create_node_impact(self, payload: NodeImpactCreate) -> List[EdgeOverrideResponse]:
+        """Increase traversal cost for every edge connected to a graph node."""
+        if payload.cost_multiplier < 1.0:
+            raise HTTPException(status_code=400, detail="cost_multiplier must be >= 1.0")
+
+        with get_connection() as conn:
+            rows = conn.execute(
+                """
+                SELECT edge_id
+                FROM edges
+                WHERE from_node = %s OR to_node = %s
+                ORDER BY edge_id
+                """,
+                (payload.node_id, payload.node_id),
+            ).fetchall()
+
+            if not rows:
+                raise HTTPException(status_code=404, detail=f"Node {payload.node_id} has no connected edges")
+
+            # Keep one current impact per source, e.g. one active crowd state per node.
+            conn.execute(
+                """
+                UPDATE graph_edge_overrides
+                SET is_active = FALSE,
+                    ends_at = COALESCE(ends_at, NOW()),
+                    updated_at = NOW()
+                WHERE source = %s
+                  AND is_active = TRUE
+                """,
+                (payload.source,),
+            )
+
+            inserted = []
+            for row in rows:
+                inserted.append(
+                    conn.execute(
+                        self.INSERT_EDGE_OVERRIDE_SQL,
+                        (
+                            int(row["edge_id"]),
+                            False,
+                            payload.cost_multiplier,
                             payload.reason,
                             payload.source,
                             payload.severity,

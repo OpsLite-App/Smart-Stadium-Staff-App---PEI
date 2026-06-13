@@ -27,7 +27,7 @@ class TestEndToEndEventPipeline:
         Test complete emergency response flow:
         1. Report incident → Emergency Service
         2. Emergency Service queries Routing Service for nearest responder location
-        3. Routing Service queries Map Service for graph
+        3. Routing Service uses the PostGIS/pgRouting indoor graph
         4. Route is calculated and returned
         5. Responders are dispatched
         """
@@ -88,7 +88,7 @@ class TestEndToEndEventPipeline:
         """
         Test complete maintenance workflow:
         1. Create maintenance task
-        2. Query Map Service for location details
+        2. Confirm the Routing Service graph is available
         3. Calculate route from staff position to task
         4. Assign staff member
         5. Update task as in-progress/completed
@@ -112,13 +112,13 @@ class TestEndToEndEventPipeline:
         task_id = task.get("id")
         print(f"  ✓ Task created: {task_id}")
         
-        # Step 2: Get location details from Map Service
-        print("Step 2: Querying location details...")
+        # Step 2: Confirm routing graph availability
+        print("Step 2: Checking routing graph status...")
         location_response = await http_client.get(
-            f"{service_urls['map']}/nodes/{maintenance_task_data['location']}",
+            f"{service_urls['routing']}/graph/status",
         )
         if location_response.status_code == 200:
-            print("  ✓ Location details retrieved")
+            print("  ✓ Routing graph status retrieved")
         
         # Step 3: Calculate route
         print("Step 3: Calculating route to task...")
@@ -275,17 +275,17 @@ class TestServiceInterconnectivity:
     ):
         """
         Test: Complete service chain execution
-        Map → Routing → Emergency (or other dependent service)
+        PostGIS/pgRouting → Routing → Emergency
         """
         print("\n=== Testing Service Chain Execution ===")
         
-        # Step 1: Query Map Service
-        print("Step 1: Query Map Service...")
+        # Step 1: Query Routing graph status
+        print("Step 1: Query Routing graph status...")
         response = await http_client.get(
-            f"{service_urls['map']}/nodes/{map_service_data['start_node']}",
+            f"{service_urls['routing']}/graph/status",
         )
-        map_ok = response.status_code == 200
-        print(f"  {'✓' if map_ok else '✗'} Map Service")
+        graph_ok = response.status_code == 200
+        print(f"  {'✓' if graph_ok else '✗'} PostGIS/pgRouting graph")
         
         # Step 2: Use Routing Service (depends on Map data)
         print("Step 2: Use Routing Service...")
@@ -313,4 +313,4 @@ class TestServiceInterconnectivity:
         emergency_ok = response.status_code == 201
         print(f"  {'✓' if emergency_ok else '✗'} Emergency Service")
         
-        assert map_ok and routing_ok and emergency_ok
+        assert graph_ok and routing_ok and emergency_ok

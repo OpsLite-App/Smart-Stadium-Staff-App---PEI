@@ -8,7 +8,7 @@ This test suite validates the critical workflows and service interactions in you
 
 - **Emergency Response Workflow**: Incident creation → Route planning → Responder dispatch
 - **Maintenance Task Workflow**: Task creation → Staff assignment → Route planning
-- **Routing & Map Integration**: Graph-based pathfinding with hazard awareness
+- **Routing & GIS Integration**: PostGIS/pgRouting pathfinding with graph override awareness
 - **Queue Management**: Real-time queue state tracking with wait time estimation
 - **Congestion Monitoring**: Crowd density heatmap and zone tracking
 - **Positioning Service**: WiFi-based staff localization
@@ -22,8 +22,7 @@ This test suite validates the critical workflows and service interactions in you
 |---------|---------|----------|----------|
 | Emergency-Service | Incident management & responder dispatch | SQLite | 8003 |
 | Maintenance-Service | Task management & staff coordination | SQLite | 8004 |
-| Routing-Service | A* pathfinding with hazard awareness | In-memory | 8002 |
-| Map-Service | Stadium graph & location data | PostgreSQL | 8001 |
+| Routing-Service | PostGIS/pgRouting indoor pathfinding | postgres_map | 8002 |
 | Queueing-Service | Queue state & wait time estimation | In-memory | 8006 |
 | Congestion-Service | Crowd density heatmap tracking | In-memory | 8007 |
 | Positioning-Service | WiFi-based staff localization | SQLite | 8005 |
@@ -32,10 +31,10 @@ This test suite validates the critical workflows and service interactions in you
 ### Service Dependencies
 
 ```
-Emergency-Service → Routing-Service → Map-Service
+Emergency-Service → Routing-Service → postgres_map
                  → Congestion-Service
                  
-Maintenance-Service → Routing-Service → Map-Service
+Maintenance-Service → Routing-Service → postgres_map
                     → Auth-Service
                     
 Queueing-Service (independent, uses MQTT events)
@@ -95,7 +94,6 @@ source .venv/bin/activate  # On Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 
 # Verify services are running
-curl http://localhost:8001/health  # Map Service
 curl http://localhost:8003/health  # Emergency Service
 # etc.
 
@@ -220,7 +218,7 @@ pytest integration_tests/ -v -s
 - **`test_routing_workflow.py`**: Pathfinding and route calculation
 - **`test_queue_and_congestion.py`**: Queue state and crowd density monitoring
 - **`test_positioning_service.py`**: WiFi-based staff localization
-- **`test_map_service.py`**: Stadium graph management and data integrity
+- **`test_map_service.py`**: legacy Map-Service tests kept as skipped historical reference
 - **`test_e2e_pipeline.py`**: Complete end-to-end workflows and service chains
 
 ### Test Markers
@@ -257,7 +255,7 @@ Tests are organized with pytest markers:
 1. **Single Route** - A* pathfinding between two nodes
 2. **Multi-Destination** - TSP-like multi-stop routing
 3. **Nearest Node** - Find closest point to coordinates
-4. **Hazard Awareness** - Avoid dangerous/closed areas
+4. **Graph Override Awareness** - Use node closures and cost impacts stored in PostGIS
 
 ### Queue & Congestion
 
@@ -292,13 +290,12 @@ incident_data  # Sample emergency incident
 maintenance_task_data  # Sample maintenance task
 queue_event_data  # Sample queue observation
 crowd_density_data  # Sample crowd density
-map_service_data  # Pre-populated Map Service nodes
+map_service_data  # Legacy fixture name; returns real PostGIS/pgRouting node IDs
 ```
 
 ### Service URLs
 ```python
 service_urls = {
-    "map": "http://localhost:8001",
     "routing": "http://localhost:8002",
     "emergency": "http://localhost:8003",
     "maintenance": "http://localhost:8004",
@@ -313,25 +310,25 @@ service_urls = {
 
 ### Services Not Starting
 
-1. **Check ports**: Ensure ports 8001-8008 are available
+1. **Check ports**: Ensure ports 8002-8008 are available
 2. **Docker**: Verify Docker daemon is running
 3. **Logs**: Check service logs: `docker logs <service_name>`
 
 ### Connection Errors
 
 ```
-ConnectionError: Failed to connect to http://localhost:8001
+ConnectionError: Failed to connect to http://localhost:8002
 ```
 
 **Solution**: Verify service is running and health endpoint responds:
 ```bash
-curl http://localhost:8001/health
+curl http://localhost:8002/health
 ```
 
 ### Database Errors
 
 Services use different databases:
-- **PostgreSQL**: Map-Service, Chat-Service
+- **PostgreSQL**: postgres_map, Chat-Service
 - **SQLite**: Emergency-Service, Maintenance-Service, Positioning-Service
 - **In-memory**: Queueing-Service, Congestion-Service
 
@@ -410,7 +407,7 @@ Docker Compose for Testing
 
 The test suite uses a dedicated Docker Compose file: `docker-compose.test.yml`
 
-This file contains all 8 services needed for testing, isolated from your main development environment.
+This file contains the active services needed for testing, isolated from your main development environment.
 
 ### Key Features
 
@@ -443,7 +440,6 @@ docker-compose -f docker-compose.test.yml down -v
 All services are configured to communicate internally:
 
 ```yaml
-Map Service:       http://localhost:8001
 Routing Service:   http://localhost:8002
 Emergency Service: http://localhost:8003
 Maintenance Srv:   http://localhost:8004
@@ -453,18 +449,18 @@ Congestion Srv:    http://localhost:8007
 Chat Service:      http://localhost:8008
 MQTT Broker:       localhost:1883
 PostgreSQL:        localhost:5432
+PostGIS/pgRouting: localhost:5435
 ```
 
 ### Check Service Status
 
 ```bash
 # All at once
-for port in 8001 8002 8003 8004 8005 8006 8007 8008; do
+for port in 8002 8003 8004 8005 8006 8007 8008; do
     echo "Port $port: $(curl -s http://localhost:$port/health && echo 'OK' || echo 'FAIL')"
 done
 
 # Individual service logs
-docker logs map-service-test
 docker logs routing-service-test
 docker logs emergency-service-test
 # etc.

@@ -9,6 +9,7 @@ import requests
 import time
 import json
 import signal
+from datetime import datetime, timedelta, timezone
 from typing import Dict
 
 from http.server import BaseHTTPRequestHandler, HTTPServer
@@ -35,6 +36,8 @@ WAIT_TIMES_SERVICE_URL = os.getenv("WAIT_TIMES_SERVICE_URL", "http://event-proce
 CONGESTION_SERVICE_URL = os.getenv("CONGESTION_SERVICE_URL", "http://congestion-service:8005")
 EMERGENCY_SERVICE_URL = os.getenv("EMERGENCY_SERVICE_URL", "http://emergency-service:8006")
 MAINTENANCE_SERVICE_URL = os.getenv("MAINTENANCE_SERVICE_URL", "http://maintenance-service:8007")
+EMULATOR_CLOSURE_TTL_SECONDS = int(os.getenv("EVENT_PROCESSOR_CLOSURE_TTL_SECONDS", "180"))
+INTERNAL_SERVICE_TOKEN = os.getenv("INTERNAL_SERVICE_TOKEN", "opslite-internal-dev-token")
 
 
 
@@ -55,6 +58,22 @@ class EventProcessor:
         
         # Track queue state per location
         self.queue_observations = {}
+        self.clear_previous_emulator_closures()
+
+    def clear_previous_emulator_closures(self):
+        """Clear stale blocking closures from previous emulator runs."""
+        try:
+            response = requests.post(
+                f"{ROUTING_SERVICE_URL}/api/graph/edge-overrides/deactivate-by-source",
+                params={"source": "emulator-stadium"},
+                timeout=3,
+            )
+            if response.status_code == 200:
+                print(f"[INFO] Cleared previous emulator closures: {response.json().get('deactivated', 0)}", flush=True)
+            elif response.status_code >= 400:
+                print(f"[WARNING] Could not clear previous emulator closures: {response.status_code}", flush=True)
+        except Exception as exc:
+            print(f"[WARNING] Could not clear previous emulator closures: {exc}", flush=True)
     
     def process_event(self, event: Dict):
         """Process incoming event and call appropriate service"""
@@ -205,21 +224,38 @@ class EventProcessor:
         location_node = event.get("location_node", "66")
         priority = event.get("priority", "high")
         details = event.get("details", "").lower()
+        assigned_role = str(event.get("assigned_role") or "").strip().lower()
 
-        # Determine role
-        role = "medic" if any(x in details for x in ["medical", "medic", "faint", "injury"]) else "security"
+        if assigned_role in {"security", "medic", "cleaning"}:
+            role = assigned_role
+        elif any(x in details for x in ["medical", "medic", "faint", "injury"]):
+            role = "medic"
+        else:
+            role = "security"
+
+        severity = priority if priority in {"low", "medium", "high", "critical"} else "high"
 
         incident_payload = {
             "incident_type": role,
-            "location_node": location_node,
-            "priority": priority,
-            "description": details
+            "location_node": str(location_node),
+            "severity": severity,
+            "description": details,
+            "detected_by": "emulator",
+            "reported_by": sos_id,
+            "incident_metadata": {
+                "source": "emulator-stadium",
+                "sos_id": sos_id,
+            },
         }
 
-        # 1️⃣ Create incident
         try:
-            r = requests.post(f"{EMERGENCY_SERVICE_URL}/api/emergency/incidents",
-                            json=incident_payload, timeout=3)
+            r = requests.post(
+                f"{EMERGENCY_SERVICE_URL}/api/emergency/internal/incidents",
+                params={"auto_dispatch": True},
+                json=incident_payload,
+                headers={"X-Internal-Service-Token": INTERNAL_SERVICE_TOKEN},
+                timeout=3,
+            )
             if r.status_code not in [200, 201]:
                 print(f"[WARNING] Incident creation failed: sos_id={sos_id} response={r.text}", flush=True)
                 return
@@ -228,45 +264,15 @@ class EventProcessor:
             if not incident_id:
                 print(f"[WARNING] Incident ID unavailable after creation: sos_id={sos_id}", flush=True)
                 return
+
+            self.processed["sos_event"] += 1
+            print(f"[INFO] SOS incident created: sos_id={sos_id} incident_id={incident_id} role={role} severity={severity}", flush=True)
         except Exception as e:
             print(f"[WARNING] Incident creation failed: sos_id={sos_id} error={e}", flush=True)
-            return
-
-        # 2️⃣ Dispatch responders
-        try:
-            response = requests.post(
-                f"{EMERGENCY_SERVICE_URL}/api/emergency/dispatch",
-                json={
-                    "incident_id": incident_id,
-                    "responder_role": role,
-                    "num_responders": 1
-                },
-                timeout=3
-            )
-            print("Emergency", flush=True)
-
-            if response.status_code in [200, 201]:
-                dispatch_list = response.json()
-                if dispatch_list:
-                    assigned = dispatch_list[0]
-
-                    # Robust key access with fallbacks
-                    staff_id = assigned.get("staff_id") or assigned.get("id") or assigned.get("staffId") or "UNKNOWN"
-                    eta = assigned.get("eta_seconds") or assigned.get("etaSeconds") or 0
-
-                    self.processed["sos_event"] += 1
-                    print(f"[INFO] SOS responder assigned: sos_id={sos_id} staff_id={staff_id} role={role} eta_seconds={eta}", flush=True)
-                else:
-                    print(f"[WARNING] SOS responder not assigned: sos_id={sos_id} role={role}", flush=True)
-            else:
-                print(f"[WARNING] SOS responder unavailable: sos_id={sos_id} role={role} status={response.status_code}", flush=True)
-
-        except Exception as e:
-            print(f"[WARNING] SOS response failed: sos_id={sos_id} error={e}", flush=True)
         
     def handle_crowd_density(self, event: Dict):
         """
-        Crowd density → Update hazard map in Routing Service
+        Crowd density → Increase pgRouting costs around busy nodes
         
         Event: {
             "event_type": "crowd_density",
@@ -278,39 +284,87 @@ class EventProcessor:
         }
         """
         area_id = event.get("area_id")
-        occupancy_rate = min(event.get("occupancy_rate", 0), 100)
+        try:
+            occupancy_rate = min(float(event.get("occupancy_rate", 0)), 100.0)
+        except (TypeError, ValueError):
+            occupancy_rate = 0.0
 
-        
-        # Only update if occupancy > 50%
-        if occupancy_rate > 50:
+        if not area_id:
+            return
+
+        source = f"emulator-stadium:crowd:{area_id}"
+
+        if occupancy_rate <= 50:
             try:
-                response = requests.post(
-                    f"{ROUTING_SERVICE_URL}/api/hazards/crowd",
-                    params={
-                        "node_id": area_id,
-                        "occupancy_rate": occupancy_rate
-                    },
-                    timeout=2
+                requests.post(
+                    f"{ROUTING_SERVICE_URL}/api/graph/edge-overrides/deactivate-by-source",
+                    params={"source": source},
+                    timeout=2,
                 )
-                print("Crowd", flush=True)
-                
-                if response.status_code == 200:
-                    self.processed["crowd_density"] += 1
-                    
-                    if occupancy_rate > 80:
-                        print(f"[WARNING] Crowd threshold exceeded: area_id={area_id} occupancy_rate={occupancy_rate:.0f}", flush=True)
-            
             except Exception as e:
-                print(f"[WARNING] Crowd penalty update failed: area_id={area_id} error={e}", flush=True)
+                print(f"[WARNING] Crowd impact clear failed: area_id={area_id} error={e}", flush=True)
+            return
+
+        if occupancy_rate >= 90:
+            cost_multiplier = 7.5
+            severity = 0.9
+        elif occupancy_rate >= 80:
+            cost_multiplier = 4.0
+            severity = 0.75
+        else:
+            cost_multiplier = 2.0
+            severity = 0.55
+
+        try:
+            ends_at = (datetime.now(timezone.utc) + timedelta(seconds=EMULATOR_CLOSURE_TTL_SECONDS)).isoformat()
+            response = requests.post(
+                f"{ROUTING_SERVICE_URL}/api/graph/node-impacts",
+                json={
+                    "node_id": int(area_id),
+                    "cost_multiplier": cost_multiplier,
+                    "reason": f"crowd_density_{occupancy_rate:.0f}pct",
+                    "source": source,
+                    "severity": severity,
+                    "ends_at": ends_at,
+                    "is_active": True,
+                },
+                timeout=3,
+            )
+            print("Crowd", flush=True)
+
+            if response.status_code in [200, 201]:
+                impacted_edges = len(response.json() or [])
+                self.processed["crowd_density"] += 1
+
+                if occupancy_rate > 80:
+                    print(
+                        f"[WARNING] Crowd routing impact applied: area_id={area_id} "
+                        f"occupancy_rate={occupancy_rate:.0f} impacted_edges={impacted_edges}",
+                        flush=True,
+                    )
+            else:
+                print(
+                    f"[WARNING] Crowd routing impact rejected: area_id={area_id} "
+                    f"status={response.status_code} response={response.text}",
+                    flush=True,
+                )
+
+        except Exception as e:
+            print(f"[WARNING] Crowd penalty update failed: area_id={area_id} error={e}", flush=True)
     
     def handle_evacuation(self, event: Dict):
         """
-        Evacuation → Close corridor in Routing & Map Services
+        Evacuation → Close graph edges connected to the affected pgRouting node.
+
+        The Routing Service now uses PostGIS/pgRouting as the source of truth.
+        Legacy /api/hazards/* endpoints are ignored in this mode, so emulator
+        closures must be written as graph_edge_overrides through node-closures.
         
         Event example:
         {
             "event_type": "evac_update",
             "closure": {
+                "node_id": "63",
                 "edge": "63-70",
                 "from_node": "63",
                 "to_node": "70",
@@ -320,26 +374,47 @@ class EventProcessor:
         }
         """
         closure = event.get("closure", {})
-        from_node = closure.get("from_node")
-        to_node = closure.get("to_node")
+        node_id = closure.get("node_id") or closure.get("from_node") or closure.get("to_node")
         reason = closure.get("reason", "emergency")
+        metadata = event.get("metadata", {})
+        severity = metadata.get("severity", closure.get("severity", 1.0))
 
-        if not from_node or not to_node:
-            return  # Cannot proceed without nodes
+        if not node_id:
+            print(f"[WARNING] Evacuation closure ignored: missing node_id event_id={event.get('event_id')}", flush=True)
+            return
 
         try:
-            # 1️⃣ Close in Routing Service
+            ends_at = (datetime.now(timezone.utc) + timedelta(seconds=EMULATOR_CLOSURE_TTL_SECONDS)).isoformat()
             routing_resp = requests.post(
-                f"{ROUTING_SERVICE_URL}/api/hazards/closure",
-                params={"from_node": from_node, "to_node": to_node},
-                timeout=2
+                f"{ROUTING_SERVICE_URL}/api/graph/node-closures",
+                json={
+                    "node_id": int(node_id),
+                    "reason": reason,
+                    "source": "emulator-stadium",
+                    "severity": float(severity),
+                    "ends_at": ends_at,
+                    "is_active": True,
+                },
+                timeout=3
             )
-            if routing_resp.status_code == 200:
+
+            if routing_resp.status_code in [200, 201]:
+                blocked_edges = len(routing_resp.json() or [])
                 self.processed["evac_update"] += 1
-                print(f"[WARNING] Evacuation corridor closed: from_node={from_node} to_node={to_node} reason={reason}", flush=True)
+                print(
+                    f"[WARNING] Emulator node closure applied: node_id={node_id} "
+                    f"blocked_edges={blocked_edges} reason={reason}",
+                    flush=True,
+                )
+            else:
+                print(
+                    f"[WARNING] Emulator node closure rejected: node_id={node_id} "
+                    f"status={routing_resp.status_code} response={routing_resp.text}",
+                    flush=True,
+                )
 
         except Exception as e:
-            print(f"[WARNING] Corridor closure failed: from_node={from_node} to_node={to_node} error={e}", flush=True)
+            print(f"[WARNING] Emulator node closure failed: node_id={node_id} error={e}", flush=True)
     
     def handle_queue_update(self, event: Dict):
         """

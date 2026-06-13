@@ -6,6 +6,7 @@ Manages evacuation procedures, route calculation, and corridor closures
 from sqlalchemy.orm import Session
 from datetime import datetime
 from typing import List, Optional, Dict, Any
+import asyncio
 import uuid
 import httpx
 
@@ -98,8 +99,10 @@ class EvacuationCoordinator:
         db.add(closure)
         db.commit()
         
-        # Update routing service
-        asyncio.create_task(self._notify_routing_closure(from_node, to_node))
+        source = self._closure_source(from_node, to_node)
+
+        # Update pgRouting runtime state.
+        asyncio.create_task(self._notify_routing_closure(from_node, to_node, reason, source))
         
         print(f"🚫 Corridor closed: {from_node} → {to_node} (reason: {reason})")
         
@@ -123,6 +126,9 @@ class EvacuationCoordinator:
             closure.is_active = False
             closure.reopened_at = datetime.now()
             db.commit()
+
+            source = self._closure_source(from_node, to_node)
+            asyncio.create_task(self._notify_routing_reopen(source))
             
             print(f"[INFO] Corridor reopened: from_node={from_node} to_node={to_node}")
             
@@ -130,16 +136,42 @@ class EvacuationCoordinator:
         
         return {"status": "not_found"}
     
-    async def _notify_routing_closure(self, from_node: str, to_node: str):
-        """Notify routing service of closure"""
+    def _closure_source(self, from_node: str, to_node: str) -> str:
+        return f"evacuation-coordinator:{from_node}:{to_node}"
+
+    async def _notify_routing_closure(self, from_node: str, to_node: str, reason: str, source: str):
+        """Notify pgRouting of a corridor closure using node-closure overrides."""
+        node_ids = list(dict.fromkeys([from_node, to_node]))
         try:
             async with httpx.AsyncClient(timeout=5.0) as client:
-                await client.post(
-                    f"{self.routing_service_url}/api/hazards/closure",
-                    params={"from_node": from_node, "to_node": to_node}
+                for node_id in node_ids:
+                    response = await client.post(
+                        f"{self.routing_service_url}/api/graph/node-closures",
+                        json={
+                            "node_id": int(str(node_id).removeprefix("N").removeprefix("n")),
+                            "reason": reason,
+                            "source": source,
+                            "severity": 1.0,
+                            "is_active": True,
+                        },
+                    )
+                    if response.status_code >= 400:
+                        print(f"[WARNING] Failed to close routing node: node_id={node_id} response={response.text}")
+        except Exception as exc:
+            print(f"[WARNING] Routing closure notification failed: from_node={from_node} to_node={to_node} error={exc}")
+
+    async def _notify_routing_reopen(self, source: str):
+        """Deactivate pgRouting overrides created for a corridor closure."""
+        try:
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                response = await client.post(
+                    f"{self.routing_service_url}/api/graph/edge-overrides/deactivate-by-source",
+                    params={"source": source},
                 )
-        except:
-            pass
+                if response.status_code >= 400:
+                    print(f"[WARNING] Failed to reopen routing closure: source={source} response={response.text}")
+        except Exception as exc:
+            print(f"[WARNING] Routing reopen notification failed: source={source} error={exc}")
     
     def get_active_evacuations(self, db: Session) -> List[EvacuationZone]:
         """Get active evacuations"""
@@ -196,7 +228,3 @@ class EvacuationCoordinator:
             reason=evac.reason,
             incident_metadata=evac.incident_metadata
         )
-
-
-# Needed for async task
-import asyncio

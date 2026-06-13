@@ -412,44 +412,62 @@ def test_gis_rooms_endpoint_returns_503_when_runtime_is_unavailable(client):
     assert data["detail"]["message"].startswith("Routing database search_path")
 
 
-def test_hazard_endpoints(client):
-    """Test hazard management endpoints"""
-    print("\nTesting hazard endpoints...")
-    
-    # Test adding closure
-    response = client.post("/api/hazards/closure", params={
-        "from_node": "N1",
-        "to_node": "N2"
-    })
-    
-    assert response.status_code == 200
-    data = response.json()
-    print(f"Add closure response: {data}")
-    assert "message" in data
-    assert data["message"] == "Closure added"
-    
-    # Test hazard update
-    response = client.post("/api/hazards/update", params={
-        "node_id": "N5",
-        "hazard_type": "smoke",
-        "severity": 0.5
-    })
-    
-    assert response.status_code == 200
-    data = response.json()
-    print(f"Update hazard response: {data}")
-    
-    # Test hazard status
-    response = client.get("/api/hazards/status")
-    
-    assert response.status_code == 200
-    data = response.json()
-    print(f"Hazard status: {data}")
-    assert "closures" in data
-    assert "node_hazards" in data
-    assert "edge_hazards" in data
-    
-    print("Hazard endpoint tests completed")
+def test_graph_node_closure_and_impact_endpoints(client):
+    """Test pgRouting runtime endpoints for closures and crowd impacts."""
+    print("\nTesting pgRouting graph impact endpoints...")
+
+    closure_payload = {
+        "node_id": 62,
+        "reason": "smoke_detected",
+        "source": "test-suite",
+        "severity": 1.0,
+        "is_active": True,
+    }
+    closure_response = [{"id": 1, "edge_id": 41, "is_blocked": True, "cost_multiplier": 99.0, **closure_payload}]
+
+    impact_payload = {
+        "node_id": 62,
+        "cost_multiplier": 4.0,
+        "reason": "crowd_density_85pct",
+        "source": "test-suite:crowd:62",
+        "severity": 0.75,
+        "is_active": True,
+    }
+    impact_response = [{
+        "id": 2,
+        "edge_id": 41,
+        "is_blocked": False,
+        "cost_multiplier": 4.0,
+        "reason": impact_payload["reason"],
+        "source": impact_payload["source"],
+        "severity": impact_payload["severity"],
+        "starts_at": None,
+        "ends_at": None,
+        "is_active": True,
+    }]
+
+    mocked_service = MagicMock()
+    mocked_service.create_node_closure.return_value = closure_response
+    mocked_service.create_node_impact.return_value = impact_response
+
+    with patch("main.get_pgrouting_service", return_value=mocked_service):
+        response = client.post("/api/graph/node-closures", json=closure_payload)
+        data = response.json()
+        print(f"Node closure response: {data}")
+        assert response.status_code == 200
+        assert data[0]["is_blocked"] is True
+
+        response = client.post("/api/graph/node-impacts", json=impact_payload)
+        data = response.json()
+        print(f"Node impact response: {data}")
+        assert response.status_code == 200
+        assert data[0]["is_blocked"] is False
+        assert data[0]["cost_multiplier"] == 4.0
+
+    mocked_service.create_node_closure.assert_called_once()
+    mocked_service.create_node_impact.assert_called_once()
+
+    print("pgRouting graph impact endpoint tests completed")
 
 
 def test_evacuation_endpoint(client):

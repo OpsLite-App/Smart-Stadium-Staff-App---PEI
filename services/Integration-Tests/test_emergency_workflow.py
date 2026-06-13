@@ -136,15 +136,17 @@ class TestEmergencyIncidentWorkflow:
         """
         Test: Route calculation considers congestion data
         """
-        # Update crowd penalty
+        # Apply a routing cost impact through the active graph override API.
         congestion_payload = {
-            "node_id": "zone_1",
-            "occupancy_rate": 0.9,
+            "node_id": int(map_service_data["intermediate_node"]),
+            "reason": "integration_test_crowd_pressure",
+            "source": "integration-tests:crowd-pressure",
+            "cost_multiplier": 4.0,
+            "is_active": True,
         }
-        # In Routing Service
         congestion_response = await http_client.post(
-            f"{service_urls['routing']}/hazards/crowd",
-            params=congestion_payload,
+            f"{service_urls['routing']}/graph/node-impacts",
+            json=congestion_payload,
         )
         assert congestion_response.status_code == 200
         

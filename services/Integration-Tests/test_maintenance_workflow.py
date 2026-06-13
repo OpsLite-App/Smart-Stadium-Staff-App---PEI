@@ -217,17 +217,16 @@ class TestMaintenanceServiceIntegration:
         data = response.json()
         assert data["total_tasks"] >= 2
     
-    async def test_map_service_location_query(
+    async def test_routing_graph_status_query(
         self,
         http_client: httpx.AsyncClient,
         service_urls: Dict[str, str],
         map_service_data: Dict[str, Any],
     ):
         """
-        Test: Maintenance Service can query location from Map Service
+        Test: Routing graph is available for maintenance location workflows
         """
-        node_id = map_service_data["start_node"]
-        response = await http_client.get(f"{service_urls['map']}/nodes/{node_id}")
+        response = await http_client.get(f"{service_urls['routing']}/graph/status")
         assert response.status_code == 200
         data = response.json()
-        assert data["id"] == node_id
+        assert "status" in data

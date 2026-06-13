@@ -41,6 +41,7 @@ from gis import CameraStatusUpdate, GisLayerService
 from pgrouting import (
     PgRoutingService,
     EdgeOverrideCreate,
+    NodeImpactCreate,
     NodeClosureCreate,
     OperationalEventCreate,
 )
@@ -634,6 +635,15 @@ async def create_node_closure(payload: NodeClosureCreate):
     """Create live edge overrides for every corridor connected to a node."""
     service = require_pgrouting_service()
     result = service.create_node_closure(payload)
+    invalidate_route_cache()
+    return result
+
+
+@app.post("/api/graph/node-impacts")
+async def create_node_impact(payload: NodeImpactCreate):
+    """Create traversal-cost impacts for every corridor connected to a node."""
+    service = require_pgrouting_service()
+    result = service.create_node_impact(payload)
     invalidate_route_cache()
     return result
 

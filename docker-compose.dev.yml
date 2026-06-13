@@ -157,6 +157,16 @@ services:
     build:
       context: ./frontend-web
       dockerfile: Dockerfile
+      args:
+        API_GATEWAY_URL: http://traefik-gateway:8080
+        AUTH_SERVICE_URL: http://auth-service:8081
+        CONGESTION_SERVICE_URL: http://congestion-service:8005
+        EMERGENCY_SERVICE_URL: http://emergency-service:8006
+        MAINTENANCE_SERVICE_URL: http://maintenance-service:8007
+        QUEUEING_SERVICE_URL: http://queueing-service:8003
+        ROUTING_SERVICE_URL: http://routing-service:8002
+        CHAT_SERVICE_URL: http://chat-service:8000
+        POSITIONING_SERVICE_URL: http://positioning-service:8004
     container_name: frontend-web
     depends_on:
       traefik:
@@ -194,9 +204,6 @@ services:
       POSITIONING_SERVICE_URL: http://positioning-service:8004
     ports:
       - "3000:3000"
-    volumes:
-      - ./frontend-web:/app
-      - frontend_node_modules:/app/node_modules
 
   mosquitto:
     image: eclipse-mosquitto:2.0.18
@@ -525,6 +532,7 @@ services:
       REDIS_URL: redis://redis-cache:6379/4
       OPERATIONAL_EVENTS_STREAM: opslite:operational-events
       OPERATIONAL_EVENTS_MAXLEN: "5000"
+      INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-opslite-internal-dev-token}
       OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: http://otel-collector:4318/v1/traces
       OTEL_SERVICE_NAME: emergency-service
     ports:
@@ -603,6 +611,9 @@ services:
       MQTT_HOST: mosquitto
       MQTT_BROKER: mosquitto
       MQTT_PORT: "1883"
+      EMERGENCY_SERVICE_URL: http://emergency-service:8006
+      ROUTING_SERVICE_URL: http://routing-service:8002
+      INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-opslite-internal-dev-token}
 
   emulator:
     build:
