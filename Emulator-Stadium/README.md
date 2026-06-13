@@ -23,7 +23,7 @@ Se estiver a correr isolado, usa um cenário local com nós numéricos compatív
 - `stadium/crowd/density-updates`: densidade por zona/nó, com coordenadas e piso.
 - `stadium/maintenance/bin-alerts`: alertas de limpeza com `poi_node` numérico.
 - `stadium/emergency/sos-events`: incidentes SOS para medical/security.
-- `stadium/emergency/evacuation-updates`: bloqueios operacionais que também tentam atualizar o routing-service via `/api/graph/node-closures`.
+- `stadium/emergency/evacuation-updates`: bloqueios operacionais publicados para o `event-processor`, que atualiza o routing-service via `/api/graph/node-closures`.
 
 ## Como correr localmente
 

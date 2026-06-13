@@ -1,6 +1,7 @@
 """
 Integration tests for Routing Service workflow.
-Tests pathfinding, multi-destination routing, and integration with Map Service.
+Tests pathfinding, multi-destination routing, and integration with the
+PostGIS/pgRouting indoor graph.
 """
 
 import pytest
@@ -107,7 +108,7 @@ class TestRoutingWorkflow:
 @pytest.mark.integration
 @pytest.mark.service_call
 class TestRoutingServiceIntegration:
-    """Test Routing Service integration with Map Service."""
+    """Test Routing Service integration with PostGIS/pgRouting."""
     
     async def test_routing_uses_map_service_graph(
         self,
@@ -116,7 +117,7 @@ class TestRoutingServiceIntegration:
         map_service_data: Dict[str, Any],
     ):
         """
-        Test: Routing Service correctly uses graph from Map Service
+        Test: Routing Service correctly uses the graph loaded from PostGIS
         """
         start = map_service_data["start_node"]
         end = map_service_data["end_node"]

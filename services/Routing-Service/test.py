@@ -62,17 +62,20 @@ def test_basic_routing():
 
 
 def test_hazard_aware_routing():
-    """Test 3: Routing with hazards"""
-    print_test("Hazard-Aware Routing")
+    """Test 3: Routing with pgRouting node impacts"""
+    print_test("pgRouting Node Impact Routing")
     
-    # Step 1: Add smoke hazard to N5
-    print("Step 1: Adding SMOKE hazard to N5...")
+    # Step 1: Add cost impact to node 5
+    print("Step 1: Adding high-cost impact to node 5...")
     response = requests.post(
-        f"{BASE_URL}/api/hazards/update",
+        f"{BASE_URL}/api/graph/node-impacts",
         json={
-            "node_id": "N5",
-            "hazard_type": "smoke",
-            "severity": 1.0
+            "node_id": 5,
+            "cost_multiplier": 4.0,
+            "reason": "manual_test_smoke",
+            "source": "routing-test:impact:5",
+            "severity": 0.8,
+            "is_active": True
         }
     )
     print(f"   {response.json()}")
@@ -95,15 +98,18 @@ def test_hazard_aware_routing():
     else:
         print_result(False, f"Error: {response.status_code}")
     
-    # Step 3: Clear hazard
-    print("\nStep 3: Clearing hazard from N5...")
-    requests.delete(f"{BASE_URL}/api/hazards/clear", params={"node_id": "N5"})
-    print("   ✓ Hazard cleared")
+    # Step 3: Clear impact
+    print("\nStep 3: Clearing impact from node 5...")
+    requests.post(
+        f"{BASE_URL}/api/graph/edge-overrides/deactivate-by-source",
+        params={"source": "routing-test:impact:5"}
+    )
+    print("   ✓ Impact cleared")
 
 
 def test_closure_handling():
-    """Test 4: Corridor closure"""
-    print_test("Corridor Closure Handling")
+    """Test 4: Node closure"""
+    print_test("pgRouting Node Closure Handling")
     
     # Step 1: Calculate normal route
     print("Step 1: Normal route N2 → N4...")
@@ -114,11 +120,17 @@ def test_closure_handling():
     normal_path = response.json()['path'] if response.status_code == 200 else []
     print(f"   Path: {normal_path}")
     
-    # Step 2: Close edge N2-N3
-    print("\nStep 2: Closing corridor N2 ↔ N3...")
+    # Step 2: Close node 3
+    print("\nStep 2: Closing node 3...")
     response = requests.post(
-        f"{BASE_URL}/api/hazards/closure",
-        params={"from_node": "N2", "to_node": "N3"}
+        f"{BASE_URL}/api/graph/node-closures",
+        json={
+            "node_id": 3,
+            "reason": "manual_test_closure",
+            "source": "routing-test:closure:3",
+            "severity": 1.0,
+            "is_active": True
+        }
     )
     print(f"   {response.json()}")
     
@@ -143,9 +155,9 @@ def test_closure_handling():
     
     # Step 4: Remove closure
     print("\nStep 4: Removing closure...")
-    requests.delete(
-        f"{BASE_URL}/api/hazards/closure",
-        params={"from_node": "N2", "to_node": "N3"}
+    requests.post(
+        f"{BASE_URL}/api/graph/edge-overrides/deactivate-by-source",
+        params={"source": "routing-test:closure:3"}
     )
     print("   ✓ Closure removed")
 
@@ -155,18 +167,28 @@ def test_crowd_penalty():
     print_test("Crowd Penalty (Occupancy-Based)")
     
     # Add crowd to N6
-    print("Adding 85% occupancy to N6...")
+    print("Adding crowd impact to node 6...")
     response = requests.post(
-        f"{BASE_URL}/api/hazards/crowd",
-        params={"node_id": "N6", "occupancy_rate": 85.0}
+        f"{BASE_URL}/api/graph/node-impacts",
+        json={
+            "node_id": 6,
+            "cost_multiplier": 4.0,
+            "reason": "crowd_density_85pct",
+            "source": "routing-test:crowd:6",
+            "severity": 0.75,
+            "is_active": True
+        }
     )
     
     if response.status_code == 200:
         data = response.json()
         print(f"   {data}")
         
-        penalty = data.get('calculated_penalty', 0)
-        print_result(penalty > 0, f"Crowd penalty applied: +{penalty} meters")
+        print_result(len(data) > 0, f"Crowd impact applied to {len(data)} edge(s)")
+        requests.post(
+            f"{BASE_URL}/api/graph/edge-overrides/deactivate-by-source",
+            params={"source": "routing-test:crowd:6"}
+        )
     else:
         print_result(False, f"Error: {response.status_code}")
 
@@ -290,15 +312,15 @@ def test_multiple_responders():
 
 
 def test_hazard_status():
-    """Test 10: Hazard status summary"""
-    print_test("Hazard Status Summary")
+    """Test 10: Graph status summary"""
+    print_test("Graph Status Summary")
     
-    response = requests.get(f"{BASE_URL}/api/hazards/status")
+    response = requests.get(f"{BASE_URL}/api/graph/status")
     
     if response.status_code == 200:
         data = response.json()
         print(json.dumps(data, indent=2))
-        print_result(True, "Hazard status retrieved")
+        print_result(True, "Graph status retrieved")
     else:
         print_result(False, f"Error: {response.status_code}")
 

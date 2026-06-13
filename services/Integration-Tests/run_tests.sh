@@ -41,8 +41,8 @@ echo -e "${GREEN}✓ Docker is running${NC}"
 echo ""
 echo "Checking services..."
 
-services=("map" "routing" "emergency" "maintenance" "positioning" "queueing" "congestion" "chat")
-ports=(8001 8002 8003 8004 8005 8006 8007 8008)
+services=("routing" "emergency" "maintenance" "positioning" "queueing" "congestion" "chat")
+ports=(8002 8003 8004 8005 8006 8007 8008)
 
 all_running=true
 for i in "${!services[@]}"; do
@@ -108,8 +108,8 @@ elif [ "$1" = "queue" ]; then
     echo "Running queue and congestion tests..."
     pytest "$SCRIPT_DIR/test_queue_and_congestion.py" -v
 elif [ "$1" = "map" ]; then
-    echo "Running map service tests..."
-    pytest "$SCRIPT_DIR/test_map_service.py" -v
+    echo "Map-Service tests are legacy. Running routing GIS tests instead..."
+    pytest "$SCRIPT_DIR/test_routing_workflow.py" -v
 elif [ "$1" = "positioning" ]; then
     echo "Running positioning service tests..."
     pytest "$SCRIPT_DIR/test_positioning_service.py" -v

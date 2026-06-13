@@ -52,6 +52,7 @@ ROUTING_SERVICE_URL = os.getenv("ROUTING_SERVICE_URL", "http://routing-service:8
 CONGESTION_SERVICE_URL = os.getenv("CONGESTION_SERVICE_URL", "http://congestion-service:8003")
 AUTH_SERVICE_URL = os.getenv("AUTH_SERVICE_URL", "http://auth-service:8081")
 EVACUATION_EXIT_NODE = os.getenv("EVACUATION_EXIT_NODE", "65")
+INTERNAL_SERVICE_TOKEN = os.getenv("INTERNAL_SERVICE_TOKEN", "opslite-internal-dev-token")
 
 EMERGENCY_CONTACTS = {
     "fire_brigade": "112",
@@ -128,6 +129,34 @@ def require_roles(*allowed_roles: str) -> Callable:
         return claims
 
     return dependency
+
+
+def require_internal_service(request: Request) -> None:
+    """Authorize service-to-service calls from internal integration workers."""
+    provided = request.headers.get("x-internal-service-token")
+    if not INTERNAL_SERVICE_TOKEN or provided != INTERNAL_SERVICE_TOKEN:
+        raise HTTPException(status_code=403, detail="Invalid internal service token")
+
+
+async def create_incident_with_optional_dispatch(
+    db: Session,
+    incident: IncidentCreate,
+    auto_dispatch: bool = True,
+) -> IncidentResponse:
+    """Create an incident and optionally trigger the existing auto-dispatch flow."""
+    created_incident = incident_manager.create_incident(db, incident)
+    publish_operational_event("incident.created", created_incident)
+
+    if auto_dispatch and created_incident.severity in ["high", "critical"]:
+        dispatches = await incident_manager.auto_dispatch_responders(db, created_incident.id)
+        if dispatches:
+            print(f"[INFO] Responders auto-dispatched: incident_id={created_incident.id} count={len(dispatches)}")
+            publish_operational_event("dispatch.created", {
+                "incident_id": created_incident.id,
+                "dispatches": dispatches,
+            })
+
+    return created_incident
 
 
 # ========== STARTUP ==========
@@ -311,21 +340,18 @@ async def create_incident(
     db: Session = Depends(get_db)
 ):
     """Create new emergency incident"""
-    
-    created_incident = incident_manager.create_incident(db, incident)
-    publish_operational_event("incident.created", created_incident)
-    
-    # Auto-dispatch if critical
-    if auto_dispatch and created_incident.severity in ["high", "critical"]:
-        dispatches = await incident_manager.auto_dispatch_responders(db, created_incident.id)
-        if dispatches:
-            print(f"[INFO] Responders auto-dispatched: incident_id={created_incident.id} count={len(dispatches)}")
-            publish_operational_event("dispatch.created", {
-                "incident_id": created_incident.id,
-                "dispatches": dispatches,
-            })
-    
-    return created_incident
+    return await create_incident_with_optional_dispatch(db, incident, auto_dispatch)
+
+
+@app.post("/api/emergency/internal/incidents", response_model=IncidentResponse, status_code=201)
+async def create_internal_incident(
+    incident: IncidentCreate,
+    auto_dispatch: bool = Query(True, description="Automatically dispatch responders"),
+    _internal: None = Depends(require_internal_service),
+    db: Session = Depends(get_db),
+):
+    """Create incidents from trusted internal workers such as the event processor."""
+    return await create_incident_with_optional_dispatch(db, incident, auto_dispatch)
 
 
 @app.get("/api/emergency/incidents", response_model=ActiveIncidentsResponse)

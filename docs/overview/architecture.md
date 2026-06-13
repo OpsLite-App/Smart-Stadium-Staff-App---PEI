@@ -10,9 +10,10 @@ PostGIS.
 frontend-web -> routing-service -> postgres_map/PostGIS/pgRouting
 ```
 
-The legacy `services/Map-Service` and the Flutter `opslite_staff_app` directory
-remain in the repository, but they are not part of the active runtime. The map
-service is only available through the optional Docker Compose `legacy` profile.
+The legacy `services/Map-Service` remains in the repository, but it is not part
+of the active runtime. The old Flutter staff application was removed after the
+project scope moved to a web-only operational platform. The map service is only
+available through the optional Docker Compose `legacy` profile.
 
 ## Active Services
 
@@ -102,8 +103,8 @@ matrix.
 
 - `services/Map-Service`: legacy compatibility layer for simplified
   nodes/edges; not started by default.
-- `opslite_staff_app`: Flutter app scaffold; not used by the active OpsLite
-  runtime.
+- Former Flutter staff app: removed from the repository after the active
+  implementation moved to `frontend-web`.
 - Older documentation or diagrams may still mention Kafka, Kubernetes, Java map
   services or a mobile-first architecture. Those describe prior design intent,
   not the current Docker Compose runtime.

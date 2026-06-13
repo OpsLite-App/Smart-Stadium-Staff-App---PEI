@@ -16,7 +16,6 @@ import time
 
 # Service URLs (update based on your docker-compose setup)
 SERVICE_URLS = {
-    "map": "http://localhost:8001/api",
     "routing": "http://localhost:8002/api",
     "emergency": "http://localhost:8003/api/emergency",
     "maintenance": "http://localhost:8004/api/maintenance",
@@ -78,49 +77,24 @@ def service_urls() -> Dict[str, str]:
 
 @pytest.fixture
 async def map_service_data(http_client: httpx.AsyncClient) -> Dict[str, Any]:
-    """Populate Map Service with test data and return important node IDs."""
+    """Return real pgRouting node IDs from the PostGIS indoor graph.
+
+    The legacy Map-Service is no longer part of the active routing path. These
+    IDs exist in the indoor GIS backup loaded by postgres_map.
+    """
     try:
-        # Create some test nodes
-        nodes_data = [
-            {"id": "gate_1", "x": 10.0, "y": 20.0, "level": 0, "type": "gate"},
-            {"id": "gate_2", "x": 50.0, "y": 60.0, "level": 0, "type": "gate"},
-            {"id": "medical", "x": 100.0, "y": 100.0, "level": 0, "type": "poi"},
-            {"id": "zone_1", "x": 30.0, "y": 40.0, "level": 0, "type": "normal"},
-            {"id": "zone_2", "x": 70.0, "y": 80.0, "level": 0, "type": "normal"},
-        ]
-        
-        for node in nodes_data:
-            await http_client.post(
-                f"{SERVICE_URLS['map']}/nodes",
-                json=node
-            )
-        
-        # Create edges
-        edges = [
-            {"id": "e1", "from_id": "gate_1", "to_id": "zone_1", "weight": 100.0},
-            {"id": "e2", "from_id": "zone_1", "to_id": "medical", "weight": 150.0},
-            {"id": "e3", "from_id": "zone_1", "to_id": "zone_2", "weight": 200.0},
-            {"id": "e4", "from_id": "gate_2", "to_id": "zone_2", "weight": 120.0},
-            {"id": "e5", "from_id": "zone_2", "to_id": "medical", "weight": 180.0},
-        ]
-        
-        for edge in edges:
-            await http_client.post(
-                f"{SERVICE_URLS['map']}/edges",
-                json=edge
-            )
-        
-        # VERY IMPORTANT: Reload Routing Service graph
-        await http_client.post(f"{SERVICE_URLS['routing']}/reload")
-        
+        response = await http_client.get(f"{SERVICE_URLS['routing']}/graph/status")
+        if response.status_code != 200:
+            pytest.skip(f"Routing Service graph status unavailable: {response.text}")
+
         return {
-            "nodes": {node["id"]: node for node in nodes_data},
-            "start_node": "gate_1",
-            "end_node": "medical",
-            "intermediate_node": "zone_1",
+            "start_node": "62",
+            "end_node": "70",
+            "intermediate_node": "66",
+            "safe_exit_node": "65",
         }
     except Exception as e:
-        pytest.skip(f"Map Service not available: {e}")
+        pytest.skip(f"Routing Service/PostGIS graph not available: {e}")
 
 
 @pytest.fixture
@@ -140,7 +114,7 @@ def incident_data():
     return {
         "description": "Medical emergency at Gate A",
         "severity": "critical",
-        "location": "gate_1",
+        "location": "70",
         "latitude": 40.7128,
         "longitude": -74.0060,
         "reporter_id": "staff_001",
@@ -152,7 +126,7 @@ def maintenance_task_data():
     """Sample maintenance task data for testing."""
     return {
         "title": "Repair broken seat",
-        "location": "zone_1",
+        "location": "70",
         "priority": "high",
         "description": "Row 5, Seat 12 is broken",
         "estimated_duration": 30,
@@ -163,7 +137,7 @@ def maintenance_task_data():
 def queue_event_data():
     """Sample queue event data for testing."""
     return {
-        "location_id": "gate_1",
+        "location_id": "70",
         "observed_count": 150,
         "observation_time": datetime.now().isoformat(),
     }
@@ -173,7 +147,7 @@ def queue_event_data():
 def crowd_density_data():
     """Sample crowd density data for testing."""
     return {
-        "zone_id": "zone_1",
+        "zone_id": "66",
         "density": 0.75,
         "timestamp": datetime.now().isoformat(),
     }
