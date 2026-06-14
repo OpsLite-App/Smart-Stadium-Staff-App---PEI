@@ -63,18 +63,10 @@ Normal development should use `routing-service` endpoints:
 
 ## Run
 
-Start backend services:
+Start backend and frontend services:
 
 ```bash
 docker compose -f docker-compose.dev.yml up -d --build
-```
-
-Start the frontend:
-
-```bash
-cd frontend-web
-npm install
-npm run dev
 ```
 
 Open:

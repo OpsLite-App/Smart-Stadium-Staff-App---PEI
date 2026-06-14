@@ -1,6 +1,6 @@
 """
 Integration tests for Routing Service workflow.
-Tests pathfinding, multi-destination routing, and integration with the
+Tests pathfinding, GeoJSON route output, and integration with the
 PostGIS/pgRouting indoor graph.
 """
 
@@ -22,7 +22,7 @@ class TestRoutingWorkflow:
         map_service_data: Dict[str, Any],
     ):
         """
-        Test: Calculate route between two nodes using A* algorithm
+        Test: Calculate route between two nodes using the active pgRouting graph
         """
         start = map_service_data["start_node"]
         end = map_service_data["end_node"]
@@ -38,53 +38,75 @@ class TestRoutingWorkflow:
         assert "path" in route, "Route missing path"
         assert "distance" in route, "Route missing distance"
     
-    async def test_multi_destination_routing(
+    async def test_pgrouting_route_sequence(
         self,
         http_client: httpx.AsyncClient,
         service_urls: Dict[str, str],
         map_service_data: Dict[str, Any],
     ):
         """
-        Test: Calculate optimal route visiting multiple destinations (TSP-like)
+        Test: Calculate a route sequence across multiple pgRouting destinations.
+
+        The legacy /route/multi endpoint is intentionally disabled. The active
+        implementation calculates each operational leg through pgRouting.
         """
-        # Routing Service expects Query parameters for multi-destination
-        params = [
-            ("from_node", map_service_data["start_node"]),
-            ("to_nodes", map_service_data["intermediate_node"]),
-            ("to_nodes", map_service_data["end_node"]),
+        legs = [
+            (map_service_data["start_node"], map_service_data["intermediate_node"]),
+            (map_service_data["intermediate_node"], map_service_data["end_node"]),
         ]
-        
-        response = await http_client.post(
-            f"{service_urls['routing']}/route/multi",
-            params=params,
-        )
-        assert response.status_code == 200, f"Multi-destination routing failed: {response.text}"
-        route = response.json()
-        assert "path" in route
+
+        total_distance = 0.0
+        visited_nodes = []
+
+        for start, end in legs:
+            response = await http_client.get(
+                f"{service_urls['routing']}/route/pgrouting",
+                params={"from_node": start, "to_node": end, "allow_blocked": True},
+            )
+            assert response.status_code == 200, f"pgRouting leg failed: {response.text}"
+
+            route = response.json()
+            assert route["start_node"] == int(start)
+            assert route["end_node"] == int(end)
+            assert route.get("path"), "Route leg missing path"
+            assert route.get("distance", 0) >= 0
+
+            total_distance += route.get("distance", 0)
+            visited_nodes.extend(route["path"])
+
+        assert int(map_service_data["start_node"]) in visited_nodes
+        assert int(map_service_data["intermediate_node"]) in visited_nodes
+        assert int(map_service_data["end_node"]) in visited_nodes
+        assert total_distance > 0
     
-    async def test_nearest_node_search(
+    async def test_pgrouting_geojson_route_output(
         self,
         http_client: httpx.AsyncClient,
         service_urls: Dict[str, str],
         map_service_data: Dict[str, Any],
     ):
         """
-        Test: Find nearest node from candidates
+        Test: Return a web-ready GeoJSON route between real pgRouting nodes.
+
+        The previous nearest-node endpoint belonged to the legacy graph API.
+        The active frontend consumes pgRouting GeoJSON route output instead.
         """
-        # Routing Service expects Query parameters for nearest
-        params = [
-            ("target", map_service_data["start_node"]),
-            ("candidates", map_service_data["intermediate_node"]),
-            ("candidates", map_service_data["end_node"]),
-        ]
-        
-        response = await http_client.post(
-            f"{service_urls['routing']}/route/nearest",
-            params=params,
+        response = await http_client.get(
+            f"{service_urls['routing']}/route/pgrouting/geojson",
+            params={
+                "from_node": map_service_data["start_node"],
+                "to_node": map_service_data["end_node"],
+                "allow_blocked": True,
+            },
         )
-        assert response.status_code == 200, f"Nearest node search failed: {response.text}"
+        assert response.status_code == 200, f"GeoJSON route failed: {response.text}"
+
         result = response.json()
-        assert "path" in result
+        assert result["route"]["type"] == "FeatureCollection"
+        assert isinstance(result["route"]["features"], list)
+        assert result["summary"]["start_node"] == int(map_service_data["start_node"])
+        assert result["summary"]["end_node"] == int(map_service_data["end_node"])
+        assert result["summary"]["distance"] >= 0
     
     async def test_hazard_aware_routing(
         self,
@@ -110,7 +132,7 @@ class TestRoutingWorkflow:
 class TestRoutingServiceIntegration:
     """Test Routing Service integration with PostGIS/pgRouting."""
     
-    async def test_routing_uses_map_service_graph(
+    async def test_routing_uses_postgis_pgrouting_graph(
         self,
         http_client: httpx.AsyncClient,
         service_urls: Dict[str, str],
